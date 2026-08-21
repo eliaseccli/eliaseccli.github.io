@@ -27,6 +27,7 @@ body {
   inset: -22%;
   pointer-events: none;
   z-index: 0;
+  will-change: transform;
   background:
     radial-gradient(44% 36% at 24% 30%, rgba(130, 180, 255, 0.22), transparent 70%),
     radial-gradient(38% 32% at 76% 22%, rgba(255, 105, 180, 0.14), transparent 72%),
@@ -44,6 +45,7 @@ body {
   display: block;
   pointer-events: none;
   z-index: 1;
+  will-change: transform;
 }
 
 .stage {
@@ -113,6 +115,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .wave-wrap { transform: none !important; }
+  .bloom { transform: none !important; }
 }
 
 @media (pointer: coarse) {
