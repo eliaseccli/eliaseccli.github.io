@@ -3,41 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050506">
+  <meta name="color-scheme" content="dark">
   <title>Elias Eccli</title>
-  <style>
-    * { box-sizing: border-box; }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #fff;
-      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-    }
-    main {
-      min-height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    .wave {
-      font-size: clamp(4rem, 12vw, 7rem);
-      line-height: 1;
-      user-select: none;
-    }
-    a {
-      margin-top: 1.25rem;
-      color: #9a9a9a;
-      font-size: 0.8125rem;
-      letter-spacing: 0.01em;
-      text-decoration: none;
-    }
-    a:hover { color: #666; }
-  </style>
+  <link rel="stylesheet" href="./home.css">
 </head>
 <body>
-  <main>
-    <div class="wave" role="img" aria-label="Hello">👋</div>
-    <a href="./teslastores/">Tesla map</a>
+  <div class="bloom" aria-hidden="true"></div>
+  <main class="stage">
+    <div class="wave-rig">
+      <div class="wave-wrap" data-wave>
+        <div class="wave" role="img" aria-label="Hello">&#128075;</div>
+        <div class="sheen" aria-hidden="true"></div>
+      </div>
+    </div>
+    <h1 class="name">Elias Eccli</h1>
+    <a class="chip" href="./teslastores/">Tesla map</a>
   </main>
+  <script src="./home.js"></script>
 </body>
 </html>
