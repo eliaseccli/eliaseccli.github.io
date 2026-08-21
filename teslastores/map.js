@@ -69,10 +69,10 @@ function drawVoronoi() {
     const color = COLORS[i % COLORS.length];
     L.polygon(latlngs, {
       color: color,
-      weight: 1,
-      opacity: 0.45,
+      weight: 2,
+      opacity: 0.85,
       fillColor: color,
-      fillOpacity: 0.22,
+      fillOpacity: 0.2,
       interactive: false
     }).addTo(voronoiLayer);
   });
