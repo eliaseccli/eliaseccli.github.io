@@ -49,6 +49,7 @@ body {
 }
 
 .wave-rig {
+  margin-bottom: 0.9em;
   perspective: 900px;
   transform-style: preserve-3d;
 }
@@ -97,7 +98,7 @@ body {
 }
 
 .name {
-  margin: 0.15em 0 0;
+  margin: 0.55em 0 0;
   font-size: clamp(1.65rem, 4.6vw, 2.85rem);
   font-weight: 450;
   letter-spacing: 0.012em;
