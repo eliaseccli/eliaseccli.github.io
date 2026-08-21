@@ -1,6 +1,75 @@
 (function () {
+  function seeded(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = s + 0x6D2B79F5 | 0;
+      var t = Math.imul(s ^ s >>> 15, 1 | s);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function paintStars() {
+    var canvas = document.querySelector("canvas.stars");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var rand = seeded(0xE11A5C);
+    var count = 168;
+    var i;
+    for (i = 0; i < count; i++) {
+      var x = rand() * w;
+      var y = rand() * h;
+      var roll = rand();
+      var hue;
+      var sat;
+      var light;
+      var alpha;
+      if (roll < 0.12) {
+        hue = 200 + rand() * 20;
+        sat = 32 + rand() * 28;
+        light = 86 + rand() * 10;
+        alpha = 0.55 + rand() * 0.35;
+      } else if (roll < 0.22) {
+        hue = 45 + rand() * 10;
+        sat = 38 + rand() * 28;
+        light = 84 + rand() * 10;
+        alpha = 0.5 + rand() * 0.35;
+      } else {
+        hue = 210 + rand() * 16;
+        sat = 3 + rand() * 8;
+        light = 93 + rand() * 5;
+        alpha = 0.42 + rand() * 0.4;
+      }
+
+      var sizeRoll = rand();
+      var size;
+      if (sizeRoll < 0.82) size = 0.35 + rand() * 0.65;
+      else if (sizeRoll < 0.96) size = 0.95 + rand() * 0.7;
+      else size = 1.7 + rand() * 0.9;
+
+      ctx.beginPath();
+      ctx.fillStyle = "hsla(" + hue + "," + sat + "%," + light + "%," + alpha + ")";
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  paintStars();
+  window.addEventListener("resize", paintStars);
+
   var wrap = document.querySelector("[data-wave]");
-  var root = document.documentElement;
   if (!wrap) return;
 
   var wave = wrap.querySelector(".wave");
@@ -9,7 +78,6 @@
 
   var tx = 0, ty = 0, tr = 0;
   var x = 0, y = 0, r = 0;
-  var lx = 52, ly = 34, tlx = 52, tly = 34;
   var t0 = performance.now();
   var running = false;
 
@@ -37,8 +105,6 @@
     tx = nx * 30;
     ty = ny * 20;
     tr = nx * 9 - ny * 3.5;
-    tlx = 50 + nx * 26;
-    tly = 32 + ny * 20;
   }
 
   function applyTransform() {
@@ -66,14 +132,8 @@
     x += (tx + sx - x) * k;
     y += (ty + sy - y) * k;
     r += (tr + sr - r) * k;
-    lx += (tlx - lx) * 0.08;
-    ly += (tly - ly) * 0.08;
 
     applyTransform();
-
-    root.style.setProperty("--lx", lx.toFixed(2) + "%");
-    root.style.setProperty("--ly", ly.toFixed(2) + "%");
-
     requestAnimationFrame(tick);
   }
 
