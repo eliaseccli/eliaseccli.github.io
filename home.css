@@ -147,3 +147,37 @@ body {
 @media (pointer: coarse) {
   .chip { padding: 0.52rem 1.05rem; }
 }
+
+.tip {
+  position: absolute;
+  left: 12%;
+  top: 47%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.rocket {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  margin: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  line-height: 1;
+  font-size: clamp(2.1rem, 6.4vw, 3.4rem);
+  will-change: transform, opacity;
+  filter:
+    saturate(1.35)
+    drop-shadow(0 12px 20px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 12px rgba(255, 160, 80, 0.28));
+}
+
+.rocket.boom {
+  font-size: clamp(2.6rem, 8vw, 4.2rem);
+  filter:
+    saturate(1.45)
+    drop-shadow(0 8px 18px rgba(255, 120, 40, 0.38));
+}
