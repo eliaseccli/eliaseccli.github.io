@@ -1,0 +1,65 @@
+[
+  {
+    "id": "Wien Triesterstraße",
+    "name": "Tesla Service Vienna-Triesterstrasse",
+    "address": "Triesterstraße 207-209, 1230 Wien, Austria",
+    "lat": 48.1484739,
+    "lon": 16.3354439
+  },
+  {
+    "id": "Wien Shuttleworthstraße",
+    "name": "Tesla Sales Vienna-Shuttleworthstrasse",
+    "address": "Shuttleworthstraße 17, 1210 Wien, Austria",
+    "lat": 48.2716536,
+    "lon": 16.4096858
+  },
+  {
+    "id": "St. Pölten",
+    "name": "Tesla Service Sankt Pölten",
+    "address": "Teslastraße 5, 3100 Sankt Pölten, Austria",
+    "lat": 48.1565988,
+    "lon": 15.613991
+  },
+  {
+    "id": "Linz Leonding",
+    "name": "Tesla Service Linz Leonding",
+    "address": "Plateaustraße 1, 4060 Leonding, Austria",
+    "lat": 48.2632825,
+    "lon": 14.2608673
+  },
+  {
+    "id": "Salzburg",
+    "name": "Tesla Service Salzburg-Aigner Strasse",
+    "address": "Aignerstraße 57, 5026 Salzburg, Austria",
+    "lat": 47.7900216,
+    "lon": 13.0761313
+  },
+  {
+    "id": "Graz Kalsdorf",
+    "name": "Tesla Service Kalsdorf bei Graz",
+    "address": "Eduard-Ast-Straße 6, 8401 Kalsdorf bei Graz, Austria",
+    "lat": 46.9814269,
+    "lon": 15.4547478
+  },
+  {
+    "id": "Klagenfurt",
+    "name": "Tesla Service Klagenfurt",
+    "address": "Mageregger Straße 73, 9020 Klagenfurt am Wörthersee, Austria",
+    "lat": 46.6513406,
+    "lon": 14.2955666
+  },
+  {
+    "id": "Innsbruck Thaur",
+    "name": "Tesla Service Innsbruck",
+    "address": "Physiothermstraße 1, 6065 Thaur, Austria",
+    "lat": 47.2764945,
+    "lon": 11.4693674
+  },
+  {
+    "id": "Dornbirn",
+    "name": "Tesla Center Dornbirn",
+    "address": "Bachmähdle 2, 6850 Dornbirn, Austria",
+    "lat": 47.3913977,
+    "lon": 9.7282706
+  }
+]

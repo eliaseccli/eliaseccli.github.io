@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tesla in Austria · Voronoi</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin="">
+  <style>
+    * { box-sizing: border-box; }
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      background: #f4f4f4;
+    }
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
+    #bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 1000;
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      max-width: calc(100% - 68px);
+      padding: 0.5rem 0.85rem;
+      background: rgba(255, 255, 255, 0.94);
+      border-radius: 8px;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+    }
+    #bar a {
+      color: #666;
+      font-size: 0.8125rem;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    #bar a:hover { color: #111; }
+    #bar h1 {
+      margin: 0;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #222;
+      line-height: 1.35;
+    }
+    .leaflet-popup-content {
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      font-size: 0.875rem;
+      line-height: 1.4;
+    }
+    .leaflet-popup-content strong { display: block; margin-bottom: 0.2rem; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="bar">
+    <a href="../">← Home</a>
+    <h1>Tesla in Austria · Voronoi of current centers</h1>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script type="module" src="./map.js"></script>
+</body>
+</html>
