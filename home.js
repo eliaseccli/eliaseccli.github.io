@@ -233,7 +233,7 @@
     el.textContent = ROCKET;
     document.body.appendChild(el);
 
-    var dur = 460 + Math.min(len, 980) * 0.38;
+    var dur = (460 + Math.min(len, 980) * 0.38) * 10 / 7;
     var started = performance.now();
 
     function flight(now) {
