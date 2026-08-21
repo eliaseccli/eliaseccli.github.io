@@ -55,11 +55,10 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 8vh 1.25rem max(2.5rem, env(safe-area-inset-bottom));
+  padding: 0 1.25rem;
 }
 
 .wave-rig {
-  margin-bottom: 0.9em;
   perspective: 900px;
   transform-style: preserve-3d;
 }
@@ -78,14 +77,6 @@ body {
   filter: drop-shadow(0 22px 36px rgba(0, 0, 0, 0.55));
 }
 
-.name {
-  margin: 0.55em 0 0;
-  font-size: clamp(1.65rem, 4.6vw, 2.85rem);
-  font-weight: 450;
-  letter-spacing: 0.012em;
-  color: rgba(255, 255, 255, 0.78);
-  line-height: 1.1;
-}
 
 .chip {
   position: absolute;
