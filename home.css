@@ -1,0 +1,148 @@
+:root {
+  --bg: #050506;
+  --ink: rgba(255, 255, 255, 0.82);
+  --lx: 52%;
+  --ly: 34%;
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "SF Pro Display", "SF Pro Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  overflow: hidden;
+  min-height: 100dvh;
+}
+
+.bloom {
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(42% 36% at var(--lx) var(--ly), rgba(140, 190, 255, 0.16), transparent 62%),
+    radial-gradient(34% 30% at calc(var(--lx) + 18%) calc(var(--ly) + 16%), rgba(255, 120, 190, 0.10), transparent 70%),
+    radial-gradient(28% 26% at calc(var(--lx) - 16%) calc(var(--ly) + 22%), rgba(255, 214, 130, 0.08), transparent 68%);
+  filter: blur(28px);
+}
+
+.stage {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8vh 1.25rem max(2.5rem, env(safe-area-inset-bottom));
+}
+
+.wave-rig {
+  perspective: 900px;
+  transform-style: preserve-3d;
+}
+
+.wave-wrap {
+  position: relative;
+  will-change: transform;
+  transform-style: preserve-3d;
+}
+
+.wave {
+  font-size: clamp(9rem, 32vw, 20rem);
+  line-height: 0.92;
+  user-select: none;
+  pointer-events: none;
+  filter:
+    saturate(1.45)
+    contrast(1.12)
+    brightness(1.04)
+    drop-shadow(0 28px 50px rgba(0, 0, 0, 0.55))
+    drop-shadow(12px 8px 28px rgba(80, 170, 255, 0.28))
+    drop-shadow(-14px 10px 26px rgba(255, 90, 170, 0.22))
+    drop-shadow(0 -8px 22px rgba(255, 214, 120, 0.14));
+}
+
+.sheen {
+  position: absolute;
+  inset: -8%;
+  pointer-events: none;
+  border-radius: 46%;
+  background:
+    radial-gradient(circle at var(--lx) var(--ly),
+      rgba(255, 255, 255, 0.62) 0%,
+      rgba(190, 230, 255, 0.22) 14%,
+      rgba(255, 160, 210, 0.08) 28%,
+      transparent 46%),
+    linear-gradient(118deg,
+      rgba(255, 90, 160, 0.18),
+      rgba(90, 190, 255, 0.20),
+      rgba(255, 220, 130, 0.12),
+      rgba(170, 130, 255, 0.16));
+  mix-blend-mode: overlay;
+  filter: blur(1.5px);
+  -webkit-mask-image: radial-gradient(circle at 50% 48%, #000 38%, transparent 72%);
+  mask-image: radial-gradient(circle at 50% 48%, #000 38%, transparent 72%);
+}
+
+.name {
+  margin: 0.15em 0 0;
+  font-size: clamp(1.65rem, 4.6vw, 2.85rem);
+  font-weight: 450;
+  letter-spacing: 0.012em;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.1;
+}
+
+.chip {
+  position: absolute;
+  left: 50%;
+  bottom: max(1.35rem, calc(env(safe-area-inset-bottom) + 0.85rem));
+  transform: translateX(-50%);
+  padding: 0.42rem 0.92rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.018em;
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  backdrop-filter: blur(22px) saturate(1.55);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.chip:hover {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.chip:focus-visible {
+  outline: 2px solid rgba(190, 220, 255, 0.7);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave-wrap { transform: none !important; }
+  .bloom { filter: blur(28px); }
+}
+
+@media (pointer: coarse) {
+  .chip { padding: 0.52rem 1.05rem; }
+}
