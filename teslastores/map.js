@@ -14,6 +14,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 const voronoiLayer = L.layerGroup().addTo(map);
 const markersLayer = L.layerGroup().addTo(map);
+const overlayToggle = document.getElementById("voronoi-toggle");
 
 function esc(s) {
   return String(s)
@@ -93,6 +94,7 @@ locations.forEach((loc, i) => {
 
 function drawVoronoi() {
   voronoiLayer.clearLayers();
+  if (!overlayToggle.checked) return;
   const pts = locations.map((loc) => {
     const p = map.latLngToLayerPoint(L.latLng(loc.lat, loc.lon));
     return [p.x, p.y];
@@ -133,4 +135,8 @@ function drawVoronoi() {
 }
 
 drawVoronoi();
+overlayToggle.addEventListener("change", () => {
+  if (overlayToggle.checked) drawVoronoi();
+  else voronoiLayer.clearLayers();
+});
 map.on("zoomend moveend", drawVoronoi);
