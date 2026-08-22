@@ -1,5 +1,5 @@
 :root {
-  --bg: #060410;
+  --bg: #050508;
   --ink: rgba(255, 255, 255, 0.82);
 }
 
@@ -24,16 +24,16 @@ body {
 
 .bloom {
   position: fixed;
-  inset: -18%;
+  inset: -22%;
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(52% 44% at 20% 26%, rgba(110, 170, 255, 0.58), transparent 68%),
-    radial-gradient(48% 42% at 80% 18%, rgba(255, 70, 160, 0.46), transparent 70%),
-    radial-gradient(44% 40% at 74% 78%, rgba(255, 186, 80, 0.36), transparent 68%),
-    radial-gradient(42% 38% at 14% 82%, rgba(155, 100, 255, 0.42), transparent 66%),
-    radial-gradient(62% 52% at 48% 52%, rgba(60, 90, 200, 0.32), transparent 72%);
-  filter: blur(26px);
+    radial-gradient(44% 36% at 24% 30%, rgba(130, 180, 255, 0.22), transparent 70%),
+    radial-gradient(38% 32% at 76% 22%, rgba(255, 105, 180, 0.14), transparent 72%),
+    radial-gradient(34% 30% at 70% 74%, rgba(255, 208, 120, 0.11), transparent 70%),
+    radial-gradient(30% 28% at 18% 78%, rgba(165, 125, 255, 0.12), transparent 68%),
+    radial-gradient(52% 42% at 50% 52%, rgba(80, 110, 190, 0.08), transparent 74%);
+  filter: blur(40px);
 }
 
 .stars {
@@ -69,37 +69,14 @@ body {
   transform-style: preserve-3d;
 }
 
-.wave,
-.wave-frost {
+.wave {
   font-size: clamp(9rem, 32vw, 20rem);
   line-height: 0.92;
   user-select: none;
   pointer-events: none;
+  filter: drop-shadow(0 22px 36px rgba(0, 0, 0, 0.55));
 }
 
-.wave-frost {
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: rgba(255, 255, 255, 0.55);
-  opacity: 0.34;
-  filter: blur(16px);
-}
-
-.wave {
-  position: relative;
-  background: linear-gradient(155deg,
-    rgba(255, 255, 255, 0.78) 0%,
-    rgba(210, 232, 255, 0.34) 26%,
-    rgba(255, 255, 255, 0.12) 52%,
-    rgba(255, 190, 220, 0.28) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  opacity: 0.72;
-  filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.22));
-}
 
 .chip {
   position: absolute;
