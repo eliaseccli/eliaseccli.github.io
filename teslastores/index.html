@@ -44,7 +44,7 @@
       color: #222;
       line-height: 1.35;
     }
-    #overlay-toggle {
+    #overlay-toggle, .overlay-toggle {
       display: flex;
       align-items: center;
       gap: 0.35rem;
@@ -55,7 +55,7 @@
       white-space: nowrap;
       user-select: none;
     }
-    #overlay-toggle input {
+    #overlay-toggle input, .overlay-toggle input {
       margin: 0;
     }
     .leaflet-popup-content {
@@ -71,7 +71,8 @@
   <div id="bar">
     <a href="../">← Home</a>
     <h1>Tesla in Austria · Voronoi of current centers</h1>
-    <label id="overlay-toggle"><input type="checkbox" id="voronoi-toggle" checked> closest store (distance)</label>
+    <label id="overlay-toggle" class="overlay-toggle"><input type="checkbox" id="voronoi-toggle" checked> closest store (distance)</label>
+    <label class="overlay-toggle"><input type="checkbox" id="drive-time-toggle" checked> closest store (driving time)</label>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/d3-delaunay@6"></script>
