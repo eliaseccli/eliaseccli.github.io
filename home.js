@@ -73,11 +73,6 @@
   if (!wrap) return;
 
   var wave = wrap.querySelector(".wave");
-  var frost = wrap.querySelector(".wave-frost");
-  function setHand(ch) {
-    if (wave) wave.textContent = ch;
-    if (frost) frost.textContent = ch;
-  }
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   var fine = window.matchMedia("(pointer: fine)");
 
@@ -264,7 +259,7 @@
     var theta = Math.atan2(clientY - cy, clientX - cx);
     aimR = nearestDeg(r, (theta - Math.PI) * 180 / Math.PI);
     pointing = true;
-    setHand(POINT);
+    if (wave) wave.textContent = POINT;
     applyTransform();
 
     var tipRect = tip.getBoundingClientRect();
@@ -275,7 +270,7 @@
     restoreTimer = setTimeout(function () {
       pointing = false;
       r = aimR;
-      setHand(WAVE);
+      if (wave) wave.textContent = WAVE;
       restoreTimer = null;
     }, 200 + Math.random() * 80);
 
@@ -292,10 +287,10 @@
     var cy = e.clientY;
 
     if (reduced.matches) {
-      setHand(POINT);
+      if (wave) wave.textContent = POINT;
       if (restoreTimer) clearTimeout(restoreTimer);
       restoreTimer = setTimeout(function () {
-        setHand(WAVE);
+        if (wave) wave.textContent = WAVE;
         restoreTimer = null;
       }, 180);
       spawnBoom(cx, cy);
@@ -313,7 +308,7 @@
     if (reduced.matches) {
       wrap.style.transform = "none";
       pointing = false;
-      setHand(WAVE);
+      if (wave) wave.textContent = WAVE;
     } else {
       start();
     }
