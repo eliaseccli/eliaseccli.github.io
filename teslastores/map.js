@@ -12,9 +12,11 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19
 }).addTo(map);
 
+const driveTimeLayer = L.layerGroup().addTo(map);
 const voronoiLayer = L.layerGroup().addTo(map);
 const markersLayer = L.layerGroup().addTo(map);
 const overlayToggle = document.getElementById("voronoi-toggle");
+const driveTimeToggle = document.getElementById("drive-time-toggle");
 
 function esc(s) {
   return String(s)
@@ -62,13 +64,17 @@ function austriaPixelBounds(bounds) {
   ];
 }
 
-const [austriaGeo, locations] = await Promise.all([
+const [austriaGeo, locations, driveTimeGeo] = await Promise.all([
   fetch("./austria.geojson").then((r) => {
     if (!r.ok) throw new Error("Could not load austria.geojson");
     return r.json();
   }),
   fetch("./locations.json").then((r) => {
     if (!r.ok) throw new Error("Could not load locations.json");
+    return r.json();
+  }),
+  fetch("./drive-time.geojson").then((r) => {
+    if (!r.ok) throw new Error("Could not load drive-time.geojson");
     return r.json();
   })
 ]);
@@ -91,6 +97,28 @@ locations.forEach((loc, i) => {
     .bindPopup("<strong>" + esc(loc.name) + "</strong>" + esc(loc.address))
     .addTo(markersLayer);
 });
+
+function cellStyle(color) {
+  return {
+    color: color,
+    weight: 2,
+    opacity: 0.85,
+    fillColor: color,
+    fillOpacity: 0.2,
+    interactive: false
+  };
+}
+
+function drawDriveTime() {
+  driveTimeLayer.clearLayers();
+  if (!driveTimeToggle.checked) return;
+  L.geoJSON(driveTimeGeo, {
+    style(feature) {
+      const color = (feature.properties && feature.properties.color) || "#333";
+      return cellStyle(color);
+    }
+  }).addTo(driveTimeLayer);
+}
 
 function drawVoronoi() {
   voronoiLayer.clearLayers();
@@ -122,21 +150,19 @@ function drawVoronoi() {
     pieces.forEach((poly) => {
       if (!poly || !poly.length) return;
       const latlngs = poly.map(ringLngLatToLatLng);
-      L.polygon(latlngs, {
-        color: color,
-        weight: 2,
-        opacity: 0.85,
-        fillColor: color,
-        fillOpacity: 0.2,
-        interactive: false
-      }).addTo(voronoiLayer);
+      L.polygon(latlngs, cellStyle(color)).addTo(voronoiLayer);
     });
   });
 }
 
+drawDriveTime();
 drawVoronoi();
 overlayToggle.addEventListener("change", () => {
   if (overlayToggle.checked) drawVoronoi();
   else voronoiLayer.clearLayers();
+});
+driveTimeToggle.addEventListener("change", () => {
+  if (driveTimeToggle.checked) drawDriveTime();
+  else driveTimeLayer.clearLayers();
 });
 map.on("zoomend moveend", drawVoronoi);
