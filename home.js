@@ -132,6 +132,7 @@
 
   var meteor = null;
   var roadsterDone = false;
+  var roadsterNoRespawn = false;
   var goingPlaid = false;
   var plaidStart = 0;
   var plaidX0 = 0;
@@ -157,7 +158,7 @@
   }
 
   function spawnRoadster() {
-    if (goingPlaid) return;
+    if (goingPlaid || roadsterNoRespawn) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (roadsterEl && roadsterEl.parentNode) roadsterEl.parentNode.removeChild(roadsterEl);
     var el = document.createElement("div");
@@ -195,8 +196,11 @@
           roadsterEl = null;
           roadsterPos = null;
         }
-        if (!goingPlaid) {
+        if (!goingPlaid && !roadsterNoRespawn) {
           roadsterTimer = setTimeout(spawnRoadster, 1000);
+        } else {
+          roadsterDone = false;
+          roadsterNoRespawn = false;
         }
       }
     }
@@ -319,7 +323,10 @@
       }
       overlay.style.opacity = String(Math.max(0, (t - 0.28) / 0.72));
       if (t < 1) requestAnimationFrame(warp);
-      else window.location.href = "./teslastores/";
+      else {
+        try { sessionStorage.setItem("homePlaid", "1"); } catch (err) {}
+        window.location.href = "./teslastores/";
+      }
     }
     requestAnimationFrame(warp);
   }
@@ -371,7 +378,9 @@
     paintStars();
     if (!roadsterDone && deadCount() >= 152) {
       roadsterDone = true;
-      setTimeout(spawnRoadster, 640);
+      roadsterNoRespawn = false;
+      if (roadsterTimer) clearTimeout(roadsterTimer);
+      roadsterTimer = setTimeout(spawnRoadster, 640);
     }
   }
 
@@ -529,7 +538,20 @@
     return dx * dx + dy * dy <= 1;
   }
 
+  function cancelRoadsterRespawn() {
+    if (roadsterTimer) {
+      clearTimeout(roadsterTimer);
+      roadsterTimer = null;
+    }
+    if (roadsterEl) roadsterNoRespawn = true;
+    else {
+      roadsterDone = false;
+      roadsterNoRespawn = false;
+    }
+  }
+
   function yeetHand(px, py) {
+    cancelRoadsterRespawn();
     knocked = true;
     pointing = false;
     if (restoreTimer) {
@@ -630,8 +652,8 @@
     el.textContent = BOOM;
     document.body.appendChild(el);
     blastStars(px, py);
-    if (roadsterHit(px, py)) hitRoadster(px, py);
-    else if (punch && !reduced.matches && !goingPlaid && !roadsterDone && !roadsterEl) yeetHand(px, py);
+    if (punch && !reduced.matches && !goingPlaid) yeetHand(px, py);
+    else if (roadsterHit(px, py)) hitRoadster(px, py);
     placeEl(el, px, py, 0, 0.85, 1);
 
     var started = performance.now();
@@ -798,6 +820,15 @@
     } else {
       start();
     }
+  });
+
+  window.addEventListener("pageshow", function (e) {
+    var fromPlaid = false;
+    try { fromPlaid = sessionStorage.getItem("homePlaid") === "1"; } catch (err) {}
+    if (fromPlaid) {
+      try { sessionStorage.removeItem("homePlaid"); } catch (err) {}
+    }
+    if (e.persisted || goingPlaid || fromPlaid) location.reload();
   });
 
   start();
