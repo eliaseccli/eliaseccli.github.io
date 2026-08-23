@@ -154,18 +154,32 @@ body {
 }
 
 
-.roadster {
+.roadster, .alien {
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 1;
+  z-index: 18;
   margin: 0;
   pointer-events: none;
   user-select: none;
   line-height: 1;
-  font-size: clamp(1.05rem, 2.6vw, 1.55rem);
+  font-size: clamp(1.35rem, 3.4vw, 2rem);
   will-change: transform, opacity;
   filter:
     saturate(1.25)
     drop-shadow(0 0 10px rgba(255, 90, 70, 0.28));
+}
+
+.roadster {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.plaid-white {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
 }
