@@ -50,6 +50,7 @@
 
   var starField = makeStarField();
   var deadStars = {};
+  var revivingStars = {};
   var starFade = 1;
 
   function paintStars() {
@@ -73,7 +74,8 @@
       if (deadStars[i]) continue;
       var s = starField[i];
       ctx.beginPath();
-      ctx.fillStyle = "hsla(" + s.hue + "," + s.sat + "%," + s.light + "%," + (s.alpha * starFade) + ")";
+      var a = revivingStars[i] ? s.alpha * starFade : s.alpha;
+      ctx.fillStyle = "hsla(" + s.hue + "," + s.sat + "%," + s.light + "%," + a + ")";
       ctx.arc(s.nx * w, s.ny * h, s.size, 0, Math.PI * 2);
       ctx.fill();
     }
@@ -105,6 +107,11 @@
   }
 
   function resetSky() {
+    revivingStars = {};
+    var i;
+    for (i = 0; i < starField.length; i++) {
+      if (deadStars[i]) revivingStars[i] = true;
+    }
     deadStars = {};
     starFade = 0;
     var started = performance.now();
@@ -112,11 +119,13 @@
     function fade(now) {
       if (goingPlaid) {
         starFade = 1;
+        revivingStars = {};
         return;
       }
       starFade = Math.min(1, (now - started) / dur);
       paintStars();
       if (starFade < 1) requestAnimationFrame(fade);
+      else revivingStars = {};
     }
     requestAnimationFrame(fade);
   }
