@@ -21,14 +21,26 @@
       left: 12px;
       z-index: 1000;
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.75rem;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.45rem;
       max-width: calc(100% - 68px);
       padding: 0.5rem 0.85rem;
       background: rgba(255, 255, 255, 0.94);
       border-radius: 8px;
       box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+    }
+    #bar-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    #overlays {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.3rem;
     }
     #bar a {
       color: #666;
@@ -69,11 +81,15 @@
 <body>
   <div id="map"></div>
   <div id="bar">
-    <a href="../">← Home</a>
-    <h1>Tesla in Austria · Voronoi of current centers</h1>
-    <label class="overlay-toggle"><input type="checkbox" id="states-toggle" checked> states</label>
-    <label id="overlay-toggle" class="overlay-toggle"><input type="checkbox" id="voronoi-toggle" checked> closest store (distance)</label>
-    <label class="overlay-toggle"><input type="checkbox" id="drive-time-toggle" checked> closest store (driving time)</label>
+    <div id="bar-top">
+      <a href="../">← Home</a>
+      <h1>Tesla in Austria · Voronoi of current centers</h1>
+    </div>
+    <div id="overlays">
+      <label class="overlay-toggle"><input type="checkbox" id="states-toggle" checked> states</label>
+      <label id="overlay-toggle" class="overlay-toggle"><input type="checkbox" id="voronoi-toggle" checked> closest store (distance)</label>
+      <label class="overlay-toggle"><input type="checkbox" id="drive-time-toggle" checked> closest store (driving time)</label>
+    </div>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/d3-delaunay@6"></script>
