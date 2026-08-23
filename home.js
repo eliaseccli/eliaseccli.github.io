@@ -81,7 +81,7 @@
   function blastStars(px, py) {
     var w = window.innerWidth;
     var h = window.innerHeight;
-    var radius = Math.max(96, Math.min(132, Math.min(w, h) * 0.15));
+    var radius = Math.max(48, Math.min(66, Math.min(w, h) * 0.075));
     var r2 = radius * radius;
     var i;
     for (i = 0; i < starField.length; i++) {
