@@ -118,14 +118,19 @@
     var el = document.createElement("div");
     el.className = "roadster";
     el.setAttribute("aria-hidden", "true");
-    el.textContent = "\uD83D\uDE97";
+    el.textContent = "\uD83C\uDFCE\uFE0F";
     document.body.appendChild(el);
     var w = window.innerWidth;
     var h = window.innerHeight;
-    var y0 = h * (0.16 + Math.random() * 0.3);
-    var x0 = -50;
-    var x1 = w + 70;
-    var y1 = y0 + (Math.random() - 0.5) * 50;
+    var ang = Math.random() * Math.PI * 2;
+    var reach = Math.hypot(w, h) * 0.62 + 80;
+    var cx = w / 2;
+    var cy = h / 2;
+    var x0 = cx - Math.cos(ang) * reach;
+    var y0 = cy - Math.sin(ang) * reach;
+    var x1 = cx + Math.cos(ang) * reach;
+    var y1 = cy + Math.sin(ang) * reach;
+    var rot = ang * 180 / Math.PI;
     var started = performance.now();
     var dur = 9200;
     function drive(now) {
@@ -135,7 +140,7 @@
       var fade = t < 0.08 ? t / 0.08 : t > 0.9 ? (1 - t) / 0.1 : 1;
       el.style.opacity = String(0.82 * fade);
       el.style.transform =
-        "translate3d(" + px.toFixed(2) + "px," + py.toFixed(2) + "px,0) translate(-50%,-50%) rotate(8deg)";
+        "translate3d(" + px.toFixed(2) + "px," + py.toFixed(2) + "px,0) translate(-50%,-50%) rotate(" + rot.toFixed(2) + "deg)";
       if (t < 1) requestAnimationFrame(drive);
       else if (el.parentNode) el.parentNode.removeChild(el);
     }
@@ -156,7 +161,7 @@
       if (dx * dx + dy * dy <= r2) deadStars[i] = true;
     }
     paintStars();
-    if (!roadsterDone && deadCount() >= 52) {
+    if (!roadsterDone && deadCount() >= 152) {
       roadsterDone = true;
       setTimeout(spawnRoadster, 640);
     }
