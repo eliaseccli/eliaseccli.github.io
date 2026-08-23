@@ -50,6 +50,7 @@
 
   var starField = makeStarField();
   var deadStars = {};
+  var starFade = 1;
 
   function paintStars() {
     var canvas = document.querySelector("canvas.stars");
@@ -72,7 +73,7 @@
       if (deadStars[i]) continue;
       var s = starField[i];
       ctx.beginPath();
-      ctx.fillStyle = "hsla(" + s.hue + "," + s.sat + "%," + s.light + "%," + s.alpha + ")";
+      ctx.fillStyle = "hsla(" + s.hue + "," + s.sat + "%," + s.light + "%," + (s.alpha * starFade) + ")";
       ctx.arc(s.nx * w, s.ny * h, s.size, 0, Math.PI * 2);
       ctx.fill();
     }
@@ -101,6 +102,23 @@
         requestAnimationFrame(paintStars);
       }
     }
+  }
+
+  function resetSky() {
+    deadStars = {};
+    starFade = 0;
+    var started = performance.now();
+    var dur = 2600;
+    function fade(now) {
+      if (goingPlaid) {
+        starFade = 1;
+        return;
+      }
+      starFade = Math.min(1, (now - started) / dur);
+      paintStars();
+      if (starFade < 1) requestAnimationFrame(fade);
+    }
+    requestAnimationFrame(fade);
   }
 
   var meteor = null;
@@ -554,8 +572,7 @@
   }
 
   function slideInNewHand() {
-    var pissed = yeetCount % 3 === 0;
-    if (wave) wave.textContent = pissed ? PISS : WAVE;
+    if (wave) wave.textContent = PISS;
     pointing = false;
     var dist = Math.max(window.innerWidth, window.innerHeight) * 1.08;
     x = -exitDirX * dist;
@@ -587,11 +604,11 @@
         t0 = performance.now();
         knocked = false;
         applyTransform();
-        if (pissed) {
-          setTimeout(function () {
-            if (wave && !knocked) wave.textContent = WAVE;
-          }, 1000);
-        }
+        setTimeout(function () {
+          if (goingPlaid) return;
+          if (wave && !knocked) wave.textContent = WAVE;
+          resetSky();
+        }, 1000);
       }
     }
     requestAnimationFrame(slide);
