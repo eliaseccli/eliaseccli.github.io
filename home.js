@@ -112,6 +112,7 @@
   var pointing = false;
   var aimR = 0;
   var restoreTimer = null;
+  var knocked = false;
 
   var WAVE = "\uD83D\uDC4B";
   var POINT = "\uD83D\uDC48";
@@ -135,19 +136,26 @@
     tr = nx * 9 - ny * 3.5;
   }
 
-  function applyTransform() {
+  function applyTransform(scaleX, scaleY) {
     var rot = pointing ? aimR : r;
+    var sx = scaleX == null ? 1 : scaleX;
+    var sy = scaleY == null ? 1 : scaleY;
     wrap.style.transform =
       "translate3d(" + x.toFixed(2) + "px," + y.toFixed(2) + "px,0)" +
       " rotateX(" + (-y * 0.22).toFixed(2) + "deg)" +
       " rotateY(" + (x * 0.18).toFixed(2) + "deg)" +
-      " rotate(" + rot.toFixed(2) + "deg)";
+      " rotate(" + rot.toFixed(2) + "deg)" +
+      " scale(" + sx.toFixed(3) + "," + sy.toFixed(3) + ")";
   }
 
   function tick(now) {
     if (reduced.matches) {
       wrap.style.transform = "none";
       running = false;
+      return;
+    }
+    if (knocked) {
+      requestAnimationFrame(tick);
       return;
     }
 
@@ -206,13 +214,117 @@
       " scale(" + (scale == null ? 1 : scale).toFixed(3) + ")";
   }
 
-  function spawnBoom(px, py) {
+  function easeOutBack(t) {
+    var c1 = 2.05;
+    var c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  function inPalm(clientX, clientY) {
+    if (!wave) return false;
+    var rect = wave.getBoundingClientRect();
+    var px = rect.left + rect.width * 0.47;
+    var py = rect.top + rect.height * 0.56;
+    var rx = rect.width * 0.3;
+    var ry = rect.height * 0.28;
+    var dx = (clientX - px) / rx;
+    var dy = (clientY - py) / ry;
+    return dx * dx + dy * dy <= 1;
+  }
+
+  function yeetHand(px, py) {
+    knocked = true;
+    pointing = false;
+    if (restoreTimer) {
+      clearTimeout(restoreTimer);
+      restoreTimer = null;
+    }
+    if (wave) wave.textContent = WAVE;
+
+    var rect = wrap.getBoundingClientRect();
+    var hx = rect.left + rect.width / 2;
+    var hy = rect.top + rect.height / 2;
+    var dx = hx - px;
+    var dy = hy - py;
+    var len = Math.hypot(dx, dy) || 1;
+    var dirX = dx / len;
+    var dirY = dy / len - 0.42;
+    var n = Math.hypot(dirX, dirY) || 1;
+    dirX /= n;
+    dirY /= n;
+
+    var dist = Math.max(window.innerWidth, window.innerHeight) * 1.45;
+    var x0 = x;
+    var y0 = y;
+    var r0 = r;
+    var x1 = x0 + dirX * dist;
+    var y1 = y0 + dirY * dist;
+    var spin = (820 + Math.random() * 400) * (dirX >= 0 ? 1 : -1);
+    var started = performance.now();
+    var flyDur = 700;
+
+    function flyTick(now) {
+      var t = Math.min(1, (now - started) / flyDur);
+      var e = t * t * (1.12 - 0.12 * t);
+      x = x0 + (x1 - x0) * e;
+      y = y0 + (y1 - y0) * e;
+      r = r0 + spin * e;
+      var squash = Math.sin(t * Math.PI);
+      applyTransform(1 + squash * 0.18, 1 - squash * 0.14);
+      if (t < 1) requestAnimationFrame(flyTick);
+      else {
+        wrap.style.visibility = "hidden";
+        setTimeout(slideInNewHand, 1000);
+      }
+    }
+    requestAnimationFrame(flyTick);
+  }
+
+  function slideInNewHand() {
+    if (wave) wave.textContent = WAVE;
+    pointing = false;
+    x = -Math.max(window.innerWidth * 0.98, 480);
+    y = 18;
+    r = -22;
+    wrap.style.visibility = "";
+    applyTransform();
+    var xFrom = x;
+    var yFrom = y;
+    var rFrom = r;
+    var started = performance.now();
+    var dur = 860;
+
+    function slide(now) {
+      var t = Math.min(1, (now - started) / dur);
+      var e = easeOutBack(t);
+      x = xFrom * (1 - e);
+      y = yFrom * (1 - Math.min(1, t * 1.15));
+      r = rFrom * (1 - e);
+      applyTransform();
+      if (t < 1) requestAnimationFrame(slide);
+      else {
+        x = 0;
+        y = 0;
+        r = 0;
+        tx = 0;
+        ty = 0;
+        tr = 0;
+        t0 = performance.now();
+        knocked = false;
+        applyTransform();
+      }
+    }
+    requestAnimationFrame(slide);
+  }
+
+  function spawnBoom(px, py, punch) {
     var el = document.createElement("div");
     el.className = "rocket boom";
     el.setAttribute("aria-hidden", "true");
     el.textContent = BOOM;
     document.body.appendChild(el);
     blastStars(px, py);
+    if (punch && !reduced.matches) yeetHand(px, py);
     placeEl(el, px, py, 0, 0.85, 1);
 
     var started = performance.now();
@@ -227,12 +339,12 @@
     requestAnimationFrame(boomTick);
   }
 
-  function launchRocket(x0, y0, x1, y1) {
+  function launchRocket(x0, y0, x1, y1, punch) {
     var dx = x1 - x0;
     var dy = y1 - y0;
     var len = Math.hypot(dx, dy);
     if (len < 8) {
-      spawnBoom(x1, y1);
+      spawnBoom(x1, y1, punch);
       return;
     }
 
@@ -275,7 +387,7 @@
       if (t < 1) requestAnimationFrame(flight);
       else {
         if (el.parentNode) el.parentNode.removeChild(el);
-        spawnBoom(x1, y1);
+        spawnBoom(x1, y1, punch);
       }
     }
     requestAnimationFrame(flight);
@@ -307,6 +419,7 @@
   }
 
   function onPointer(e) {
+    if (knocked) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     var node = e.target;
     if (node && node.nodeType !== 1) node = node.parentElement;
@@ -314,6 +427,7 @@
 
     var cx = e.clientX;
     var cy = e.clientY;
+    var punch = inPalm(cx, cy);
 
     if (reduced.matches) {
       if (wave) wave.textContent = POINT;
@@ -322,12 +436,12 @@
         if (wave) wave.textContent = WAVE;
         restoreTimer = null;
       }, 180);
-      spawnBoom(cx, cy);
+      spawnBoom(cx, cy, false);
       return;
     }
 
     var from = pointAt(cx, cy);
-    launchRocket(from.tipX, from.tipY, cx, cy);
+    launchRocket(from.tipX, from.tipY, cx, cy, punch);
   }
 
   window.addEventListener("pointermove", follow, { passive: true });
