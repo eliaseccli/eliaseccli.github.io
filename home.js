@@ -106,6 +106,9 @@
   var meteor = null;
   var roadsterDone = false;
   var goingPlaid = false;
+  var plaidStart = 0;
+  var plaidX0 = 0;
+  var plaidY0 = 0;
   var roadsterEl = null;
   var roadsterPos = null;
   var roadsterTimer = null;
@@ -199,6 +202,11 @@
 
   function goPlaid(hx, hy) {
     goingPlaid = true;
+    plaidStart = performance.now();
+    plaidX0 = x;
+    plaidY0 = y;
+    pointing = false;
+    if (wave) wave.textContent = WAVE;
     meteor = null;
     var canvas = document.querySelector("canvas.stars");
     if (!canvas) {
@@ -402,6 +410,18 @@
     if (reduced.matches) {
       wrap.style.transform = "none";
       running = false;
+      return;
+    }
+    if (goingPlaid) {
+      var pt = Math.min(1, (now - plaidStart) / 2400);
+      var e = pt * pt * (3 - 2 * pt);
+      x = plaidX0 * (1 - e);
+      y = plaidY0 * (1 - e);
+      var amp = (1 - pt) * 48;
+      r = Math.sin(now * 0.052) * amp + Math.sin(now * 0.091) * amp * 0.45;
+      var s = Math.max(0, 1 - e);
+      applyTransform(s, s);
+      requestAnimationFrame(tick);
       return;
     }
     if (knocked) {
