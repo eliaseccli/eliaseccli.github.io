@@ -1,5 +1,5 @@
 (function () {
-  var VAULT = {"v":1,"iters":210000,"salt":"VkLor2Assi7mmtUHn4B9jw==","iv":"KygwB04PmpE2Mhx9","ct":"0JOUFhz/Itnuz+0xuB6HhxfJbWuH6OJ62KtjKjGSFnNnxg6tOCuagov06kUIdjBs61SoNiqwonWvVb3VXAvSWWqdLx5dE7G2VBxadDVm2rE2XJHtLKMm/nwDsfWD1z3k75vH/aP87hy2QQfPSrlTb1hacLRUqrdCN0ym05sYlFK/TCPuDDTeVJTk9mlGi70rPmeYnjewadAEOSmEI4PjXuvRVuOyCmNq4KMAw0irZoDQCrO6tR3OL7k4OS8x5IkVHLlCs7uRNhwhuRZYJWYoM/PthV/E6ZUFkkvJptQn4EWWG5IGv634m0pKolNaWXKF4EvaW9goWbSXlio4HgZ494MyrqMPb4WBLT9xBQyNrP/mMNA4eqhqu85zq/0Jbj6fUX1DspOxTlRZd1o="};
+  var VAULT = {"v":1,"iters":210000,"salt":"NB73aylcuKc3pGNlfbcjFQ==","iv":"/ZcCtOdyZQfpuDJC","ct":"WpbZYhYT+zj9PgUlKeJY1UHqC+5JE36y2SFzukAw/Ga/nmwakreHjWRiDrfojQl8xBMf9EgQDQ6wTEaHUDt5l2zmvsLZpE5867cSSj0HE7X/NF3q2Az7IC+tElYszBjJvqabIh+pvfK3fTtrI0IwaMjbPvueG6SxHopdv887TEW5g5XxaiEZHLW72+Lbo0wiQifbSRFqm6fDPETWo7NMa+pi8SXshpfHNLSmJLzCc2yVvUCYwYrBh1hcVsLpKWI+h2B71QdD50TEiar5G/H4bL529m1xLhwGVJ+TkBIfubYNXeKFwd8sodWVCRoomuHsEAIwYRYqGPRZtX/y+xWHX2WsZ8QdAKXvy9RcbFIf6UIERvQr3r18kqwmGGnh7FJ1hF7XYBDaKOhnygg="};
   var KEY = "projects.ok";
 
   var canvas = document.querySelector(".stars");
