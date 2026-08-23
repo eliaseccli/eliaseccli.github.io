@@ -152,3 +152,20 @@ body {
     saturate(1.45)
     drop-shadow(0 8px 18px rgba(255, 120, 40, 0.38));
 }
+
+
+.roadster {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+  font-size: clamp(1.05rem, 2.6vw, 1.55rem);
+  will-change: transform, opacity;
+  filter:
+    saturate(1.25)
+    drop-shadow(0 0 10px rgba(255, 90, 70, 0.28));
+}
