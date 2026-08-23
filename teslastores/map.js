@@ -112,24 +112,75 @@ function cellStyle(color) {
     weight: 2,
     opacity: 0.85,
     fillColor: color,
-    fillOpacity: 0.2,
+    fillOpacity: 0.25,
     interactive: false
   };
 }
 
+function pointInRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-15) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInGeom(lng, lat, geom) {
+  const polys = geom.type === "Polygon" ? [geom.coordinates]
+    : geom.type === "MultiPolygon" ? geom.coordinates
+    : [];
+  for (const poly of polys) {
+    if (!poly.length) continue;
+    if (!pointInRing(lng, lat, poly[0])) continue;
+    let inHole = false;
+    for (let h = 1; h < poly.length; h++) {
+      if (pointInRing(lng, lat, poly[h])) {
+        inHole = true;
+        break;
+      }
+    }
+    if (!inHole) return true;
+  }
+  return false;
+}
+
+const STATE_COLORS = (() => {
+  const features = statesGeo.features || [];
+  const used = new Set();
+  const colors = new Array(features.length).fill(null);
+  features.forEach((feature, si) => {
+    for (let i = 0; i < locations.length; i++) {
+      if (pointInGeom(locations[i].lon, locations[i].lat, feature.geometry)) {
+        colors[si] = COLORS[i % COLORS.length];
+        used.add(i);
+        return;
+      }
+    }
+  });
+  features.forEach((feature, si) => {
+    if (colors[si]) return;
+    const leftover = COLORS.findIndex((_, i) => !used.has(i));
+    if (leftover >= 0) {
+      colors[si] = COLORS[leftover];
+      used.add(leftover);
+    }
+  });
+  return colors;
+})();
 
 function drawStates() {
   statesLayer.clearLayers();
   if (!statesToggle.checked) return;
   L.geoJSON(statesGeo, {
     pane: "statesPane",
-    style: {
-      color: "#222",
-      weight: 1.6,
-      opacity: 0.9,
-      fill: false,
-      fillOpacity: 0,
-      interactive: false
+    style(feature) {
+      const idx = statesGeo.features.indexOf(feature);
+      const color = STATE_COLORS[idx] || "#333";
+      return cellStyle(color);
     }
   }).addTo(statesLayer);
 }
