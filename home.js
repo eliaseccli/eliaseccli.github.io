@@ -261,7 +261,7 @@
     var y1 = y0 + dirY * dist;
     var spin = (820 + Math.random() * 400) * (dirX >= 0 ? 1 : -1);
     var started = performance.now();
-    var flyDur = 700;
+    var flyDur = 1000;
 
     function flyTick(now) {
       var t = Math.min(1, (now - started) / flyDur);
@@ -292,7 +292,7 @@
     var yFrom = y;
     var rFrom = r;
     var started = performance.now();
-    var dur = 860;
+    var dur = 1229;
 
     function slide(now) {
       var t = Math.min(1, (now - started) / dur);
