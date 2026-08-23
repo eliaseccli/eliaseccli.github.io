@@ -12,9 +12,13 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19
 }).addTo(map);
 
+map.createPane("statesPane");
+map.getPane("statesPane").style.zIndex = 350;
+const statesLayer = L.layerGroup().addTo(map);
 const driveTimeLayer = L.layerGroup().addTo(map);
 const voronoiLayer = L.layerGroup().addTo(map);
 const markersLayer = L.layerGroup().addTo(map);
+const statesToggle = document.getElementById("states-toggle");
 const overlayToggle = document.getElementById("voronoi-toggle");
 const driveTimeToggle = document.getElementById("drive-time-toggle");
 
@@ -64,7 +68,7 @@ function austriaPixelBounds(bounds) {
   ];
 }
 
-const [austriaGeo, locations, driveTimeGeo] = await Promise.all([
+const [austriaGeo, locations, driveTimeGeo, statesGeo] = await Promise.all([
   fetch("./austria.geojson").then((r) => {
     if (!r.ok) throw new Error("Could not load austria.geojson");
     return r.json();
@@ -75,6 +79,10 @@ const [austriaGeo, locations, driveTimeGeo] = await Promise.all([
   }),
   fetch("./drive-time.geojson").then((r) => {
     if (!r.ok) throw new Error("Could not load drive-time.geojson");
+    return r.json();
+  }),
+  fetch("./states.geojson").then((r) => {
+    if (!r.ok) throw new Error("Could not load states.geojson");
     return r.json();
   })
 ]);
@@ -107,6 +115,23 @@ function cellStyle(color) {
     fillOpacity: 0.2,
     interactive: false
   };
+}
+
+
+function drawStates() {
+  statesLayer.clearLayers();
+  if (!statesToggle.checked) return;
+  L.geoJSON(statesGeo, {
+    pane: "statesPane",
+    style: {
+      color: "#222",
+      weight: 1.6,
+      opacity: 0.9,
+      fill: false,
+      fillOpacity: 0,
+      interactive: false
+    }
+  }).addTo(statesLayer);
 }
 
 function drawDriveTime() {
@@ -155,8 +180,13 @@ function drawVoronoi() {
   });
 }
 
+drawStates();
 drawDriveTime();
 drawVoronoi();
+statesToggle.addEventListener("change", () => {
+  if (statesToggle.checked) drawStates();
+  else statesLayer.clearLayers();
+});
 overlayToggle.addEventListener("change", () => {
   if (overlayToggle.checked) drawVoronoi();
   else voronoiLayer.clearLayers();
