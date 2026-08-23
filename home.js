@@ -77,7 +77,7 @@
       ctx.fill();
     }
 
-    if (meteor) {
+    if (meteor && !goingPlaid) {
       var mt = (performance.now() - meteor.started) / meteor.dur;
       if (mt >= 1) meteor = null;
       else {
@@ -105,6 +105,11 @@
 
   var meteor = null;
   var roadsterDone = false;
+  var goingPlaid = false;
+  var roadsterEl = null;
+  var roadsterPos = null;
+  var roadsterTimer = null;
+  var roadsterToken = 0;
 
   function deadCount() {
     var n = 0;
@@ -113,13 +118,25 @@
     return n;
   }
 
+  function placeSkyEl(el, px, py, rot, scale, opacity) {
+    el.style.opacity = opacity == null ? "1" : String(opacity);
+    el.style.transform =
+      "translate3d(" + px.toFixed(2) + "px," + py.toFixed(2) + "px,0)" +
+      " translate(-50%,-50%) rotate(" + rot.toFixed(2) + "deg) scale(" +
+      (scale == null ? 1 : scale).toFixed(3) + ")";
+  }
+
   function spawnRoadster() {
+    if (goingPlaid) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (roadsterEl && roadsterEl.parentNode) roadsterEl.parentNode.removeChild(roadsterEl);
     var el = document.createElement("div");
     el.className = "roadster";
     el.setAttribute("aria-hidden", "true");
     el.textContent = "\uD83C\uDFCE\uFE0F";
     document.body.appendChild(el);
+    roadsterEl = el;
+    var token = ++roadsterToken;
     var w = window.innerWidth;
     var h = window.innerHeight;
     var ang = Math.random() * Math.PI * 2;
@@ -130,21 +147,177 @@
     var y0 = cy - Math.sin(ang) * reach;
     var x1 = cx + Math.cos(ang) * reach;
     var y1 = cy + Math.sin(ang) * reach;
-    var rot = ang * 180 / Math.PI;
+    var rot = ang * 180 / Math.PI + 180;
     var started = performance.now();
     var dur = 9200;
     function drive(now) {
+      if (goingPlaid || token !== roadsterToken) return;
       var t = Math.min(1, (now - started) / dur);
       var px = x0 + (x1 - x0) * t;
       var py = y0 + (y1 - y0) * t;
-      var fade = t < 0.08 ? t / 0.08 : t > 0.9 ? (1 - t) / 0.1 : 1;
-      el.style.opacity = String(0.82 * fade);
-      el.style.transform =
-        "translate3d(" + px.toFixed(2) + "px," + py.toFixed(2) + "px,0) translate(-50%,-50%) rotate(" + rot.toFixed(2) + "deg)";
+      roadsterPos = { x: px, y: py };
+      var fade = t < 0.06 ? t / 0.06 : t > 0.94 ? (1 - t) / 0.06 : 1;
+      placeSkyEl(el, px, py, rot, 1, 0.9 * fade);
       if (t < 1) requestAnimationFrame(drive);
-      else if (el.parentNode) el.parentNode.removeChild(el);
+      else {
+        if (el.parentNode) el.parentNode.removeChild(el);
+        if (roadsterEl === el) {
+          roadsterEl = null;
+          roadsterPos = null;
+        }
+        if (!goingPlaid) {
+          roadsterTimer = setTimeout(spawnRoadster, 1000);
+        }
+      }
     }
     requestAnimationFrame(drive);
+  }
+
+  function flyOffSky(el, px, py, ang, spin) {
+    var dist = Math.max(window.innerWidth, window.innerHeight) * 1.4;
+    var x1 = px + Math.cos(ang) * dist;
+    var y1 = py + Math.sin(ang) * dist;
+    var started = performance.now();
+    var dur = 1000;
+    function tick(now) {
+      var t = Math.min(1, (now - started) / dur);
+      var e = t * t * (1.12 - 0.12 * t);
+      var squash = Math.sin(t * Math.PI);
+      placeSkyEl(
+        el,
+        px + (x1 - px) * e,
+        py + (y1 - py) * e,
+        spin * e,
+        1 + squash * 0.16,
+        1 - t * 0.15
+      );
+      if (t < 1) requestAnimationFrame(tick);
+      else if (el.parentNode) el.parentNode.removeChild(el);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function goPlaid(hx, hy) {
+    goingPlaid = true;
+    meteor = null;
+    var canvas = document.querySelector("canvas.stars");
+    if (!canvas) {
+      window.location.href = "./teslastores/";
+      return;
+    }
+    var ctx = canvas.getContext("2d");
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var parts = [];
+    var i;
+    for (i = 0; i < starField.length; i++) {
+      if (deadStars[i]) continue;
+      var s = starField[i];
+      var sx = s.nx * w;
+      var sy = s.ny * h;
+      var dx = sx - hx;
+      var dy = sy - hy;
+      if (Math.hypot(dx, dy) < 2) {
+        dx = (Math.random() - 0.5) * 8;
+        dy = (Math.random() - 0.5) * 8;
+      }
+      parts.push({
+        x: sx,
+        y: sy,
+        vx: dx,
+        vy: dy,
+        size: s.size,
+        hue: s.hue,
+        sat: s.sat,
+        light: s.light,
+        alpha: s.alpha
+      });
+    }
+    for (i = 0; i < 90; i++) {
+      var a = Math.random() * Math.PI * 2;
+      var r = 6 + Math.random() * 40;
+      parts.push({
+        x: hx + Math.cos(a) * r,
+        y: hy + Math.sin(a) * r,
+        vx: Math.cos(a) * (20 + Math.random() * 80),
+        vy: Math.sin(a) * (20 + Math.random() * 80),
+        size: 0.4 + Math.random() * 1.4,
+        hue: 205 + Math.random() * 30,
+        sat: 8 + Math.random() * 20,
+        light: 88 + Math.random() * 10,
+        alpha: 0.55 + Math.random() * 0.4
+      });
+    }
+    var overlay = document.createElement("div");
+    overlay.className = "plaid-white";
+    document.body.appendChild(overlay);
+    var started = performance.now();
+    var dur = 2400;
+    function warp(now) {
+      var t = Math.min(1, (now - started) / dur);
+      var e = t * t * (2.4 + t * 6);
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#050508";
+      ctx.fillRect(0, 0, w, h);
+      var p;
+      for (i = 0; i < parts.length; i++) {
+        p = parts[i];
+        var x = p.x + p.vx * e;
+        var y = p.y + p.vy * e;
+        var len = Math.min(180, 8 + e * 42);
+        var ang = Math.atan2(p.vy, p.vx);
+        var grow = 1 + e * 7;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(ang);
+        var grad = ctx.createLinearGradient(-len, 0, p.size * grow, 0);
+        grad.addColorStop(0, "hsla(" + p.hue + "," + p.sat + "%," + p.light + "%,0)");
+        grad.addColorStop(1, "hsla(" + p.hue + "," + p.sat + "%," + Math.min(100, p.light + 8) + "%," + p.alpha + ")");
+        ctx.fillStyle = grad;
+        ctx.fillRect(-len, -p.size * grow * 0.55, len + p.size * grow, p.size * grow * 1.1);
+        ctx.restore();
+      }
+      overlay.style.opacity = String(Math.max(0, (t - 0.28) / 0.72));
+      if (t < 1) requestAnimationFrame(warp);
+      else window.location.href = "./teslastores/";
+    }
+    requestAnimationFrame(warp);
+  }
+
+  function hitRoadster(hx, hy) {
+    if (goingPlaid || !roadsterPos) return;
+    if (roadsterTimer) {
+      clearTimeout(roadsterTimer);
+      roadsterTimer = null;
+    }
+    roadsterToken += 1;
+    var px = roadsterPos.x;
+    var py = roadsterPos.y;
+    var dx = px - hx;
+    var dy = py - hy;
+    var ang = Math.atan2(dy, dx);
+    if (!isFinite(ang) || (dx === 0 && dy === 0)) ang = -Math.PI / 2;
+    if (roadsterEl) flyOffSky(roadsterEl, px, py, ang, 780);
+    roadsterEl = null;
+    roadsterPos = null;
+    var alien = document.createElement("div");
+    alien.className = "alien";
+    alien.setAttribute("aria-hidden", "true");
+    alien.textContent = "\uD83D\uDC7D";
+    document.body.appendChild(alien);
+    placeSkyEl(alien, px, py, 0, 1, 1);
+    flyOffSky(alien, px, py, ang + Math.PI / 6, -640);
+    goPlaid(hx, hy);
+  }
+
+  function roadsterHit(px, py) {
+    if (!roadsterPos || goingPlaid) return false;
+    return Math.hypot(px - roadsterPos.x, py - roadsterPos.y) < 48;
   }
 
   function blastStars(px, py) {
@@ -411,7 +584,8 @@
     el.textContent = BOOM;
     document.body.appendChild(el);
     blastStars(px, py);
-    if (punch && !reduced.matches) yeetHand(px, py);
+    if (roadsterHit(px, py)) hitRoadster(px, py);
+    else if (punch && !reduced.matches && !goingPlaid) yeetHand(px, py);
     placeEl(el, px, py, 0, 0.85, 1);
 
     var started = performance.now();
@@ -506,7 +680,7 @@
   }
 
   function onPointer(e) {
-    if (knocked) return;
+    if (knocked || goingPlaid) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     var node = e.target;
     if (node && node.nodeType !== 1) node = node.parentElement;
@@ -532,7 +706,7 @@
   }
 
   function spawnMeteor() {
-    if (meteor || reduced.matches || knocked) return;
+    if (meteor || reduced.matches || knocked || goingPlaid) return;
     var w = window.innerWidth;
     var h = window.innerHeight;
     var fromLeft = Math.random() < 0.55;
