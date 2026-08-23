@@ -178,7 +178,7 @@
     var x1 = px + Math.cos(ang) * dist;
     var y1 = py + Math.sin(ang) * dist;
     var started = performance.now();
-    var dur = 1000;
+    var dur = 2000;
     function tick(now) {
       var t = Math.min(1, (now - started) / dur);
       var e = t * t * (1.12 - 0.12 * t);
