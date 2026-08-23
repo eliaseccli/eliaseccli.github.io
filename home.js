@@ -9,28 +9,14 @@
     };
   }
 
-  function paintStars() {
-    var canvas = document.querySelector("canvas.stars");
-    if (!canvas) return;
-    var ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var w = window.innerWidth;
-    var h = window.innerHeight;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    canvas.style.width = w + "px";
-    canvas.style.height = h + "px";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
+  function makeStarField() {
     var rand = seeded(0xE11A5C);
     var count = 168;
+    var stars = [];
     var i;
     for (i = 0; i < count; i++) {
-      var x = rand() * w;
-      var y = rand() * h;
+      var nx = rand();
+      var ny = rand();
       var roll = rand();
       var hue;
       var sat;
@@ -52,18 +38,60 @@
         light = 93 + rand() * 5;
         alpha = 0.42 + rand() * 0.4;
       }
-
       var sizeRoll = rand();
       var size;
       if (sizeRoll < 0.82) size = 0.35 + rand() * 0.65;
       else if (sizeRoll < 0.96) size = 0.95 + rand() * 0.7;
       else size = 1.7 + rand() * 0.9;
+      stars.push({ nx: nx, ny: ny, hue: hue, sat: sat, light: light, alpha: alpha, size: size });
+    }
+    return stars;
+  }
 
+  var starField = makeStarField();
+  var deadStars = {};
+
+  function paintStars() {
+    var canvas = document.querySelector("canvas.stars");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var i;
+    for (i = 0; i < starField.length; i++) {
+      if (deadStars[i]) continue;
+      var s = starField[i];
       ctx.beginPath();
-      ctx.fillStyle = "hsla(" + hue + "," + sat + "%," + light + "%," + alpha + ")";
-      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fillStyle = "hsla(" + s.hue + "," + s.sat + "%," + s.light + "%," + s.alpha + ")";
+      ctx.arc(s.nx * w, s.ny * h, s.size, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  function blastStars(px, py) {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var radius = Math.max(96, Math.min(132, Math.min(w, h) * 0.15));
+    var r2 = radius * radius;
+    var i;
+    for (i = 0; i < starField.length; i++) {
+      if (deadStars[i]) continue;
+      var s = starField[i];
+      var dx = s.nx * w - px;
+      var dy = s.ny * h - py;
+      if (dx * dx + dy * dy <= r2) deadStars[i] = true;
+    }
+    paintStars();
   }
 
   paintStars();
@@ -184,6 +212,7 @@
     el.setAttribute("aria-hidden", "true");
     el.textContent = BOOM;
     document.body.appendChild(el);
+    blastStars(px, py);
     placeEl(el, px, py, 0, 0.85, 1);
 
     var started = performance.now();
