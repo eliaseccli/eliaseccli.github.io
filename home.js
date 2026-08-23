@@ -203,18 +203,6 @@
     requestAnimationFrame(drive);
   }
 
-  function despawnRoadster() {
-    roadsterToken += 1;
-    if (roadsterTimer) {
-      clearTimeout(roadsterTimer);
-      roadsterTimer = null;
-    }
-    if (roadsterEl && roadsterEl.parentNode) roadsterEl.parentNode.removeChild(roadsterEl);
-    roadsterEl = null;
-    roadsterPos = null;
-    roadsterDone = false;
-  }
-
   function flyOffSky(el, px, py, ang, spin) {
     var dist = Math.max(window.innerWidth, window.innerHeight) * 1.4;
     var x1 = px + Math.cos(ang) * dist;
@@ -542,7 +530,6 @@
   }
 
   function yeetHand(px, py) {
-    despawnRoadster();
     knocked = true;
     pointing = false;
     if (restoreTimer) {
@@ -643,8 +630,8 @@
     el.textContent = BOOM;
     document.body.appendChild(el);
     blastStars(px, py);
-    if (punch && !reduced.matches && !goingPlaid) yeetHand(px, py);
-    else if (roadsterHit(px, py)) hitRoadster(px, py);
+    if (roadsterHit(px, py)) hitRoadster(px, py);
+    else if (punch && !reduced.matches && !goingPlaid && !roadsterDone && !roadsterEl) yeetHand(px, py);
     placeEl(el, px, py, 0, 0.85, 1);
 
     var started = performance.now();
