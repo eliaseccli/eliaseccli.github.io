@@ -76,6 +76,70 @@
       ctx.arc(s.nx * w, s.ny * h, s.size, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    if (meteor) {
+      var mt = (performance.now() - meteor.started) / meteor.dur;
+      if (mt >= 1) meteor = null;
+      else {
+        var mx = meteor.x0 + (meteor.x1 - meteor.x0) * mt;
+        var my = meteor.y0 + (meteor.y1 - meteor.y0) * mt;
+        var mang = Math.atan2(meteor.y1 - meteor.y0, meteor.x1 - meteor.x0);
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.rotate(mang);
+        var grad = ctx.createLinearGradient(-56, 0, 10, 0);
+        grad.addColorStop(0, "rgba(255,255,255,0)");
+        grad.addColorStop(0.7, "rgba(210,230,255,0.35)");
+        grad.addColorStop(1, "rgba(255,255,255,0.95)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(-56, -1.15, 66, 2.3);
+        ctx.beginPath();
+        ctx.fillStyle = "rgba(255,255,255,0.96)";
+        ctx.arc(7, 0, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        requestAnimationFrame(paintStars);
+      }
+    }
+  }
+
+  var meteor = null;
+  var roadsterDone = false;
+
+  function deadCount() {
+    var n = 0;
+    var i;
+    for (i = 0; i < starField.length; i++) if (deadStars[i]) n++;
+    return n;
+  }
+
+  function spawnRoadster() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var el = document.createElement("div");
+    el.className = "roadster";
+    el.setAttribute("aria-hidden", "true");
+    el.textContent = "\uD83D\uDE97";
+    document.body.appendChild(el);
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var y0 = h * (0.16 + Math.random() * 0.3);
+    var x0 = -50;
+    var x1 = w + 70;
+    var y1 = y0 + (Math.random() - 0.5) * 50;
+    var started = performance.now();
+    var dur = 9200;
+    function drive(now) {
+      var t = Math.min(1, (now - started) / dur);
+      var px = x0 + (x1 - x0) * t;
+      var py = y0 + (y1 - y0) * t;
+      var fade = t < 0.08 ? t / 0.08 : t > 0.9 ? (1 - t) / 0.1 : 1;
+      el.style.opacity = String(0.82 * fade);
+      el.style.transform =
+        "translate3d(" + px.toFixed(2) + "px," + py.toFixed(2) + "px,0) translate(-50%,-50%) rotate(8deg)";
+      if (t < 1) requestAnimationFrame(drive);
+      else if (el.parentNode) el.parentNode.removeChild(el);
+    }
+    requestAnimationFrame(drive);
   }
 
   function blastStars(px, py) {
@@ -92,6 +156,10 @@
       if (dx * dx + dy * dy <= r2) deadStars[i] = true;
     }
     paintStars();
+    if (!roadsterDone && deadCount() >= 52) {
+      roadsterDone = true;
+      setTimeout(spawnRoadster, 640);
+    }
   }
 
   paintStars();
@@ -113,11 +181,15 @@
   var aimR = 0;
   var restoreTimer = null;
   var knocked = false;
+  var yeetCount = 0;
+  var exitDirX = -1;
+  var exitDirY = 0;
 
   var WAVE = "\uD83D\uDC4B";
   var POINT = "\uD83D\uDC48";
   var ROCKET = "\uD83D\uDE80";
   var BOOM = "\uD83D\uDCA5";
+  var PISS = "\uD83D\uDC4E";
 
   var tip = wrap.querySelector(".tip");
   if (!tip) {
@@ -252,6 +324,9 @@
     var n = Math.hypot(dirX, dirY) || 1;
     dirX /= n;
     dirY /= n;
+    exitDirX = dirX;
+    exitDirY = dirY;
+    yeetCount += 1;
 
     var dist = Math.max(window.innerWidth, window.innerHeight) * 1.45;
     var x0 = x;
@@ -281,11 +356,13 @@
   }
 
   function slideInNewHand() {
-    if (wave) wave.textContent = WAVE;
+    var pissed = yeetCount % 3 === 0;
+    if (wave) wave.textContent = pissed ? PISS : WAVE;
     pointing = false;
-    x = -Math.max(window.innerWidth * 0.98, 480);
-    y = 18;
-    r = -22;
+    var dist = Math.max(window.innerWidth, window.innerHeight) * 1.08;
+    x = -exitDirX * dist;
+    y = -exitDirY * dist;
+    r = (exitDirX >= 0 ? -1 : 1) * 22;
     wrap.style.visibility = "";
     applyTransform();
     var xFrom = x;
@@ -298,7 +375,7 @@
       var t = Math.min(1, (now - started) / dur);
       var e = easeOutBack(t);
       x = xFrom * (1 - e);
-      y = yFrom * (1 - Math.min(1, t * 1.15));
+      y = yFrom * (1 - e);
       r = rFrom * (1 - e);
       applyTransform();
       if (t < 1) requestAnimationFrame(slide);
@@ -312,6 +389,11 @@
         t0 = performance.now();
         knocked = false;
         applyTransform();
+        if (pissed) {
+          setTimeout(function () {
+            if (wave && !knocked) wave.textContent = WAVE;
+          }, 1000);
+        }
       }
     }
     requestAnimationFrame(slide);
@@ -444,8 +526,44 @@
     launchRocket(from.tipX, from.tipY, cx, cy, punch);
   }
 
-  window.addEventListener("pointermove", follow, { passive: true });
-  window.addEventListener("pointerdown", onPointer, { passive: true });
+  function spawnMeteor() {
+    if (meteor || reduced.matches || knocked) return;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var fromLeft = Math.random() < 0.55;
+    meteor = {
+      x0: fromLeft ? -20 : w + 20,
+      y0: h * (0.08 + Math.random() * 0.42),
+      x1: fromLeft ? w * (0.55 + Math.random() * 0.4) : w * (0.05 + Math.random() * 0.4),
+      y1: 0,
+      started: performance.now(),
+      dur: 580 + Math.random() * 220
+    };
+    meteor.y1 = meteor.y0 + h * (0.08 + Math.random() * 0.16);
+    paintStars();
+  }
+
+  var nextMeteorAt = performance.now() + 13000 + Math.random() * 4000;
+  function noteAct() {
+    nextMeteorAt = performance.now() + 13000 + Math.random() * 5000;
+  }
+  function idleWatch() {
+    if (!reduced.matches && !meteor && !knocked && performance.now() >= nextMeteorAt) {
+      spawnMeteor();
+      nextMeteorAt = performance.now() + 22000 + Math.random() * 10000;
+    }
+    requestAnimationFrame(idleWatch);
+  }
+  requestAnimationFrame(idleWatch);
+
+  window.addEventListener("pointermove", function (e) {
+    noteAct();
+    follow(e);
+  }, { passive: true });
+  window.addEventListener("pointerdown", function (e) {
+    noteAct();
+    onPointer(e);
+  }, { passive: true });
 
   reduced.addEventListener("change", function () {
     if (reduced.matches) {
