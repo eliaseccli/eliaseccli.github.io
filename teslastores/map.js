@@ -112,7 +112,7 @@ function cellStyle(color) {
     weight: 2,
     opacity: 0.85,
     fillColor: color,
-    fillOpacity: 0.25,
+    fillOpacity: 0.2,
     interactive: false
   };
 }
