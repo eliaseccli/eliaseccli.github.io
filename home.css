@@ -79,6 +79,7 @@ body {
 
 
 .chip {
+  display: none;
   position: absolute;
   left: 50%;
   bottom: max(1.35rem, calc(env(safe-area-inset-bottom) + 0.85rem));
