@@ -155,7 +155,7 @@
       u = rs / d;
       ang = Math.atan2(dy, dx);
       photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
-      fieldU = u / 10;
+      fieldU = u / 100;
       wrap = fieldU * photon * 2.25;
       suck = 0.24 * fieldU * photon;
       steps = Math.max(2, Math.round(3 + wrap * 16));
