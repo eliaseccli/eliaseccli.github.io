@@ -85,7 +85,7 @@
   function fail() {
     if (locked) return;
     strikes += 1;
-    if (strikes >= 5) {
+    if (strikes >= 3) {
       startBlackHole();
       return;
     }
@@ -125,32 +125,120 @@
     window.location.href = "../";
   }
 
+  function makeLensField() {
+    var s = 0xE11A5C ^ 0x51A4;
+    function rnd() {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    }
+    var out = [];
+    var i, roll, col;
+    for (i = 0; i < 260; i++) {
+      roll = rnd();
+      col = roll < 0.12
+        ? "rgb(170, 205, 255)"
+        : roll < 0.28
+          ? "rgb(255, 228, 190)"
+          : "rgb(255, 255, 255)";
+      out.push({
+        nx: rnd(),
+        ny: rnd(),
+        r: 0.4 + rnd() * 1.25,
+        a: 0.32 + rnd() * 0.6,
+        col: col
+      });
+    }
+    return out;
+  }
+
+  function paintLensedStars(hx, hy, hr, lensField) {
+    if (!ctx) return;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    var rs = hr * 0.97;
+    var ein = hr * 1.42;
+    var inf = hr * 8.2;
+    var i, p, sx, sy, dx, dy, d, ang, defl, d2, px, py, stretch, tx, ty;
+    for (i = 0; i < lensField.length; i++) {
+      p = lensField[i];
+      sx = p.nx * w;
+      sy = p.ny * h;
+      dx = sx - hx;
+      dy = sy - hy;
+      d = Math.hypot(dx, dy);
+      if (d < rs * 1.04) continue;
+      ang = Math.atan2(dy, dx);
+      if (d < inf) {
+        defl = (ein * ein) / Math.max(d, 1);
+        d2 = d - defl * 1.45;
+        if (d2 < rs * 1.06) d2 = rs * 1.06;
+        ang += (ein / d) * 1.15;
+        stretch = Math.pow(Math.min(2.8, ein / d), 1.55) * hr * 0.92;
+      } else {
+        d2 = d;
+        stretch = 0;
+      }
+      px = hx + Math.cos(ang) * d2;
+      py = hy + Math.sin(ang) * d2;
+      if (stretch > 1.15) {
+        tx = -Math.sin(ang);
+        ty = Math.cos(ang);
+        ctx.strokeStyle = p.col;
+        ctx.globalAlpha = p.a;
+        ctx.lineWidth = Math.max(0.55, p.r);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(px - tx * stretch, py - ty * stretch);
+        ctx.lineTo(px + tx * stretch, py + ty * stretch);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = p.col;
+        ctx.globalAlpha = p.a;
+        ctx.beginPath();
+        ctx.arc(px, py, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawHole(hctx, x, y, r) {
-    var glow = hctx.createRadialGradient(x, y, r * 0.72, x, y, r * 1.72);
-    glow.addColorStop(0, "rgba(0,0,0,0)");
-    glow.addColorStop(0.42, "rgba(140, 180, 255, 0.08)");
-    glow.addColorStop(0.68, "rgba(255, 214, 170, 0.38)");
-    glow.addColorStop(0.8, "rgba(255, 255, 255, 0.92)");
-    glow.addColorStop(0.88, "rgba(20, 12, 8, 1)");
-    glow.addColorStop(1, "rgba(0,0,0,0)");
-    hctx.fillStyle = glow;
+    var halo = hctx.createRadialGradient(x, y, r * 0.99, x, y, r * 2.45);
+    halo.addColorStop(0, "rgba(255, 214, 160, 0.3)");
+    halo.addColorStop(0.14, "rgba(210, 118, 62, 0.18)");
+    halo.addColorStop(0.4, "rgba(120, 52, 28, 0.07)");
+    halo.addColorStop(1, "rgba(0,0,0,0)");
+    hctx.fillStyle = halo;
     hctx.beginPath();
-    hctx.arc(x, y, r * 1.72, 0, Math.PI * 2);
+    hctx.arc(x, y, r * 2.45, 0, Math.PI * 2);
     hctx.fill();
 
-    var disk = hctx.createRadialGradient(x - r * 0.12, y - r * 0.08, r * 0.2, x, y, r * 0.9);
-    disk.addColorStop(0, "#000");
-    disk.addColorStop(0.78, "#000");
-    disk.addColorStop(0.9, "rgba(255, 236, 210, 0.55)");
-    disk.addColorStop(1, "#000");
-    hctx.fillStyle = disk;
+    hctx.save();
+    hctx.shadowColor = "rgba(255, 220, 170, 0.95)";
+    hctx.shadowBlur = r * 0.22;
     hctx.beginPath();
     hctx.arc(x, y, r, 0, Math.PI * 2);
-    hctx.fill();
+    hctx.strokeStyle = "rgba(255, 196, 130, 0.95)";
+    hctx.lineWidth = Math.max(2.4, r * 0.075);
+    hctx.stroke();
+    hctx.shadowBlur = r * 0.08;
+    hctx.beginPath();
+    hctx.arc(x, y, r, 0, Math.PI * 2);
+    hctx.strokeStyle = "rgba(255, 252, 246, 1)";
+    hctx.lineWidth = Math.max(1.2, r * 0.038);
+    hctx.stroke();
+    hctx.restore();
 
     hctx.fillStyle = "#000";
     hctx.beginPath();
-    hctx.arc(x, y, r * 0.78, 0, Math.PI * 2);
+    hctx.arc(x, y, r * 0.968, 0, Math.PI * 2);
     hctx.fill();
   }
 
@@ -186,6 +274,7 @@
       document.body.appendChild(hole);
     }
     var hctx = hole.getContext("2d");
+    var lensField = makeLensField();
     var w = window.innerWidth;
     var h = window.innerHeight;
     var rect = (input || gate).getBoundingClientRect();
@@ -197,11 +286,16 @@
     var y0 = ty - Math.sin(ang) * reach;
     var x1 = tx + Math.cos(ang) * reach;
     var y1 = ty + Math.sin(ang) * reach;
-    var maxR = Math.min(w, h) * 0.2 + 54;
+    var maxR = Math.min(w, h) * 0.24 + 64;
     var started = performance.now();
-    var dur = 2600;
+    var dur = 2800;
+    var lastW = 0;
+    var lastH = 0;
 
     function sizeHole() {
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
       hole.width = Math.round(w * dpr);
       hole.height = Math.round(h * dpr);
@@ -220,8 +314,9 @@
       var hx = x0 + (x1 - x0) * e;
       var hy = y0 + (y1 - y0) * e;
       var swell = Math.sin(Math.min(1, t / 0.92) * Math.PI);
-      var r = 36 + maxR * (0.35 + 0.65 * swell);
+      var r = 40 + maxR * (0.38 + 0.62 * swell);
 
+      paintLensedStars(hx, hy, r, lensField);
       hctx.clearRect(0, 0, w, h);
       drawHole(hctx, hx, hy, r);
 
