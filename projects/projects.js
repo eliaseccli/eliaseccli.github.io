@@ -288,7 +288,7 @@
     var y1 = ty + Math.sin(ang) * reach;
     var maxR = Math.min(w, h) * 0.24 + 64;
     var started = performance.now();
-    var dur = 2800;
+    var dur = 9333;
     var lastW = 0;
     var lastH = 0;
 
