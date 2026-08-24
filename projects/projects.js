@@ -140,7 +140,7 @@
         out.push({
           kind: "ring",
           ang: rnd() * Math.PI * 2,
-          k: 1.08 + rnd() * 2.45,
+          k: 1.08 + rnd() * 1.47,
           rad: 0.4 + rnd() * 1.15,
           a: 0.32 + rnd() * 0.62,
           col: col,
@@ -191,11 +191,17 @@
       }
       if (d < rs * 1.03) continue;
       gap = d - rs;
-      u = 1 / (1 + gap / (rs * 0.42));
+      var outer = rs * 4.8;
+      u = 1 / (1 + gap / (rs * 0.252));
       u = Math.pow(u, 1.55);
+      var edge = (outer - d) / (outer - rs);
+      if (edge < 0) edge = 0;
+      if (edge > 1) edge = 1;
+      edge = edge * edge * (3 - 2 * edge);
+      u *= edge;
       arc = u * Math.PI * 1.85;
-      if (gap < rs * 0.22) arc += Math.pow(1 - gap / (rs * 0.22), 1.2) * Math.PI * 0.9;
-      warm = Math.min(1, u * 0.75 + Math.pow(rs / d, 2.1) * 1.6);
+      if (gap < rs * 0.22) arc += Math.pow(1 - gap / (rs * 0.22), 1.2) * Math.PI * 0.9 * edge;
+      warm = Math.min(1, u * 0.75 + Math.pow(rs / d, 2.1) * 1.6 * edge);
       col = p.col;
       cr = Math.round(col[0] + (255 - col[0]) * warm * 0.55);
       cg = Math.round(col[1] + (168 - col[1]) * warm);
@@ -205,16 +211,10 @@
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = "rgb(" + cr + "," + cg + "," + cb + ")";
       ctx.fillStyle = ctx.strokeStyle;
-      if (arc < 0.07) {
-        ctx.beginPath();
-        ctx.arc(sx, sy, Math.max(0.65, p.rad), 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.lineWidth = lw;
-        ctx.beginPath();
-        ctx.arc(hx, hy, d, ang - arc / 2, ang + arc / 2);
-        ctx.stroke();
-      }
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(hx, hy, d, ang - arc / 2, ang + arc / 2);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
