@@ -125,7 +125,43 @@
     window.location.href = "../";
   }
 
-  function paintLensedStars(hx, hy, hr) {
+  function makeLensStars() {
+    var s = 0xE11A5C;
+    function rnd() {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    }
+    var out = [];
+    var i, roll, col;
+    for (i = 0; i < 520; i++) {
+      roll = rnd();
+      col = roll < 0.1 ? [170, 205, 255] : roll < 0.24 ? [255, 228, 190] : [255, 255, 255];
+      if (rnd() < 0.28) {
+        out.push({
+          kind: "ring",
+          ang: rnd() * Math.PI * 2,
+          k: 1.08 + rnd() * 2.45,
+          rad: 0.4 + rnd() * 1.15,
+          a: 0.32 + rnd() * 0.62,
+          col: col,
+          off: (rnd() - 0.5) * 0.8
+        });
+      } else {
+        out.push({
+          kind: "far",
+          nx: rnd(),
+          ny: rnd(),
+          rad: 0.4 + rnd() * 1.15,
+          a: 0.32 + rnd() * 0.62,
+          col: col,
+          off: (rnd() - 0.5) * 0.8
+        });
+      }
+    }
+    return out;
+  }
+
+  function paintLensedStars(hx, hy, hr, lensStars) {
     if (!ctx) return;
     var w = window.innerWidth;
     var h = window.innerHeight;
@@ -137,89 +173,79 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     ctx.lineCap = "round";
-    ctx.lineJoin = "round";
 
     var rs = hr;
-    var i, p, sx, sy, dx, dy, d, u, ang, photon, wrap, steps, s, te, a, rad, px, py;
-    var fieldU, gap, touch, smear, pull, warm, alpha, lw, R, G, B, rim;
-
-    for (i = 0; i < field.length; i++) {
-      p = field[i];
-      sx = p.nx * w;
-      sy = p.ny * h;
-      dx = sx - hx;
-      dy = sy - hy;
-      d = Math.hypot(dx, dy);
-      if (d < rs * 0.9) continue;
-      if (d < rs) d = rs * 1.01;
-
+    var i, p, sx, sy, d, gap, ang, u, arc, warm, alpha, lw, col, cr, cg, cb;
+    for (i = 0; i < lensStars.length; i++) {
+      p = lensStars[i];
+      if (p.kind === "ring") {
+        d = rs * p.k;
+        ang = p.ang + p.off;
+        sx = hx + Math.cos(p.ang) * d;
+        sy = hy + Math.sin(p.ang) * d;
+      } else {
+        sx = p.nx * w;
+        sy = p.ny * h;
+        d = Math.hypot(sx - hx, sy - hy);
+        ang = Math.atan2(sy - hy, sx - hx) + p.off;
+      }
+      if (d < rs * 1.03) continue;
       gap = d - rs;
-      u = rs / d;
-      ang = Math.atan2(dy, dx);
-      photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
-      fieldU = 1 / (100 * Math.max(gap, 0.35));
-      smear = Math.min(1, Math.max(0, 1 - gap / Math.max(150, rs * 1.75)));
-      smear = Math.pow(smear, 1.2);
-      touch = Math.min(1, Math.max(0, 1 - gap / Math.max(22, rs * 0.28)));
-      touch = touch * touch * (3 - 2 * touch);
-      wrap = fieldU * photon * 2.25 + smear * 1.55 + touch * Math.PI * 2.06;
-      pull = smear * 0.42 + touch * 0.58;
-      steps = Math.max(3, Math.round(4 + wrap * 20));
-      warm = Math.min(1, smear * 0.45 + touch * 0.7 + Math.pow(u, 1.45) * 1.1);
-      alpha = Math.min(1, p.a * (0.55 + warm * 1.5 + touch * 0.85));
-      lw = p.r * (1 + smear * 1.4 + touch * 5.2);
-      R = 255;
-      G = Math.round(255 - 165 * warm);
-      B = Math.round(255 - 235 * warm);
-      rim = rs * 1.02;
-
-      var pts = [];
-      for (s = 0; s < steps; s++) {
-        te = s / (steps - 1);
-        a = ang + wrap * te;
-        rad = d + (rim - d) * pull * (0.18 + 0.82 * te);
-        if (rad < rim) rad = rim;
-        pts.push({ x: hx + Math.cos(a) * rad, y: hy + Math.sin(a) * rad });
-      }
-
-      ctx.save();
-      var chunks = 4;
-      var c, i0, i1, k, fuzz;
-      for (c = 0; c < chunks; c++) {
-        i0 = Math.max(0, Math.floor(steps * c / chunks) - 1);
-        i1 = Math.min(steps - 1, Math.ceil(steps * (c + 1) / chunks));
-        if (i1 <= i0) continue;
-        fuzz = (smear * 4.8 + touch * 13.5) * (0.3 + 0.7 * ((c + 1) / chunks));
-        ctx.filter = fuzz > 0.35 ? "blur(" + fuzz.toFixed(2) + "px)" : "none";
-        if (touch > 0.35 && c === chunks - 1) {
-          ctx.shadowColor = "rgba(255, 150, 50, " + (0.2 + touch * 0.65).toFixed(3) + ")";
-          ctx.shadowBlur = 14 + touch * 36;
-        } else {
-          ctx.shadowBlur = 0;
-        }
+      u = 1 / (1 + gap / (rs * 0.42));
+      u = Math.pow(u, 1.55);
+      arc = u * Math.PI * 1.85;
+      if (gap < rs * 0.22) arc += Math.pow(1 - gap / (rs * 0.22), 1.2) * Math.PI * 0.9;
+      warm = Math.min(1, u * 0.75 + Math.pow(rs / d, 2.1) * 1.6);
+      col = p.col;
+      cr = Math.round(col[0] + (255 - col[0]) * warm * 0.55);
+      cg = Math.round(col[1] + (168 - col[1]) * warm);
+      cb = Math.round(col[2] + (72 - col[2]) * warm);
+      alpha = Math.min(1, p.a * (0.5 + u * 1.6 + warm * 0.5));
+      lw = Math.max(0.65, p.rad * (0.7 + u * 0.55));
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "rgb(" + cr + "," + cg + "," + cb + ")";
+      ctx.fillStyle = ctx.strokeStyle;
+      if (arc < 0.07) {
         ctx.beginPath();
-        for (k = i0; k <= i1; k++) {
-          if (k === i0) ctx.moveTo(pts[k].x, pts[k].y);
-          else ctx.lineTo(pts[k].x, pts[k].y);
-        }
-        ctx.strokeStyle = "rgba(" + R + "," + G + "," + B + "," + alpha.toFixed(3) + ")";
-        ctx.lineWidth = lw * (1 + c * 0.12);
+        ctx.arc(sx, sy, Math.max(0.65, p.rad), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.arc(hx, hy, d, ang - arc / 2, ang + arc / 2);
         ctx.stroke();
-        if (warm > 0.08 || touch > 0.15) {
-          ctx.strokeStyle = "rgba(255," + Math.round(220 - 50 * warm) + "," + Math.round(160 - 95 * warm) + "," + (alpha * 0.88).toFixed(3) + ")";
-          ctx.lineWidth = Math.max(0.7, lw * 0.32);
-          ctx.stroke();
-        }
       }
-      ctx.filter = "none";
-      ctx.restore();
     }
+    ctx.globalAlpha = 1;
   }
 
   function drawHole(hctx, x, y, r) {
-    hctx.fillStyle = "#050508";
+    var i, rr, fall, a;
+    for (i = 22; i >= 1; i--) {
+      rr = r * (1 + i * 0.05);
+      fall = Math.pow(1 - i / 22, 1.55);
+      a = i <= 5 ? 0.22 * fall : 0.14 * fall;
+      hctx.beginPath();
+      hctx.arc(x, y, rr, 0, Math.PI * 2);
+      hctx.strokeStyle = i <= 5
+        ? "rgba(255, 214, 155, " + a.toFixed(3) + ")"
+        : "rgba(168, 78, 38, " + a.toFixed(3) + ")";
+      hctx.lineWidth = 4;
+      hctx.stroke();
+    }
     hctx.beginPath();
     hctx.arc(x, y, r, 0, Math.PI * 2);
+    hctx.strokeStyle = "rgba(255, 186, 110, 0.88)";
+    hctx.lineWidth = Math.max(2.4, r * 0.045);
+    hctx.stroke();
+    hctx.beginPath();
+    hctx.arc(x, y, r, 0, Math.PI * 2);
+    hctx.strokeStyle = "rgba(255, 252, 246, 1)";
+    hctx.lineWidth = Math.max(1.1, r * 0.02);
+    hctx.stroke();
+    hctx.fillStyle = "#000";
+    hctx.beginPath();
+    hctx.arc(x, y, r * 0.99, 0, Math.PI * 2);
     hctx.fill();
   }
 
@@ -255,6 +281,7 @@
       document.body.appendChild(hole);
     }
     var hctx = hole.getContext("2d");
+    var lensStars = makeLensStars();
     var w = window.innerWidth;
     var h = window.innerHeight;
     var rect = (input || gate).getBoundingClientRect();
@@ -294,9 +321,9 @@
       var hx = x0 + (x1 - x0) * e;
       var hy = y0 + (y1 - y0) * e;
       var swell = Math.sin(Math.min(1, t / 0.92) * Math.PI);
-      var r = (40 + maxR * (0.38 + 0.62 * swell)) * 0.49;
+      var r = (28 + Math.min(w, h) * 0.078) * (0.84 + 0.16 * swell);
 
-      paintLensedStars(hx, hy, r);
+      paintLensedStars(hx, hy, r, lensStars);
       hctx.clearRect(0, 0, w, h);
       drawHole(hctx, hx, hy, r);
 
