@@ -141,7 +141,7 @@
 
     var rs = hr;
     var i, p, sx, sy, dx, dy, d, u, ang, photon, wrap, steps, s, te, a, rad, px, py;
-    var fieldU, gap, touch, warm, alpha, lw, R, G, B, rim;
+    var fieldU, gap, touch, smear, pull, warm, alpha, lw, R, G, B, rim;
 
     for (i = 0; i < field.length; i++) {
       p = field[i];
@@ -158,13 +158,16 @@
       ang = Math.atan2(dy, dx);
       photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
       fieldU = 1 / (100 * Math.max(gap, 0.35));
+      smear = Math.min(1, Math.max(0, 1 - gap / Math.max(150, rs * 1.75)));
+      smear = Math.pow(smear, 1.2);
       touch = Math.min(1, Math.max(0, 1 - gap / Math.max(22, rs * 0.28)));
       touch = touch * touch * (3 - 2 * touch);
-      wrap = fieldU * photon * 2.25 + touch * Math.PI * 2.06;
+      wrap = fieldU * photon * 2.25 + smear * 1.55 + touch * Math.PI * 2.06;
+      pull = smear * 0.42 + touch * 0.58;
       steps = Math.max(3, Math.round(4 + wrap * 20));
-      warm = Math.min(1, Math.pow(u, 1.45) * 3.6 * (0.35 + 0.65 * touch) + touch);
-      alpha = Math.min(1, p.a * (0.55 + warm * 1.7 + touch * 0.9));
-      lw = p.r * (1 + warm * 2.2 + touch * 5.5);
+      warm = Math.min(1, smear * 0.45 + touch * 0.7 + Math.pow(u, 1.45) * 1.1);
+      alpha = Math.min(1, p.a * (0.55 + warm * 1.5 + touch * 0.85));
+      lw = p.r * (1 + smear * 1.4 + touch * 5.2);
       R = 255;
       G = Math.round(255 - 165 * warm);
       B = Math.round(255 - 235 * warm);
@@ -179,7 +182,7 @@
       for (s = 0; s < steps; s++) {
         te = s / (steps - 1);
         a = ang + wrap * te;
-        rad = d + (rim - d) * touch * (0.2 + 0.8 * te);
+        rad = d + (rim - d) * pull * (0.18 + 0.82 * te);
         if (rad < rim) rad = rim;
         px = hx + Math.cos(a) * rad;
         py = hy + Math.sin(a) * rad;
