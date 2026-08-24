@@ -125,108 +125,90 @@
     window.location.href = "../";
   }
 
-  var off = document.createElement("canvas");
-  var offCtx = off.getContext("2d", { willReadFrequently: true });
-  var srcSnap = null;
-  var snapW = 0;
-  var snapH = 0;
-
-  function ensureStarSnap() {
-    paintStars();
-    var dw = canvas.width;
-    var dh = canvas.height;
-    if (srcSnap && snapW === dw && snapH === dh) return;
-    off.width = dw;
-    off.height = dh;
-    offCtx.setTransform(1, 0, 0, 1, 0, 0);
-    offCtx.drawImage(canvas, 0, 0);
-    srcSnap = offCtx.getImageData(0, 0, dw, dh);
-    snapW = dw;
-    snapH = dh;
-  }
-
-  function sampleSnap(data, dw, dh, x, y) {
-    if (x < 0 || y < 0 || x >= dw - 1 || y >= dh - 1) {
-      return [5, 5, 8, 255];
-    }
-    var x0 = Math.floor(x);
-    var y0 = Math.floor(y);
-    var fx = x - x0;
-    var fy = y - y0;
-    function pix(ix, iy) {
-      var i = (iy * dw + ix) * 4;
-      return [data[i], data[i + 1], data[i + 2], data[i + 3]];
-    }
-    var p00 = pix(x0, y0);
-    var p10 = pix(x0 + 1, y0);
-    var p01 = pix(x0, y0 + 1);
-    var p11 = pix(x0 + 1, y0 + 1);
-    var out = [0, 0, 0, 0];
-    var i, a, b;
-    for (i = 0; i < 4; i++) {
-      a = p00[i] * (1 - fx) + p10[i] * fx;
-      b = p01[i] * (1 - fx) + p11[i] * fx;
-      out[i] = a * (1 - fy) + b * fy;
-    }
-    return out;
-  }
-
   function paintLensedStars(hx, hy, hr) {
     if (!ctx) return;
-    ensureStarSnap();
-    var dw = canvas.width;
-    var dh = canvas.height;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(off, 0, 0);
-
+    var w = window.innerWidth;
+    var h = window.innerHeight;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var rIn = hr * dpr;
-    var rOut = rIn * 1.1;
-    var cx = hx * dpr;
-    var cy = hy * dpr;
-    var pad = 3;
-    var x0 = Math.max(0, Math.floor(cx - rOut - pad));
-    var y0 = Math.max(0, Math.floor(cy - rOut - pad));
-    var x1 = Math.min(dw, Math.ceil(cx + rOut + pad));
-    var y1 = Math.min(dh, Math.ceil(cy + rOut + pad));
-    var bw = x1 - x0;
-    var bh = y1 - y0;
-    if (bw < 2 || bh < 2) return;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
-    var dest = ctx.getImageData(x0, y0, bw, bh);
-    var ddata = dest.data;
-    var sdata = srcSnap.data;
-    var reach = Math.hypot(dw, dh) * 0.5;
-    var xi, yi, px, py, dx, dy, d, frac, srcR, srcAng, col, idx;
+    var rs = hr;
+    var i, p, sx, sy, dx, dy, d, u, ang, photon, wrap, suck, steps, s, te, a, rad, px, py;
+    var warm, alpha, lw, R, G, B, d2, u2, wrap2, a0;
 
-    for (yi = 0; yi < bh; yi++) {
-      py = y0 + yi + 0.5;
-      for (xi = 0; xi < bw; xi++) {
-        px = x0 + xi + 0.5;
-        dx = px - cx;
-        dy = py - cy;
-        d = Math.hypot(dx, dy);
-        if (d <= rIn || d >= rOut) continue;
-        frac = (d - rIn) / (rOut - rIn);
-        srcR = Math.tan((1 - frac) * 1.34) * reach;
-        srcAng = Math.atan2(dy, dx) + (1 - frac) * 2.5;
-        col = sampleSnap(sdata, dw, dh, cx + Math.cos(srcAng) * srcR, cy + Math.sin(srcAng) * srcR);
-        idx = (yi * bw + xi) * 4;
-        var lum = 0.22 * col[0] + 0.7 * col[1] + 0.08 * col[2];
-        if (lum > 10) {
-          ddata[idx] = Math.min(255, lum * 2.9 + 95);
-          ddata[idx + 1] = Math.min(255, lum * 1.2 + 30);
-          ddata[idx + 2] = Math.min(255, lum * 0.2);
-        } else {
-          ddata[idx] = col[0];
-          ddata[idx + 1] = col[1];
-          ddata[idx + 2] = col[2];
+    for (i = 0; i < field.length; i++) {
+      p = field[i];
+      sx = p.nx * w;
+      sy = p.ny * h;
+      dx = sx - hx;
+      dy = sy - hy;
+      d = Math.hypot(dx, dy);
+      if (d < rs * 1.02) continue;
+
+      u = rs / d;
+      ang = Math.atan2(dy, dx);
+      photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
+      wrap = u * photon * 2.25;
+      suck = 0.24 * u * photon;
+      steps = Math.max(2, Math.round(3 + wrap * 16));
+      warm = Math.min(1, u * photon * 2.7);
+      alpha = Math.min(1, p.a * (0.5 + warm * 1.9));
+      lw = p.r * (1.05 + warm * 7.2);
+      R = 255;
+      G = Math.round(255 - 150 * warm);
+      B = Math.round(255 - 232 * warm);
+
+      ctx.beginPath();
+      for (s = 0; s < steps; s++) {
+        te = s / (steps - 1);
+        te = te * te * (1.12 - 0.12 * te);
+        a = ang + wrap * te;
+        rad = d * (1 - suck * te);
+        if (rad < rs * 1.015) rad = rs * 1.015;
+        px = hx + Math.cos(a) * rad;
+        py = hy + Math.sin(a) * rad;
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = "rgba(" + R + "," + G + "," + B + "," + alpha.toFixed(3) + ")";
+      ctx.lineWidth = lw;
+      ctx.stroke();
+      if (warm > 0.1) {
+        ctx.strokeStyle = "rgba(255," + Math.round(214 - 46 * warm) + "," + Math.round(150 - 90 * warm) + "," + (alpha * 0.88).toFixed(3) + ")";
+        ctx.lineWidth = Math.max(0.6, lw * 0.36);
+        ctx.stroke();
+      }
+
+      if (u > 0.055) {
+        d2 = (rs * rs) / d * 2.5;
+        if (d2 > rs * 1.06) {
+          u2 = rs / d2;
+          wrap2 = u2 * 1.55;
+          a0 = ang + Math.PI;
+          steps = Math.max(2, Math.round(3 + wrap2 * 10));
+          ctx.beginPath();
+          for (s = 0; s < steps; s++) {
+            te = s / (steps - 1);
+            a = a0 + wrap2 * te * te;
+            rad = d2 * (1 + 0.12 * te);
+            px = hx + Math.cos(a) * rad;
+            py = hy + Math.sin(a) * rad;
+            if (s === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = "rgba(255," + Math.round(188 - 16 * warm) + ",86," + (alpha * 0.42).toFixed(3) + ")";
+          ctx.lineWidth = Math.max(0.55, lw * 0.3);
+          ctx.stroke();
         }
-        ddata[idx + 3] = 255;
       }
     }
-    ctx.putImageData(dest, x0, y0);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function drawHole(hctx, x, y, r) {
