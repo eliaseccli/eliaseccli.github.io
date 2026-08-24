@@ -212,9 +212,16 @@
         srcAng = Math.atan2(dy, dx) + (1 - frac) * 2.5;
         col = sampleSnap(sdata, dw, dh, cx + Math.cos(srcAng) * srcR, cy + Math.sin(srcAng) * srcR);
         idx = (yi * bw + xi) * 4;
-        ddata[idx] = col[0];
-        ddata[idx + 1] = col[1];
-        ddata[idx + 2] = col[2];
+        var lum = 0.22 * col[0] + 0.7 * col[1] + 0.08 * col[2];
+        if (lum > 10) {
+          ddata[idx] = Math.min(255, lum * 2.9 + 95);
+          ddata[idx + 1] = Math.min(255, lum * 1.2 + 30);
+          ddata[idx + 2] = Math.min(255, lum * 0.2);
+        } else {
+          ddata[idx] = col[0];
+          ddata[idx + 1] = col[1];
+          ddata[idx + 2] = col[2];
+        }
         ddata[idx + 3] = 255;
       }
     }
@@ -223,39 +230,9 @@
   }
 
   function drawHole(hctx, x, y, r) {
-    var rOut = r * 1.1;
-    hctx.save();
-    hctx.beginPath();
-    hctx.arc(x, y, rOut, 0, Math.PI * 2);
-    hctx.arc(x, y, r, 0, Math.PI * 2, true);
-    hctx.clip();
-    var glow = hctx.createRadialGradient(x, y, r, x, y, rOut);
-    glow.addColorStop(0, "rgba(255, 220, 175, 0.2)");
-    glow.addColorStop(0.55, "rgba(210, 118, 62, 0.08)");
-    glow.addColorStop(1, "rgba(0,0,0,0)");
-    hctx.fillStyle = glow;
-    hctx.fillRect(x - rOut, y - rOut, rOut * 2, rOut * 2);
-    hctx.restore();
-
-    hctx.save();
-    hctx.shadowColor = "rgba(255, 220, 170, 0.85)";
-    hctx.shadowBlur = r * 0.045;
+    hctx.fillStyle = "#050508";
     hctx.beginPath();
     hctx.arc(x, y, r, 0, Math.PI * 2);
-    hctx.strokeStyle = "rgba(255, 196, 130, 0.95)";
-    hctx.lineWidth = Math.max(1, r * 0.016);
-    hctx.stroke();
-    hctx.shadowBlur = r * 0.02;
-    hctx.beginPath();
-    hctx.arc(x, y, r, 0, Math.PI * 2);
-    hctx.strokeStyle = "rgba(255, 252, 246, 1)";
-    hctx.lineWidth = Math.max(0.7, r * 0.009);
-    hctx.stroke();
-    hctx.restore();
-
-    hctx.fillStyle = "#000";
-    hctx.beginPath();
-    hctx.arc(x, y, r * 0.997, 0, Math.PI * 2);
     hctx.fill();
   }
 
@@ -330,7 +307,7 @@
       var hx = x0 + (x1 - x0) * e;
       var hy = y0 + (y1 - y0) * e;
       var swell = Math.sin(Math.min(1, t / 0.92) * Math.PI);
-      var r = 40 + maxR * (0.38 + 0.62 * swell);
+      var r = (40 + maxR * (0.38 + 0.62 * swell)) * 0.7;
 
       paintLensedStars(hx, hy, r);
       hctx.clearRect(0, 0, w, h);
