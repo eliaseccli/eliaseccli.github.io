@@ -252,6 +252,9 @@
     var w = window.innerWidth;
     var h = window.innerHeight;
     var rect = (input || gate).getBoundingClientRect();
+    var inW = input ? input.offsetWidth : rect.width;
+    var inH = input ? input.offsetHeight : rect.height;
+    var roundX = inW > 0 ? Math.min(1, inH / inW) : 1;
     var tx = rect.left + rect.width / 2;
     var ty = rect.top + rect.height / 2;
     var ang = Math.random() * Math.PI * 2;
@@ -305,7 +308,19 @@
       var sc = eaten ? Math.max(0, 1 - (t - 0.42) * 3.4) : 1 - pull * 0.35;
       var rot = (eaten ? (t - 0.4) * 420 : pull * 18) * (dx >= 0 ? 1 : -1);
       var skew = pull * 12 * (dy >= 0 ? 1 : -1);
+      var pinchFar = Math.hypot(w, h) * 0.42;
+      var pinchNear = r * 3.4;
+      var pinchU = (pinchFar - dist) / Math.max(8, pinchFar - pinchNear);
+      if (pinchU < 0) pinchU = 0;
+      if (pinchU > 1) pinchU = 1;
+      pinchU = pinchU * pinchU * (3 - 2 * pinchU);
+      var sx = 1 + (roundX - 1) * pinchU;
 
+      if (input) {
+        input.style.animation = "none";
+        input.style.transformOrigin = "50% 50%";
+        input.style.transform = "scaleX(" + sx.toFixed(3) + ")";
+      }
       if (gate) {
         gate.style.transformOrigin = "50% 50%";
         gate.style.transform =
