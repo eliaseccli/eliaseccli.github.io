@@ -1,6 +1,6 @@
 (function () {
-  var VAULT = {"v":1,"iters":210000,"salt":"NB73aylcuKc3pGNlfbcjFQ==","iv":"/ZcCtOdyZQfpuDJC","ct":"WpbZYhYT+zj9PgUlKeJY1UHqC+5JE36y2SFzukAw/Ga/nmwakreHjWRiDrfojQl8xBMf9EgQDQ6wTEaHUDt5l2zmvsLZpE5867cSSj0HE7X/NF3q2Az7IC+tElYszBjJvqabIh+pvfK3fTtrI0IwaMjbPvueG6SxHopdv887TEW5g5XxaiEZHLW72+Lbo0wiQifbSRFqm6fDPETWo7NMa+pi8SXshpfHNLSmJLzCc2yVvUCYwYrBh1hcVsLpKWI+h2B71QdD50TEiar5G/H4bL529m1xLhwGVJ+TkBIfubYNXeKFwd8sodWVCRoomuHsEAIwYRYqGPRZtX/y+xWHX2WsZ8QdAKXvy9RcbFIf6UIERvQr3r18kqwmGGnh7FJ1hF7XYBDaKOhnygg="};
-  var KEY = "projects.ok";
+  var VAULT = {"v":1,"iters":210000,"salt":"Yf78HozEGPtwKhG8FxWNzQ==","iv":"iGqPQEmicy3sLqJ4","ct":"I59rBE2SrLOyN5LO6hP4haUghJoQeYsz7QXiiUlC1GN+S88YqNze13mxTJhKaZA89EbC097PEXvCiDN4P1Zr73rCx65WKeC+cBGFTofDiuNWqcXlVuVCseFMJVCe7CmYVdQX64QjcBMtGzFPxy+rcKmM9BqoVY9KL4dl/dzOFcHgsThwypxRNq2uq/9aHBesIvicqZ0yaKsbgttJANPbihBIXmT8sW35P5TzQoRRlhMq/zepRHSzhV6dqGs2Mpn0XKiobXD/iMWs7PxwgkPem9Q5RjNACejC6KMC4a0uHi/jGZmoP2yBLpMxPZUKl/+f9Je2lXsIIHOkdzvWYiOpryX4HicTOdmLT5lXRQ=="};
+  var KEY = "projects.ok2";
   var ATE = "projectsAte";
   var strikes = 0;
   var locked = false;
