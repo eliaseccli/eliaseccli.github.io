@@ -189,11 +189,11 @@
         i0 = Math.max(0, Math.floor(steps * c / chunks) - 1);
         i1 = Math.min(steps - 1, Math.ceil(steps * (c + 1) / chunks));
         if (i1 <= i0) continue;
-        fuzz = (smear * 2.6 + touch * 7.5) * (0.22 + 0.78 * ((c + 1) / chunks));
+        fuzz = (smear * 4.8 + touch * 13.5) * (0.3 + 0.7 * ((c + 1) / chunks));
         ctx.filter = fuzz > 0.35 ? "blur(" + fuzz.toFixed(2) + "px)" : "none";
         if (touch > 0.35 && c === chunks - 1) {
           ctx.shadowColor = "rgba(255, 150, 50, " + (0.2 + touch * 0.65).toFixed(3) + ")";
-          ctx.shadowBlur = 8 + touch * 22;
+          ctx.shadowBlur = 14 + touch * 36;
         } else {
           ctx.shadowBlur = 0;
         }
@@ -294,7 +294,7 @@
       var hx = x0 + (x1 - x0) * e;
       var hy = y0 + (y1 - y0) * e;
       var swell = Math.sin(Math.min(1, t / 0.92) * Math.PI);
-      var r = (40 + maxR * (0.38 + 0.62 * swell)) * 0.7;
+      var r = (40 + maxR * (0.38 + 0.62 * swell)) * 0.49;
 
       paintLensedStars(hx, hy, r);
       hctx.clearRect(0, 0, w, h);
