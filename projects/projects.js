@@ -140,8 +140,8 @@
     ctx.lineJoin = "round";
 
     var rs = hr;
-    var i, p, sx, sy, dx, dy, d, u, ang, photon, wrap, suck, steps, s, te, a, rad, px, py;
-    var fieldU, warm, alpha, lw, R, G, B, d2, u2, wrap2, a0;
+    var i, p, sx, sy, dx, dy, d, u, ang, photon, wrap, steps, s, te, a, rad, px, py;
+    var fieldU, gap, touch, warm, alpha, lw, R, G, B, rim;
 
     for (i = 0; i < field.length; i++) {
       p = field[i];
@@ -150,29 +150,37 @@
       dx = sx - hx;
       dy = sy - hy;
       d = Math.hypot(dx, dy);
-      if (d < rs * 1.02) continue;
+      if (d < rs * 0.9) continue;
+      if (d < rs) d = rs * 1.01;
 
+      gap = d - rs;
       u = rs / d;
       ang = Math.atan2(dy, dx);
       photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
-      fieldU = 1 / (5000 * Math.max(d - rs, 0.35));
-      wrap = fieldU * photon * 2.25;
-      suck = 0.24 * fieldU * photon;
-      steps = Math.max(2, Math.round(3 + wrap * 16));
-      warm = Math.min(1, Math.pow(u, 1.45) * 3.6);
-      alpha = Math.min(1, p.a * (0.5 + warm * 1.9));
-      lw = p.r * (1.05 + warm * 7.2);
+      fieldU = 1 / (5000 * Math.max(gap, 0.35));
+      touch = Math.min(1, Math.max(0, 1 - gap / Math.max(22, rs * 0.28)));
+      touch = touch * touch * (3 - 2 * touch);
+      wrap = fieldU * photon * 2.25 + touch * Math.PI * 2.06;
+      steps = Math.max(3, Math.round(4 + wrap * 20));
+      warm = Math.min(1, Math.pow(u, 1.45) * 3.6 * (0.35 + 0.65 * touch) + touch);
+      alpha = Math.min(1, p.a * (0.55 + warm * 1.7 + touch * 0.9));
+      lw = p.r * (1 + warm * 2.2 + touch * 5.5);
       R = 255;
-      G = Math.round(255 - 150 * warm);
-      B = Math.round(255 - 232 * warm);
+      G = Math.round(255 - 165 * warm);
+      B = Math.round(255 - 235 * warm);
+      rim = rs * 1.02;
 
+      ctx.save();
+      if (touch > 0.2) {
+        ctx.shadowColor = "rgba(255, 150, 50, " + (0.25 + touch * 0.7).toFixed(3) + ")";
+        ctx.shadowBlur = 6 + touch * 26;
+      }
       ctx.beginPath();
       for (s = 0; s < steps; s++) {
         te = s / (steps - 1);
-        te = te * te * (1.12 - 0.12 * te);
         a = ang + wrap * te;
-        rad = d * (1 - suck * te);
-        if (rad < rs * 1.015) rad = rs * 1.015;
+        rad = d + (rim - d) * touch * (0.2 + 0.8 * te);
+        if (rad < rim) rad = rim;
         px = hx + Math.cos(a) * rad;
         py = hy + Math.sin(a) * rad;
         if (s === 0) ctx.moveTo(px, py);
@@ -181,34 +189,12 @@
       ctx.strokeStyle = "rgba(" + R + "," + G + "," + B + "," + alpha.toFixed(3) + ")";
       ctx.lineWidth = lw;
       ctx.stroke();
-      if (warm > 0.1) {
-        ctx.strokeStyle = "rgba(255," + Math.round(214 - 46 * warm) + "," + Math.round(150 - 90 * warm) + "," + (alpha * 0.88).toFixed(3) + ")";
-        ctx.lineWidth = Math.max(0.6, lw * 0.36);
+      if (warm > 0.08 || touch > 0.15) {
+        ctx.strokeStyle = "rgba(255," + Math.round(220 - 50 * warm) + "," + Math.round(160 - 95 * warm) + "," + (alpha * 0.9).toFixed(3) + ")";
+        ctx.lineWidth = Math.max(0.7, lw * 0.34);
         ctx.stroke();
       }
-
-      if (fieldU > 0.04) {
-        d2 = (rs * rs) / d * 2.5;
-        if (d2 > rs * 1.06) {
-          u2 = rs / d2;
-          wrap2 = u2 * 1.55;
-          a0 = ang + Math.PI;
-          steps = Math.max(2, Math.round(3 + wrap2 * 10));
-          ctx.beginPath();
-          for (s = 0; s < steps; s++) {
-            te = s / (steps - 1);
-            a = a0 + wrap2 * te * te;
-            rad = d2 * (1 + 0.12 * te);
-            px = hx + Math.cos(a) * rad;
-            py = hy + Math.sin(a) * rad;
-            if (s === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.strokeStyle = "rgba(255," + Math.round(188 - 16 * warm) + ",86," + (alpha * 0.42).toFixed(3) + ")";
-          ctx.lineWidth = Math.max(0.55, lw * 0.3);
-          ctx.stroke();
-        }
-      }
+      ctx.restore();
     }
   }
 
