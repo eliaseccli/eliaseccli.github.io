@@ -157,7 +157,7 @@
       u = rs / d;
       ang = Math.atan2(dy, dx);
       photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
-      fieldU = 1 / (5000 * Math.max(gap, 0.35));
+      fieldU = 1 / (1000 * Math.max(gap, 0.35));
       touch = Math.min(1, Math.max(0, 1 - gap / Math.max(22, rs * 0.28)));
       touch = touch * touch * (3 - 2 * touch);
       wrap = fieldU * photon * 2.25 + touch * Math.PI * 2.06;
