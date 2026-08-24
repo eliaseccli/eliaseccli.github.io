@@ -173,3 +173,31 @@ body.is-open { overflow: auto; }
 @media (prefers-reduced-motion: reduce) {
   .gate.bad input { animation: none; }
 }
+
+.stars { z-index: 1; }
+
+.hole {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.stage { z-index: 2; }
+
+body.is-eating .gate input {
+  pointer-events: none;
+}
+
+body.is-eating .bloom,
+body.is-eating .gate {
+  will-change: transform, filter, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.is-eating .bloom,
+  body.is-eating .gate { transform: none !important; }
+}
