@@ -173,30 +173,45 @@
       B = Math.round(255 - 235 * warm);
       rim = rs * 1.02;
 
-      ctx.save();
-      if (touch > 0.2) {
-        ctx.shadowColor = "rgba(255, 150, 50, " + (0.25 + touch * 0.7).toFixed(3) + ")";
-        ctx.shadowBlur = 6 + touch * 26;
-      }
-      ctx.beginPath();
+      var pts = [];
       for (s = 0; s < steps; s++) {
         te = s / (steps - 1);
         a = ang + wrap * te;
         rad = d + (rim - d) * pull * (0.18 + 0.82 * te);
         if (rad < rim) rad = rim;
-        px = hx + Math.cos(a) * rad;
-        py = hy + Math.sin(a) * rad;
-        if (s === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+        pts.push({ x: hx + Math.cos(a) * rad, y: hy + Math.sin(a) * rad });
       }
-      ctx.strokeStyle = "rgba(" + R + "," + G + "," + B + "," + alpha.toFixed(3) + ")";
-      ctx.lineWidth = lw;
-      ctx.stroke();
-      if (warm > 0.08 || touch > 0.15) {
-        ctx.strokeStyle = "rgba(255," + Math.round(220 - 50 * warm) + "," + Math.round(160 - 95 * warm) + "," + (alpha * 0.9).toFixed(3) + ")";
-        ctx.lineWidth = Math.max(0.7, lw * 0.34);
+
+      ctx.save();
+      var chunks = 4;
+      var c, i0, i1, k, fuzz;
+      for (c = 0; c < chunks; c++) {
+        i0 = Math.max(0, Math.floor(steps * c / chunks) - 1);
+        i1 = Math.min(steps - 1, Math.ceil(steps * (c + 1) / chunks));
+        if (i1 <= i0) continue;
+        fuzz = (smear * 2.6 + touch * 7.5) * (0.22 + 0.78 * ((c + 1) / chunks));
+        ctx.filter = fuzz > 0.35 ? "blur(" + fuzz.toFixed(2) + "px)" : "none";
+        if (touch > 0.35 && c === chunks - 1) {
+          ctx.shadowColor = "rgba(255, 150, 50, " + (0.2 + touch * 0.65).toFixed(3) + ")";
+          ctx.shadowBlur = 8 + touch * 22;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        ctx.beginPath();
+        for (k = i0; k <= i1; k++) {
+          if (k === i0) ctx.moveTo(pts[k].x, pts[k].y);
+          else ctx.lineTo(pts[k].x, pts[k].y);
+        }
+        ctx.strokeStyle = "rgba(" + R + "," + G + "," + B + "," + alpha.toFixed(3) + ")";
+        ctx.lineWidth = lw * (1 + c * 0.12);
         ctx.stroke();
+        if (warm > 0.08 || touch > 0.15) {
+          ctx.strokeStyle = "rgba(255," + Math.round(220 - 50 * warm) + "," + Math.round(160 - 95 * warm) + "," + (alpha * 0.88).toFixed(3) + ")";
+          ctx.lineWidth = Math.max(0.7, lw * 0.32);
+          ctx.stroke();
+        }
       }
+      ctx.filter = "none";
       ctx.restore();
     }
   }
