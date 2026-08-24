@@ -17,19 +17,22 @@
       return s / 4294967296;
     }
     field = [];
-    var i;
-    for (i = 0; i < 96; i++) {
+    var i, roll, col;
+    for (i = 0; i < 360; i++) {
+      roll = rnd();
+      col = roll < 0.08 ? [170, 205, 255] : roll < 0.2 ? [255, 228, 190] : [255, 255, 255];
       field.push({
         nx: rnd(),
         ny: rnd(),
-        r: 0.45 + rnd() * 1.15,
-        a: 0.28 + rnd() * 0.55
+        r: 0.4 + rnd() * 1.15,
+        a: 0.32 + rnd() * 0.55,
+        col: col
       });
     }
   }
 
   function paintStars() {
-    if (!ctx) return;
+    if (!ctx || locked) return;
     var w = window.innerWidth;
     var h = window.innerHeight;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -39,11 +42,12 @@
     canvas.style.height = h + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    var i, p;
+    var i, p, col;
     for (i = 0; i < field.length; i++) {
       p = field[i];
+      col = p.col || [255, 255, 255];
       ctx.beginPath();
-      ctx.fillStyle = "rgba(255,255,255," + p.a + ")";
+      ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + p.a + ")";
       ctx.arc(p.nx * w, p.ny * h, p.r, 0, Math.PI * 2);
       ctx.fill();
     }
@@ -125,43 +129,7 @@
     window.location.href = "../";
   }
 
-  function makeLensStars() {
-    var s = 0xE11A5C;
-    function rnd() {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    }
-    var out = [];
-    var i, roll, col;
-    for (i = 0; i < 520; i++) {
-      roll = rnd();
-      col = roll < 0.1 ? [170, 205, 255] : roll < 0.24 ? [255, 228, 190] : [255, 255, 255];
-      if (rnd() < 0.28) {
-        out.push({
-          kind: "ring",
-          ang: rnd() * Math.PI * 2,
-          k: 1.08 + rnd() * 1.47,
-          rad: 0.4 + rnd() * 1.15,
-          a: 0.32 + rnd() * 0.62,
-          col: col,
-          off: (rnd() - 0.5) * 0.8
-        });
-      } else {
-        out.push({
-          kind: "far",
-          nx: rnd(),
-          ny: rnd(),
-          rad: 0.4 + rnd() * 1.15,
-          a: 0.32 + rnd() * 0.62,
-          col: col,
-          off: (rnd() - 0.5) * 0.8
-        });
-      }
-    }
-    return out;
-  }
-
-  function paintLensedStars(hx, hy, hr, lensStars) {
+  function paintLensedStars(hx, hy, hr) {
     if (!ctx) return;
     var w = window.innerWidth;
     var h = window.innerHeight;
@@ -175,26 +143,19 @@
     ctx.lineCap = "round";
 
     var rs = hr;
-    var i, p, sx, sy, d, gap, ang, u, arc, warm, alpha, lw, col, cr, cg, cb;
-    for (i = 0; i < lensStars.length; i++) {
-      p = lensStars[i];
-      if (p.kind === "ring") {
-        d = rs * p.k;
-        ang = p.ang + p.off;
-        sx = hx + Math.cos(p.ang) * d;
-        sy = hy + Math.sin(p.ang) * d;
-      } else {
-        sx = p.nx * w;
-        sy = p.ny * h;
-        d = Math.hypot(sx - hx, sy - hy);
-        ang = Math.atan2(sy - hy, sx - hx) + p.off;
-      }
+    var outer = rs * 4.8;
+    var i, p, sx, sy, d, gap, ang, u, edge, arc, warm, alpha, lw, col, cr, cg, cb, span;
+    for (i = 0; i < field.length; i++) {
+      p = field[i];
+      sx = p.nx * w;
+      sy = p.ny * h;
+      d = Math.hypot(sx - hx, sy - hy);
       if (d < rs * 1.03) continue;
+      ang = Math.atan2(sy - hy, sx - hx);
       gap = d - rs;
-      var outer = rs * 4.8;
       u = 1 / (1 + gap / (rs * 0.252));
       u = Math.pow(u, 1.55);
-      var edge = (outer - d) / (outer - rs);
+      edge = (outer - d) / (outer - rs);
       if (edge < 0) edge = 0;
       if (edge > 1) edge = 1;
       edge = edge * edge * (3 - 2 * edge);
@@ -202,19 +163,26 @@
       arc = u * Math.PI * 1.85;
       if (gap < rs * 0.22) arc += Math.pow(1 - gap / (rs * 0.22), 1.2) * Math.PI * 0.9 * edge;
       warm = Math.min(1, u * 0.75 + Math.pow(rs / d, 2.1) * 1.6 * edge);
-      col = p.col;
+      col = p.col || [255, 255, 255];
       cr = Math.round(col[0] + (255 - col[0]) * warm * 0.55);
       cg = Math.round(col[1] + (168 - col[1]) * warm);
       cb = Math.round(col[2] + (72 - col[2]) * warm);
       alpha = Math.min(1, p.a * (0.5 + u * 1.6 + warm * 0.5));
-      lw = Math.max(0.65, p.rad * (0.7 + u * 0.55));
+      lw = Math.max(0.65, p.r * (0.7 + u * 0.55));
+      span = arc * d;
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = "rgb(" + cr + "," + cg + "," + cb + ")";
       ctx.fillStyle = ctx.strokeStyle;
-      ctx.lineWidth = lw;
-      ctx.beginPath();
-      ctx.arc(hx, hy, d, ang - arc / 2, ang + arc / 2);
-      ctx.stroke();
+      if (span < lw * 1.2) {
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(p.r, lw * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.arc(hx, hy, d, ang - arc / 2, ang + arc / 2);
+        ctx.stroke();
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -281,7 +249,6 @@
       document.body.appendChild(hole);
     }
     var hctx = hole.getContext("2d");
-    var lensStars = makeLensStars();
     var w = window.innerWidth;
     var h = window.innerHeight;
     var rect = (input || gate).getBoundingClientRect();
@@ -323,7 +290,7 @@
       var swell = Math.sin(Math.min(1, t / 0.92) * Math.PI);
       var r = (28 + Math.min(w, h) * 0.078) * (0.84 + 0.16 * swell);
 
-      paintLensedStars(hx, hy, r, lensStars);
+      paintLensedStars(hx, hy, r);
       hctx.clearRect(0, 0, w, h);
       drawHole(hctx, hx, hy, r);
 
