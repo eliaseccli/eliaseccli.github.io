@@ -376,7 +376,7 @@
       if (dx * dx + dy * dy <= r2) deadStars[i] = true;
     }
     paintStars();
-    if (!roadsterDone && deadCount() >= 152) {
+    if (!roadsterDone && deadCount() >= Math.round(starField.length * 0.8)) {
       roadsterDone = true;
       roadsterNoRespawn = false;
       if (roadsterTimer) clearTimeout(roadsterTimer);
@@ -752,7 +752,7 @@
     if (e.pointerType === "mouse" && e.button !== 0) return;
     var node = e.target;
     if (node && node.nodeType !== 1) node = node.parentElement;
-    if (node && node.closest && node.closest(".chip")) return;
+    if (node && node.closest && node.closest(".chip, .nav")) return;
 
     var cx = e.clientX;
     var cy = e.clientY;
@@ -803,12 +803,34 @@
   }
   requestAnimationFrame(idleWatch);
 
+
+  var nav = document.querySelector("[data-nav]");
+  var navBtn = document.querySelector("[data-nav-btn]");
+  var navList = document.getElementById("nav-list");
+  function setNav(open) {
+    if (!nav) return;
+    nav.classList.toggle("is-open", open);
+    if (navBtn) navBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (navList) navList.hidden = !open;
+  }
+  if (navBtn) {
+    navBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setNav(!nav.classList.contains("is-open"));
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") setNav(false);
+  });
+
   window.addEventListener("pointermove", function (e) {
     noteAct();
     follow(e);
   }, { passive: true });
   window.addEventListener("pointerdown", function (e) {
     noteAct();
+    if (nav && nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
     onPointer(e);
   }, { passive: true });
 
