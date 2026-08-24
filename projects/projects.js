@@ -141,7 +141,7 @@
 
     var rs = hr;
     var i, p, sx, sy, dx, dy, d, u, ang, photon, wrap, suck, steps, s, te, a, rad, px, py;
-    var warm, alpha, lw, R, G, B, d2, u2, wrap2, a0;
+    var fieldU, warm, alpha, lw, R, G, B, d2, u2, wrap2, a0;
 
     for (i = 0; i < field.length; i++) {
       p = field[i];
@@ -155,10 +155,11 @@
       u = rs / d;
       ang = Math.atan2(dy, dx);
       photon = 1 + 1.15 / Math.max(0.14, (d / rs) - 1.5);
-      wrap = u * photon * 2.25;
-      suck = 0.24 * u * photon;
+      fieldU = u / 10;
+      wrap = fieldU * photon * 2.25;
+      suck = 0.24 * fieldU * photon;
       steps = Math.max(2, Math.round(3 + wrap * 16));
-      warm = Math.min(1, u * photon * 2.7);
+      warm = Math.min(1, Math.pow(u, 1.45) * 3.6);
       alpha = Math.min(1, p.a * (0.5 + warm * 1.9));
       lw = p.r * (1.05 + warm * 7.2);
       R = 255;
@@ -186,7 +187,7 @@
         ctx.stroke();
       }
 
-      if (u > 0.055) {
+      if (fieldU > 0.04) {
         d2 = (rs * rs) / d * 2.5;
         if (d2 > rs * 1.06) {
           u2 = rs / d2;
