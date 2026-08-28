@@ -257,17 +257,28 @@
     var roundX = inW > 0 ? Math.min(1, inH / inW) : 1;
     var tx = rect.left + rect.width / 2;
     var ty = rect.top + rect.height / 2;
-    var ang = Math.random() * Math.PI * 2;
-    var reach = Math.hypot(w, h) * 0.36 + 40;
-    var x0 = tx - Math.cos(ang) * reach;
-    var y0 = ty - Math.sin(ang) * reach;
-    var x1 = tx + Math.cos(ang) * reach;
-    var y1 = ty + Math.sin(ang) * reach;
-    var maxR = Math.min(w, h) * 0.24 + 64;
+    var corner = Math.floor(Math.random() * 4);
+    var expandDur = 1000;
+    var travelDur = 12444;
+    var contractDur = 1000;
+    var dur = expandDur + travelDur + contractDur;
     var started = performance.now();
-    var dur = 18666;
     var lastW = 0;
     var lastH = 0;
+
+    function corners() {
+      var R = 28 + Math.min(w, h) * 0.078;
+      var m = R + 18;
+      if (m > w * 0.28) m = w * 0.28;
+      if (m > h * 0.28) m = h * 0.28;
+      var pairs = [
+        [m, m, w - m, h - m],
+        [w - m, m, m, h - m],
+        [m, h - m, w - m, m],
+        [w - m, h - m, m, m]
+      ];
+      return pairs[corner];
+    }
 
     function sizeHole() {
       if (w === lastW && h === lastH) return;
@@ -286,27 +297,50 @@
       w = window.innerWidth;
       h = window.innerHeight;
       sizeHole();
-      var t = Math.min(1, (now - started) / dur);
-      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      var hx = x0 + (x1 - x0) * e;
-      var hy = y0 + (y1 - y0) * e;
-      var swell = Math.sin(Math.min(1, t / 0.92) * Math.PI);
-      var r = (28 + Math.min(w, h) * 0.078) * (0.84 + 0.16 * swell);
+      var pair = corners();
+      var x0 = pair[0], y0 = pair[1], x1 = pair[2], y1 = pair[3];
+      var elapsed = now - started;
+      var t = Math.min(1, elapsed / dur);
+      var hx, hy, rScale, travelT;
+      var R = 28 + Math.min(w, h) * 0.078;
+      if (elapsed < expandDur) {
+        var u = elapsed / expandDur;
+        var e = 1 - Math.pow(1 - u, 3);
+        hx = x0;
+        hy = y0;
+        rScale = e;
+        travelT = 0;
+      } else if (elapsed < expandDur + travelDur) {
+        var u = (elapsed - expandDur) / travelDur;
+        var e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+        hx = x0 + (x1 - x0) * e;
+        hy = y0 + (y1 - y0) * e;
+        rScale = 1;
+        travelT = u;
+      } else {
+        var u = Math.min(1, (elapsed - expandDur - travelDur) / contractDur);
+        var e = u * u * u;
+        hx = x1;
+        hy = y1;
+        rScale = 1 - e;
+        travelT = 1;
+      }
+      var r = Math.max(0.4, R * rScale);
 
       paintLensedStars(hx, hy, r);
       hctx.clearRect(0, 0, w, h);
-      drawHole(hctx, hx, hy, r);
+      if (rScale > 0.02) drawHole(hctx, hx, hy, r);
 
       var dx = hx - tx;
       var dy = hy - ty;
       var dist = Math.hypot(dx, dy) || 1;
       var pull = Math.max(0, 1 - dist / (r * 2.8));
-      var eaten = dist < r * 0.82 || t > 0.58;
+      var eaten = dist < r * 0.82 || travelT > 0.58;
       var suck = eaten ? 1 : pull;
       var ox = (dx / dist) * suck * Math.min(140, r * 1.1);
       var oy = (dy / dist) * suck * Math.min(140, r * 1.1);
-      var sc = eaten ? Math.max(0, 1 - (t - 0.42) * 3.4) : 1 - pull * 0.35;
-      var rot = (eaten ? (t - 0.4) * 420 : pull * 18) * (dx >= 0 ? 1 : -1);
+      var sc = eaten ? Math.max(0, 1 - (travelT - 0.42) * 3.4) : 1 - pull * 0.35;
+      var rot = (eaten ? (travelT - 0.4) * 420 : pull * 18) * (dx >= 0 ? 1 : -1);
       var skew = pull * 12 * (dy >= 0 ? 1 : -1);
       var pinchFar = Math.hypot(w, h) * 0.42;
       var pinchNear = r * 3.4;
@@ -330,7 +364,7 @@
         gate.style.filter =
           "contrast(" + (1 + pull * 0.8).toFixed(2) + ") brightness(" +
           (1 - suck * 0.55).toFixed(2) + ") blur(" + (suck * 2.4).toFixed(2) + "px)";
-        gate.style.opacity = eaten && t > 0.62 ? "0" : String(1 - suck * 0.25);
+        gate.style.opacity = eaten && travelT > 0.62 ? "0" : String(1 - suck * 0.25);
       }
       if (bloom) {
         var bPull = Math.max(0, 1 - dist / (Math.hypot(w, h) * 0.55));
@@ -343,10 +377,13 @@
           "blur(" + (40 + bPull * 18).toFixed(1) + "px) contrast(" +
           (1 + bPull * 0.7).toFixed(2) + ") saturate(" +
           (1 + bPull * 0.4).toFixed(2) + ")";
-        bloom.style.opacity = String(Math.max(0, 1 - Math.max(0, t - 0.55) / 0.35));
+        var fade = elapsed > expandDur + travelDur
+          ? Math.max(0, 1 - (elapsed - expandDur - travelDur) / contractDur)
+          : 1;
+        bloom.style.opacity = String(fade);
       }
 
-      if (t < 1) requestAnimationFrame(tick);
+      if (elapsed < dur) requestAnimationFrame(tick);
       else goHome();
     }
     requestAnimationFrame(tick);
