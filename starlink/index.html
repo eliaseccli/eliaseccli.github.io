@@ -254,7 +254,21 @@
           ctx.stroke();
           ctx.fillStyle = "#fff";
           ctx.font = "42px system-ui,sans-serif";
-          ctx.fillText(sat.name, xy[0] + r + 16, xy[1] - r - 12);
+          var name = sat.name;
+          var tw = ctx.measureText(name).width;
+          var th = 42;
+          var gap = 16;
+          var inset = 10;
+          var L = p + inset, R = p + s - inset, T = p + inset, B = p + s - inset;
+          var tx = xy[0] + r + gap;
+          if (tx + tw > R) tx = xy[0] - r - gap - tw;
+          if (tx < L) tx = L;
+          if (tx + tw > R) tx = R - tw;
+          var ty = xy[1] - r - 12;
+          if (ty - th * 0.85 < T) ty = xy[1] + r + th * 0.85 + 10;
+          if (ty > B) ty = B;
+          if (ty - th * 0.85 < T) ty = T + th * 0.85;
+          ctx.fillText(name, tx, ty);
         }
         ctx.restore();
         updateMeta();
