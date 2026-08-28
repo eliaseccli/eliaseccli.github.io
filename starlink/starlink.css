@@ -43,13 +43,13 @@ html, body { overflow-x: hidden; }
 }
 .nav-list a:hover { color: #fff; }
 .page { max-width: none; margin: 0 auto; padding: 4.4rem 1rem 1.5rem; }
+.lead { flex: 0 0 auto; }
 .lead h1 { margin: 0 0 0.25rem; font-size: clamp(1.7rem, 5vw, 2.6rem); font-weight: 560; letter-spacing: -0.03em; }
 .meta, .hint { margin: 0 0 0.3rem; color: var(--mute); line-height: 1.45; }
 .meta { font-size: 0.92rem; }
 .pick { margin: 0.45rem 0 0; min-height: 2.4rem; color: var(--ink); }
 .pick strong { display: block; font-size: 1.05rem; margin-bottom: 0.15rem; }
 .board { display: flex; flex-direction: column; }
-.viz { width: 100%; }
 .stage { margin-top: 0.45rem; }
 canvas {
   display: block;
@@ -64,27 +64,27 @@ canvas.drag { cursor: grabbing; }
   gap: 0.15rem; margin-top: 1rem;
 }
 @media (orientation: landscape) {
-  html, body, .page { height: 100dvh; overflow-x: auto; overflow-y: hidden; }
-  .page { padding: 0.65rem 1rem; }
-  .board {
-    flex-direction: row;
-    align-items: stretch;
-    height: 100%;
-    gap: 1.1rem;
-  }
-  .viz {
+  html, body { height: 100dvh; overflow: hidden; }
+  .page {
+    height: 100dvh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    width: auto;
-    flex: 0 0 auto;
+    padding: 0.65rem 1rem;
   }
-  .stage { margin-top: 0.3rem; flex: 1; min-height: 0; }
+  .board {
+    flex: 1 1 auto;
+    flex-direction: row;
+    align-items: flex-start;
+    min-height: 0;
+    gap: 1.1rem;
+    overflow: hidden;
+  }
+  .stage { margin-top: 0; flex: 0 0 auto; }
   .side {
     width: 16rem;
     flex-shrink: 0;
-    overflow-y: auto;
-    min-height: 0;
+    overflow: hidden;
   }
   .filters { margin-top: 0; }
   .lead h1 { font-size: 1.7rem; }
