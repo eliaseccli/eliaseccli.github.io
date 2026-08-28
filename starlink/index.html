@@ -135,22 +135,23 @@
           var alts = (by[sh.id] || []).slice().sort(function (a, b) { return a - b; });
           var med = alts.length ? alts[(alts.length / 2) | 0] : 0;
           var devs = alts.map(function (a) { return Math.abs(a - med); }).sort(function (a, b) { return a - b; });
-          var p99 = devs.length ? devs[Math.min(devs.length - 1, Math.floor(devs.length * 0.99))] : 1;
-          var dmax = devs.length ? devs[devs.length - 1] : p99;
-          if (p99 < 1e-6) p99 = 1e-6;
-          shellStats[sh.id] = { med: med, p99: p99, dmax: dmax, full: sh.color };
+          var mad = devs.length ? devs[(devs.length / 2) | 0] : 0;
+          var dmax = devs.length ? devs[devs.length - 1] : 0;
+          var sigma = Math.max(1.4826 * mad * 2.2, 1e-6);
+          var gmin = Math.exp(-0.5 * (dmax / sigma) * (dmax / sigma));
+          shellStats[sh.id] = { med: med, sigma: sigma, dmax: dmax, gmin: gmin, full: sh.color };
         });
       }
       function satFill(sat) {
         var st = shellStats[sat.s];
         var hex = colorOf(sat.s);
         if (!st) return hex;
+        if (st.dmax < 1e-9) return hex;
         var d = Math.abs(sat.alt - st.med);
-        var a = 1;
-        if (d > st.p99) {
-          var span = st.dmax - st.p99;
-          a = span <= 1e-9 ? 0 : Math.max(0, 1 - (d - st.p99) / span);
-        }
+        var g = Math.exp(-0.5 * (d / st.sigma) * (d / st.sigma));
+        var a = (g - st.gmin) / (1 - st.gmin);
+        if (a < 0) a = 0;
+        if (a > 1) a = 1;
         return hexToRgba(hex, a);
       }
       function visibleCount() {
