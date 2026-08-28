@@ -21,16 +21,14 @@
     </ul>
   </nav>
   <main class="page">
+    <header class="lead">
+      <h1>Starlink</h1>
+      <p class="meta" data-meta></p>
+      <p class="pick" data-pick>Tap a satellite</p>
+    </header>
     <div class="board">
-      <div class="viz">
-        <header class="lead">
-          <h1>Starlink</h1>
-          <p class="meta" data-meta></p>
-          <p class="pick" data-pick>Tap a satellite</p>
-        </header>
-        <div class="stage">
-          <canvas id="c" width="1400" height="1400"></canvas>
-        </div>
+      <div class="stage">
+        <canvas id="c" width="1400" height="1400"></canvas>
       </div>
       <div class="side">
         <div class="filters" data-filters>
@@ -65,15 +63,24 @@
       var ctx = canvas.getContext("2d");
       function fitPlot() {
         var landscape = window.matchMedia("(orientation: landscape)").matches;
-        var viz = document.querySelector(".viz");
+        var page = document.querySelector(".page");
         var lead = document.querySelector(".lead");
+        var board = document.querySelector(".board");
+        var sideCol = document.querySelector(".side");
         if (landscape) {
-          var side = Math.floor(viz.clientHeight - lead.offsetHeight);
+          var cs = window.getComputedStyle(page);
+          var padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+          var padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+          var gap = board ? (parseFloat(window.getComputedStyle(board).gap) || 0) : 0;
+          var sideW = sideCol ? sideCol.offsetWidth : 256;
+          var availH = window.innerHeight - padY - lead.offsetHeight - 8;
+          var availW = window.innerWidth - padX - sideW - gap - 8;
+          var side = Math.floor(Math.min(availH, availW));
           if (side < 200) side = 200;
           canvas.style.width = side + "px";
           canvas.style.height = side + "px";
         } else {
-          var side = Math.floor(viz.clientWidth);
+          var side = Math.floor(board.clientWidth);
           canvas.style.width = side + "px";
           canvas.style.height = side + "px";
         }
