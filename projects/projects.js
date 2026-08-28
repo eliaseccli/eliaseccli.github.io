@@ -258,14 +258,14 @@
     var tx = rect.left + rect.width / 2;
     var ty = rect.top + rect.height / 2;
     var ang = Math.random() * Math.PI * 2;
-    var reach = Math.hypot(w, h) * 0.72 + 120;
+    var reach = Math.hypot(w, h) * 0.36 + 40;
     var x0 = tx - Math.cos(ang) * reach;
     var y0 = ty - Math.sin(ang) * reach;
     var x1 = tx + Math.cos(ang) * reach;
     var y1 = ty + Math.sin(ang) * reach;
     var maxR = Math.min(w, h) * 0.24 + 64;
     var started = performance.now();
-    var dur = 9333;
+    var dur = 18666;
     var lastW = 0;
     var lastH = 0;
 
