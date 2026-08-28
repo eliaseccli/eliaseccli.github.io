@@ -26,13 +26,15 @@
       <p class="meta" data-meta></p>
       <p class="pick" data-pick>Tap a satellite</p>
     </header>
-    <div class="stage">
-      <canvas id="c" width="1400" height="1400"></canvas>
+    <div class="board">
+      <div class="stage">
+        <canvas id="c" width="1400" height="1400"></canvas>
+      </div>
+      <div class="filters" data-filters>
+        <label class="chk all"><input type="checkbox" data-all checked> All</label>
+      </div>
     </div>
-    <div class="filters" data-filters>
-      <label class="chk all"><input type="checkbox" data-all checked> All</label>
-    </div>
-    <p class="hint">Scroll or pinch to zoom. Drag to pan. Double-click to reset.<br>Color coding: Hue denotes the shell, transparency the distance from the median height in that shell.<br>Orbital data from <a href="https://celestrak.org/" target="_blank" rel="noopener">Celestrak</a>. Axes are <a href="https://en.wikipedia.org/wiki/Mean_anomaly" target="_blank" rel="noopener">Anomaly</a> and <a href="https://en.wikipedia.org/wiki/Longitude_of_the_ascending_node" target="_blank" rel="noopener">RAAN</a>.</p>
+    <p class="hint">Scroll or pinch to zoom. Drag to pan. Double-click to reset.<br>Color coding: Hue denotes the shell, transparency the distance from the median altitude in that shell.<br>Orbital data from <a href="https://celestrak.org/" target="_blank" rel="noopener">Celestrak</a>. Axes are <a href="https://en.wikipedia.org/wiki/Mean_anomaly" target="_blank" rel="noopener">Anomaly</a> and <a href="https://en.wikipedia.org/wiki/Longitude_of_the_ascending_node" target="_blank" rel="noopener">RAAN</a>.</p>
   </main>
   <script>
     (function () {
@@ -252,7 +254,7 @@
         var sat = data.sats[i];
         var sh = data.shells.find(function (s) { return s.id === sat.s; });
         el.innerHTML = "<strong>" + sat.name + "</strong>" +
-          sat.alt.toFixed(1) + " km · " + (sh ? sh.label : sat.s) + " · NORAD " + sat.id;
+          sat.alt.toFixed(2) + " km · " + (sh ? sh.label : sat.s) + " · NORAD " + sat.id;
       }
 
       function eventCss(e) {
