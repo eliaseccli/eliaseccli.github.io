@@ -64,7 +64,7 @@ canvas.drag { cursor: grabbing; }
   font-size: 0.95rem; color: var(--ink); cursor: pointer; user-select: none;
 }
 .chk input { accent-color: #f97316; }
-.chk em { color: var(--mute); font-style: normal; font-size: 0.82rem; margin-left: 0.15rem; }
+.chk em { color: rgba(255, 255, 255, 0.34); font-style: normal; font-size: 0.82rem; margin-left: 0.15rem; }
 .chk.all { font-weight: 560; padding: 0.2rem 0; }
 .swatch {
   width: 0.7rem; height: 0.7rem; border-radius: 50%;
