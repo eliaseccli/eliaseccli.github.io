@@ -22,6 +22,10 @@ body {
 }
 
 body.is-open { overflow: auto; }
+body.is-open .stage {
+  justify-content: flex-start;
+  padding: 1.25rem 1.25rem 3rem;
+}
 
 .bloom {
   position: fixed;
@@ -56,15 +60,15 @@ body.is-open { overflow: auto; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2.5rem 1.25rem 3rem;
+  padding: 1.25rem;
 }
 
 .gate {
+  position: relative;
   width: min(22rem, 100%);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.7rem;
 }
 
 .gate[hidden],
@@ -110,11 +114,14 @@ body.is-open { overflow: auto; }
 }
 
 .hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.55rem);
   margin: 0;
   text-align: center;
   font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.38);
-  min-height: 1.1em;
 }
 
 .panel {
