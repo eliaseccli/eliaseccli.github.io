@@ -353,7 +353,7 @@
           var incLab = document.createElement("label");
           incLab.className = "chk inc";
           incLab.innerHTML = "<input type=\"checkbox\" data-inc=\"" + inc + "\" checked> " +
-            (INC_LABEL[inc] || (inc + "°")) + " <em>" + n + "</em>";
+            (INC_LABEL[inc] || (inc + "°")) + " <em>" + n + " satellites</em>";
           incLab.addEventListener("click", function (e) { e.stopPropagation(); });
           sum.appendChild(incLab);
           det.appendChild(sum);
@@ -364,7 +364,7 @@
             lab.className = "chk";
             lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
               "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
-              sh.km + " km <em>" + sh.n + "</em>";
+              sh.km + " km <em>" + sh.n + " satellites</em>";
             heights.appendChild(lab);
           });
           det.appendChild(heights);
