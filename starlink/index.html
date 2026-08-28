@@ -58,21 +58,22 @@
             el.textContent = "Updated " + d.toISOString().slice(0, 16).replace("T", " ") + " UTC · " + (meta.n || "") + " objects · " + (meta.source || "");
           }
           var root = document.querySelector("[data-gallery]");
-          (meta.sections || []).forEach(function (sec) {
+          (meta.sections || []).forEach(function (sec, i) {
             if (!sec.shells || !sec.shells.length) return;
-            var s = document.createElement("section");
+            var s = document.createElement("details");
             s.className = "inc";
-            var h = document.createElement("h2");
+            if (i === 0) s.open = true;
+            var h = document.createElement("summary");
             h.textContent = sec.label;
             s.appendChild(h);
             sec.shells.forEach(function (sh) {
               var fig = document.createElement("figure");
               var img = document.createElement("img");
               img.src = "./" + sh.file;
-              img.alt = "Starlink " + sec.label + " ~" + sh.km + " km";
+              img.alt = "Starlink " + sec.label + " height " + sh.km + " km";
               img.loading = "lazy";
               var cap = document.createElement("figcaption");
-              cap.textContent = "~" + sh.km + " km" + (sh.n ? "  ·  n=" + sh.n : "");
+              cap.textContent = "height " + sh.km + " km" + (sh.n ? "  ·  " + sh.n + " satellites" : "");
               fig.appendChild(img);
               fig.appendChild(cap);
               s.appendChild(fig);
