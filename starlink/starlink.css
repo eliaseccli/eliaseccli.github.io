@@ -158,7 +158,7 @@ canvas.drag { cursor: grabbing; }
   }
   .stage { margin-top: 0; flex: 0 0 auto; }
   .side {
-    width: 16rem;
+    width: 17.5rem;
     flex-shrink: 0;
     overflow: hidden;
   }
@@ -167,11 +167,11 @@ canvas.drag { cursor: grabbing; }
   .pick { height: 3.35rem; }
 }
 .chk {
-  display: inline-flex; align-items: center; gap: 0.4rem;
-  font-size: 0.95rem; color: var(--ink); cursor: pointer; user-select: none;
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-size: 1.08rem; color: var(--ink); cursor: pointer; user-select: none;
 }
-.chk input { accent-color: #f97316; }
-.chk em { color: rgba(255, 255, 255, 0.34); font-style: normal; font-size: 0.82rem; margin-left: 0.15rem; }
+.chk input { width: 1.1em; height: 1.1em; accent-color: #f97316; }
+.chk em { color: rgba(255, 255, 255, 0.34); font-style: normal; font-size: 0.92rem; margin-left: 0.15rem; }
 .chk.all { font-weight: 560; padding: 0.2rem 0; }
 .swatch {
   width: 0.7rem; height: 0.7rem; border-radius: 50%;
@@ -191,9 +191,10 @@ canvas.drag { cursor: grabbing; }
 .inc-block > summary::-webkit-details-marker { display: none; }
 .inc-block > summary::before {
   content: "▸";
-  color: rgba(255,255,255,0.4);
-  width: 1em; flex-shrink: 0;
-  font-size: 0.8rem;
+  color: rgba(255,255,255,0.55);
+  width: 1.15em; flex-shrink: 0;
+  font-size: 1.45rem;
+  line-height: 1;
 }
 .inc-block[open] > summary::before { content: "▾"; }
 .inc-block .chk.inc { font-weight: 540; }
@@ -201,6 +202,6 @@ canvas.drag { cursor: grabbing; }
   display: flex; flex-direction: column; gap: 0.18rem;
   padding: 0.1rem 0 0.35rem 1.7rem;
 }
-.hint { margin-top: 0.85rem; font-size: 0.82rem; }
+.hint { margin-top: 0.85rem; font-size: 0.94rem; }
 .hint a { color: rgba(255, 255, 255, 0.58); text-underline-offset: 2px; }
 .hint a:hover { color: #fff; }
