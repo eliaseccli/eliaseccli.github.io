@@ -21,20 +21,24 @@
     </ul>
   </nav>
   <main class="page">
-    <header class="lead">
-      <h1>Starlink</h1>
-      <p class="meta" data-meta></p>
-      <p class="pick" data-pick>Tap a satellite</p>
-    </header>
     <div class="board">
-      <div class="stage">
-        <canvas id="c" width="1400" height="1400"></canvas>
+      <div class="viz">
+        <header class="lead">
+          <h1>Starlink</h1>
+          <p class="meta" data-meta></p>
+          <p class="pick" data-pick>Tap a satellite</p>
+        </header>
+        <div class="stage">
+          <canvas id="c" width="1400" height="1400"></canvas>
+        </div>
       </div>
-      <div class="filters" data-filters>
-        <label class="chk all"><input type="checkbox" data-all checked> All</label>
+      <div class="side">
+        <div class="filters" data-filters>
+          <label class="chk all"><input type="checkbox" data-all checked> All</label>
+        </div>
+        <p class="hint">Scroll or pinch to zoom. Drag to pan. Double-click to reset.<br>Color coding: Hue denotes the shell, transparency the distance from the median altitude in that shell.<br>Orbital data from <a href="https://celestrak.org/" target="_blank" rel="noopener">Celestrak</a>. Axes are <a href="https://en.wikipedia.org/wiki/Mean_anomaly" target="_blank" rel="noopener">Anomaly</a> and <a href="https://en.wikipedia.org/wiki/Longitude_of_the_ascending_node" target="_blank" rel="noopener">RAAN</a>.</p>
       </div>
     </div>
-    <p class="hint">Scroll or pinch to zoom. Drag to pan. Double-click to reset.<br>Color coding: Hue denotes the shell, transparency the distance from the median altitude in that shell.<br>Orbital data from <a href="https://celestrak.org/" target="_blank" rel="noopener">Celestrak</a>. Axes are <a href="https://en.wikipedia.org/wiki/Mean_anomaly" target="_blank" rel="noopener">Anomaly</a> and <a href="https://en.wikipedia.org/wiki/Longitude_of_the_ascending_node" target="_blank" rel="noopener">RAAN</a>.</p>
   </main>
   <script>
     (function () {
@@ -59,6 +63,24 @@
 
       var canvas = document.getElementById("c");
       var ctx = canvas.getContext("2d");
+      function fitPlot() {
+        var landscape = window.matchMedia("(orientation: landscape)").matches;
+        var viz = document.querySelector(".viz");
+        var lead = document.querySelector(".lead");
+        if (landscape) {
+          var side = Math.floor(viz.clientHeight - lead.offsetHeight);
+          if (side < 200) side = 200;
+          canvas.style.width = side + "px";
+          canvas.style.height = side + "px";
+        } else {
+          var side = Math.floor(viz.clientWidth);
+          canvas.style.width = side + "px";
+          canvas.style.height = side + "px";
+        }
+      }
+      window.addEventListener("resize", fitPlot);
+      window.addEventListener("orientationchange", function () { setTimeout(fitPlot, 80); });
+      fitPlot();
       var data = null, selected = -1;
       var on = {};
       var view = { k: 1, tx: 0, ty: 0 };
@@ -463,6 +485,7 @@
           data = j;
           buildShellStats();
           buildFilters();
+          fitPlot();
           draw();
         })
         .catch(function () {
