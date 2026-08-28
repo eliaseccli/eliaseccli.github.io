@@ -241,7 +241,8 @@
     meteor = null;
     var canvas = document.querySelector("canvas.stars");
     if (!canvas) {
-      window.location.href = "./teslastores/";
+      try { sessionStorage.setItem("homeSecret", "1"); } catch (err) {}
+      window.location.href = "./secret/";
       return;
     }
     var ctx = canvas.getContext("2d");
@@ -324,8 +325,11 @@
       overlay.style.opacity = String(Math.max(0, (t - 0.28) / 0.72));
       if (t < 1) requestAnimationFrame(warp);
       else {
-        try { sessionStorage.setItem("homePlaid", "1"); } catch (err) {}
-        window.location.href = "./teslastores/";
+        try {
+          sessionStorage.setItem("homePlaid", "1");
+          sessionStorage.setItem("homeSecret", "1");
+        } catch (err) {}
+        window.location.href = "./secret/";
       }
     }
     requestAnimationFrame(warp);
