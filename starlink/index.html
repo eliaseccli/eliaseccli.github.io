@@ -148,7 +148,12 @@
         ctx.beginPath();
         ctx.rect(p, p, s, s);
         ctx.clip();
-        var r = Math.max(1.8, Math.min(5.5, 2.3 * Math.pow(view.k, 0.28)));
+        var nVis = Math.max(1, visibleCount());
+        var r = 2.6 + 24 / Math.pow(nVis, 0.42);
+        if (r > 7.1) r = 7.1;
+        if (r < 3.1) r = 3.1;
+        r *= Math.pow(view.k, 0.22);
+        if (r > 8.2) r = 8.2;
         for (var i = 0; i < data.sats.length; i++) {
           var sat = data.sats[i];
           if (!on[sat.s]) continue;
@@ -296,45 +301,100 @@
         resetView();
       });
 
-      function syncAllBox() {
+      var INC_LABEL = { 43: "43°", 53: "53°", 70: "70°", 97: "97.6°" };
+
+      function shellsOf(inc) {
+        return data.shells.filter(function (s) { return s.inc === inc; });
+      }
+      function incOrder() {
+        var seen = [];
+        data.shells.forEach(function (s) {
+          if (seen.indexOf(s.inc) === -1) seen.push(s.inc);
+        });
+        return seen;
+      }
+      function clearIfHidden() {
+        if (selected >= 0 && !on[data.sats[selected].s]) {
+          selected = -1;
+          showPick(-1);
+        }
+      }
+      function setShellChecks(ids, v) {
+        ids.forEach(function (id) {
+          on[id] = v;
+          var el = document.querySelector('[data-shell="' + id + '"]');
+          if (el) { el.checked = v; el.indeterminate = false; }
+        });
+      }
+      function syncTree() {
         var allBox = document.querySelector("[data-all]");
-        var ids = data.shells.map(function (s) { return s.id; });
-        var nOn = ids.filter(function (id) { return on[id]; }).length;
-        allBox.checked = nOn === ids.length;
-        allBox.indeterminate = nOn > 0 && nOn < ids.length;
+        var allIds = data.shells.map(function (s) { return s.id; });
+        var nAll = allIds.filter(function (id) { return on[id]; }).length;
+        allBox.checked = nAll === allIds.length;
+        allBox.indeterminate = nAll > 0 && nAll < allIds.length;
+        incOrder().forEach(function (inc) {
+          var ids = shellsOf(inc).map(function (s) { return s.id; });
+          var nOn = ids.filter(function (id) { return on[id]; }).length;
+          var box = document.querySelector('[data-inc="' + inc + '"]');
+          if (!box) return;
+          box.checked = nOn === ids.length && ids.length > 0;
+          box.indeterminate = nOn > 0 && nOn < ids.length;
+        });
       }
 
       function buildFilters() {
         var root = document.querySelector("[data-filters]");
-        var allLab = root.querySelector(".all");
-        data.shells.forEach(function (sh) {
-          on[sh.id] = true;
-          var lab = document.createElement("label");
-          lab.className = "chk";
-          lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
-            "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
-            sh.label + " <em>" + sh.n + "</em>";
-          root.appendChild(lab);
+        data.shells.forEach(function (sh) { on[sh.id] = true; });
+        incOrder().forEach(function (inc) {
+          var group = shellsOf(inc);
+          var n = group.reduce(function (a, s) { return a + s.n; }, 0);
+          var det = document.createElement("details");
+          det.className = "inc-block";
+          if (inc === 53) det.open = true;
+          var sum = document.createElement("summary");
+          var incLab = document.createElement("label");
+          incLab.className = "chk inc";
+          incLab.innerHTML = "<input type=\"checkbox\" data-inc=\"" + inc + "\" checked> " +
+            (INC_LABEL[inc] || (inc + "°")) + " <em>" + n + "</em>";
+          incLab.addEventListener("click", function (e) { e.stopPropagation(); });
+          sum.appendChild(incLab);
+          det.appendChild(sum);
+          var heights = document.createElement("div");
+          heights.className = "heights";
+          group.forEach(function (sh) {
+            var lab = document.createElement("label");
+            lab.className = "chk";
+            lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
+              "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
+              sh.km + " km <em>" + sh.n + "</em>";
+            heights.appendChild(lab);
+          });
+          det.appendChild(heights);
+          root.appendChild(det);
         });
+
         root.querySelector("[data-all]").addEventListener("change", function () {
-          var v = this.checked;
-          data.shells.forEach(function (sh) { on[sh.id] = v; });
-          root.querySelectorAll("[data-shell]").forEach(function (el) { el.checked = v; });
+          setShellChecks(data.shells.map(function (s) { return s.id; }), this.checked);
           this.indeterminate = false;
-          if (selected >= 0 && !on[data.sats[selected].s]) {
-            selected = -1;
-            showPick(-1);
-          }
+          clearIfHidden();
+          syncTree();
           draw();
+        });
+        root.querySelectorAll("[data-inc]").forEach(function (el) {
+          el.addEventListener("change", function () {
+            var inc = parseInt(this.getAttribute("data-inc"), 10);
+            setShellChecks(shellsOf(inc).map(function (s) { return s.id; }), this.checked);
+            this.indeterminate = false;
+            clearIfHidden();
+            syncTree();
+            draw();
+          });
         });
         root.querySelectorAll("[data-shell]").forEach(function (el) {
           el.addEventListener("change", function () {
             on[this.getAttribute("data-shell")] = this.checked;
-            if (selected >= 0 && !on[data.sats[selected].s]) {
-              selected = -1;
-              showPick(-1);
-            }
-            syncAllBox();
+            clearIfHidden();
+            syncTree();
             draw();
           });
         });
