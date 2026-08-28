@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050508">
+  <meta name="color-scheme" content="dark">
+  <title>Starlink · Elias Eccli</title>
+  <link rel="stylesheet" href="./starlink.css">
+</head>
+<body>
+  <nav class="nav" data-nav>
+    <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-list" id="nav-list" hidden>
+      <li><a href="../">home</a></li>
+      <li><a href="../teslastores/">teslastores</a></li>
+      <li><a href="./">starlink</a></li>
+      <li><a href="../projects/">projects</a></li>
+    </ul>
+  </nav>
+  <main class="page">
+    <header class="lead">
+      <h1>Starlink</h1>
+      <p class="sub">Current constellation shells from Celestrak GP. One plot per inclination and altitude. Updates daily.</p>
+      <p class="meta" data-meta></p>
+    </header>
+    <div data-gallery></div>
+  </main>
+  <script>
+    (function () {
+      var nav = document.querySelector("[data-nav]");
+      var btn = document.querySelector("[data-nav-btn]");
+      var list = document.getElementById("nav-list");
+      function setNav(open) {
+        nav.classList.toggle("is-open", open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        list.hidden = !open;
+      }
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        setNav(!nav.classList.contains("is-open"));
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") setNav(false);
+      });
+      document.addEventListener("click", function (e) {
+        if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
+      });
+
+      fetch("./meta.json", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (meta) {
+          var el = document.querySelector("[data-meta]");
+          if (el && meta.updated) {
+            var d = new Date(meta.updated);
+            el.textContent = "Updated " + d.toISOString().slice(0, 16).replace("T", " ") + " UTC · " + (meta.n || "") + " objects · " + (meta.source || "");
+          }
+          var root = document.querySelector("[data-gallery]");
+          (meta.sections || []).forEach(function (sec) {
+            if (!sec.shells || !sec.shells.length) return;
+            var s = document.createElement("section");
+            s.className = "inc";
+            var h = document.createElement("h2");
+            h.textContent = sec.label;
+            s.appendChild(h);
+            sec.shells.forEach(function (sh) {
+              var fig = document.createElement("figure");
+              var img = document.createElement("img");
+              img.src = "./" + sh.file;
+              img.alt = "Starlink " + sec.label + " ~" + sh.km + " km";
+              img.loading = "lazy";
+              var cap = document.createElement("figcaption");
+              cap.textContent = "~" + sh.km + " km" + (sh.n ? "  ·  n=" + sh.n : "");
+              fig.appendChild(img);
+              fig.appendChild(cap);
+              s.appendChild(fig);
+            });
+            root.appendChild(s);
+          });
+        })
+        .catch(function () {
+          document.querySelector("[data-meta]").textContent = "Gallery index missing.";
+        });
+    })();
+  </script>
+</body>
+</html>
