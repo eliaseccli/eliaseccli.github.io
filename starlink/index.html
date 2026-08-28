@@ -198,8 +198,8 @@
           if (!on[sat.s] || i === selected) continue;
           var xy = toPix(sat.x, sat.y);
           var hex = colorOf(sat.s);
-          ctx.fillStyle = dim ? hexToRgba(hex, 0.1) : satFill(sat);
-          ctx.strokeStyle = dim ? hexToRgba(hex, 0.1) : hex;
+          ctx.fillStyle = dim ? hexToRgba(hex, 0.3) : satFill(sat);
+          ctx.strokeStyle = dim ? hexToRgba(hex, 0.3) : hex;
           ctx.lineWidth = lw;
           ctx.beginPath();
           ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
