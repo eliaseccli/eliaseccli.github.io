@@ -117,6 +117,7 @@ html, body { overflow-x: hidden; }
 .lead { flex: 0 0 auto; }
 .lead h1 { margin: 0 0 0.25rem; font-size: clamp(1.7rem, 5vw, 2.6rem); font-weight: 560; letter-spacing: -0.03em; }
 .meta, .hint { margin: 0 0 0.3rem; color: var(--mute); line-height: 1.45; }
+.hint p { margin: 0; }
 .meta { font-size: 0.92rem; }
 .pick { margin: 0.45rem 0 0; height: 3.35rem; overflow: hidden; color: var(--ink); }
 .pick strong { display: block; font-size: 1.05rem; margin-bottom: 0.15rem; }
@@ -202,7 +203,12 @@ canvas.drag { cursor: grabbing; }
   display: flex; flex-direction: column; gap: 0.18rem;
   padding: 0.1rem 0 0.35rem 1.7rem;
 }
-.hint { margin-top: 0.85rem; font-size: 0.94rem; }
-.hint br { display: block; content: ""; margin-top: 0.45rem; }
+.hint {
+  margin-top: 0.85rem;
+  font-size: 0.94rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
 .hint a { color: rgba(255, 255, 255, 0.58); text-underline-offset: 2px; }
 .hint a:hover { color: #fff; }
