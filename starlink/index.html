@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050508">
   <meta name="color-scheme" content="dark">
   <title>Starlink · Elias Eccli</title>
@@ -23,10 +23,16 @@
   <main class="page">
     <header class="lead">
       <h1>Starlink</h1>
-      <p class="sub">Current constellation shells from Celestrak GP. One plot per inclination and altitude. Updates daily.</p>
       <p class="meta" data-meta></p>
+      <p class="pick" data-pick>Tap a satellite</p>
     </header>
-    <div data-gallery></div>
+    <div class="stage">
+      <canvas id="c" width="1400" height="1400"></canvas>
+    </div>
+    <div class="filters" data-filters>
+      <label class="chk all"><input type="checkbox" data-all checked> All</label>
+    </div>
+    <p class="hint">Scroll or pinch to zoom. Drag to pan. Double-click to reset.</p>
   </main>
   <script>
     (function () {
@@ -49,40 +55,300 @@
         if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
       });
 
-      fetch("./meta.json", { cache: "no-store" })
-        .then(function (r) { return r.json(); })
-        .then(function (meta) {
-          var el = document.querySelector("[data-meta]");
-          if (el && meta.updated) {
-            var d = new Date(meta.updated);
-            el.textContent = "Updated " + d.toISOString().slice(0, 16).replace("T", " ") + " UTC · " + (meta.n || "") + " objects · " + (meta.source || "");
+      var canvas = document.getElementById("c");
+      var ctx = canvas.getContext("2d");
+      var data = null, selected = -1;
+      var on = {};
+      var view = { k: 1, tx: 0, ty: 0 };
+      var KMIN = 1, KMAX = 28;
+      var pointers = {};
+      var pinch = null;
+      var drag = null;
+      var moved = false;
+
+      function pad() { return 56; }
+      function cssToCanvas(cssX, cssY) {
+        var rect = canvas.getBoundingClientRect();
+        return [cssX * canvas.width / rect.width, cssY * canvas.height / rect.height];
+      }
+      function basePix(x, y) {
+        var p = pad(), s = canvas.width - 2 * p;
+        return [p + (x / 360) * s, p + (1 - y / 360) * s];
+      }
+      function toPix(x, y) {
+        var b = basePix(x, y);
+        return [b[0] * view.k + view.tx, b[1] * view.k + view.ty];
+      }
+      function fromCanvas(cx, cy) {
+        var p = pad(), s = canvas.width - 2 * p;
+        var bx = (cx - view.tx) / view.k;
+        var by = (cy - view.ty) / view.k;
+        return [(bx - p) / s * 360, (1 - (by - p) / s) * 360];
+      }
+      function clampView() {
+        view.k = Math.max(KMIN, Math.min(KMAX, view.k));
+        var p = pad(), s = canvas.width - 2 * p;
+        var left = p * view.k + view.tx;
+        var top = p * view.k + view.ty;
+        var right = (p + s) * view.k + view.tx;
+        var bottom = (p + s) * view.k + view.ty;
+        if (left > p) view.tx += p - left;
+        if (top > p) view.ty += p - top;
+        if (right < p + s) view.tx += (p + s) - right;
+        if (bottom < p + s) view.ty += (p + s) - bottom;
+      }
+      function zoomAt(cx, cy, factor) {
+        var k2 = Math.max(KMIN, Math.min(KMAX, view.k * factor));
+        var f = k2 / view.k;
+        view.tx = cx - (cx - view.tx) * f;
+        view.ty = cy - (cy - view.ty) * f;
+        view.k = k2;
+        clampView();
+      }
+      function resetView() {
+        view.k = 1; view.tx = 0; view.ty = 0;
+        draw();
+      }
+      function colorOf(sid) {
+        for (var i = 0; i < data.shells.length; i++) {
+          if (data.shells[i].id === sid) return data.shells[i].color;
+        }
+        return "#fff";
+      }
+      function visibleCount() {
+        var n = 0;
+        for (var i = 0; i < data.sats.length; i++) if (on[data.sats[i].s]) n++;
+        return n;
+      }
+      function updateMeta() {
+        if (!data) return;
+        var d = new Date(data.epoch);
+        document.querySelector("[data-meta]").textContent =
+          d.toISOString().slice(0, 10) + "  " + d.toISOString().slice(11, 16) + " UTC  ·  " +
+          visibleCount() + " / " + data.n + " satellites";
+      }
+
+      function draw() {
+        if (!data) return;
+        var w = canvas.width, p = pad(), s = w - 2 * p;
+        ctx.fillStyle = "#0a0a10";
+        ctx.fillRect(0, 0, w, w);
+        ctx.strokeStyle = "rgba(255,255,255,.12)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(p, p, s, s);
+        ctx.fillStyle = "rgba(255,255,255,.45)";
+        ctx.font = "22px system-ui,sans-serif";
+        ctx.fillText("Anomaly (deg)", p + s / 2 - 70, w - 16);
+        ctx.save();
+        ctx.translate(20, p + s / 2 + 50);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText("RAAN (deg)", 0, 0);
+        ctx.restore();
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(p, p, s, s);
+        ctx.clip();
+        var r = Math.max(1.8, Math.min(5.5, 2.3 * Math.pow(view.k, 0.28)));
+        for (var i = 0; i < data.sats.length; i++) {
+          var sat = data.sats[i];
+          if (!on[sat.s]) continue;
+          var xy = toPix(sat.x, sat.y);
+          ctx.fillStyle = colorOf(sat.s);
+          ctx.beginPath();
+          ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (selected >= 0 && on[data.sats[selected].s]) {
+          var sat = data.sats[selected];
+          var xy = toPix(sat.x, sat.y);
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(xy[0], xy[1], r + 5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = "#fff";
+          ctx.font = "26px system-ui,sans-serif";
+          ctx.fillText(sat.name, xy[0] + 12, xy[1] - 10);
+        }
+        ctx.restore();
+        updateMeta();
+      }
+
+      function nearest(cssX, cssY) {
+        var cxy = cssToCanvas(cssX, cssY);
+        var xy = fromCanvas(cxy[0], cxy[1]);
+        var best = -1, bestD = 1e9;
+        for (var i = 0; i < data.sats.length; i++) {
+          if (!on[data.sats[i].s]) continue;
+          var dx = data.sats[i].x - xy[0], dy = data.sats[i].y - xy[1];
+          var d = dx * dx + dy * dy;
+          if (d < bestD) { bestD = d; best = i; }
+        }
+        if (best < 0) return -1;
+        var pix = toPix(data.sats[best].x, data.sats[best].y);
+        var distPx = Math.hypot(pix[0] - cxy[0], pix[1] - cxy[1]);
+        var rect = canvas.getBoundingClientRect();
+        return distPx * (rect.width / canvas.width) <= 16 ? best : -1;
+      }
+
+      function showPick(i) {
+        var el = document.querySelector("[data-pick]");
+        if (i < 0) { el.textContent = "Tap a satellite"; return; }
+        var sat = data.sats[i];
+        var sh = data.shells.find(function (s) { return s.id === sat.s; });
+        el.innerHTML = "<strong>" + sat.name + "</strong>" +
+          sat.alt.toFixed(1) + " km · " + (sh ? sh.label : sat.s) + " · NORAD " + sat.id;
+      }
+
+      function eventCss(e) {
+        var rect = canvas.getBoundingClientRect();
+        return [e.clientX - rect.left, e.clientY - rect.top];
+      }
+
+      canvas.addEventListener("wheel", function (e) {
+        e.preventDefault();
+        var css = eventCss(e);
+        var cxy = cssToCanvas(css[0], css[1]);
+        zoomAt(cxy[0], cxy[1], e.deltaY < 0 ? 1.12 : 1 / 1.12);
+        draw();
+      }, { passive: false });
+
+      canvas.addEventListener("pointerdown", function (e) {
+        canvas.setPointerCapture(e.pointerId);
+        var css = eventCss(e);
+        pointers[e.pointerId] = { x: css[0], y: css[1] };
+        var ids = Object.keys(pointers);
+        if (ids.length === 2) {
+          var a = pointers[ids[0]], b = pointers[ids[1]];
+          pinch = {
+            dist: Math.hypot(a.x - b.x, a.y - b.y),
+            mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2,
+            k: view.k, tx: view.tx, ty: view.ty
+          };
+          drag = null;
+        } else {
+          drag = { x: css[0], y: css[1], tx: view.tx, ty: view.ty };
+          moved = false;
+        }
+      });
+
+      canvas.addEventListener("pointermove", function (e) {
+        if (!pointers[e.pointerId]) return;
+        var css = eventCss(e);
+        pointers[e.pointerId] = { x: css[0], y: css[1] };
+        var ids = Object.keys(pointers);
+        if (pinch && ids.length === 2) {
+          var a = pointers[ids[0]], b = pointers[ids[1]];
+          var dist = Math.hypot(a.x - b.x, a.y - b.y);
+          var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          var cxy = cssToCanvas(pinch.mx, pinch.my);
+          view.k = pinch.k; view.tx = pinch.tx; view.ty = pinch.ty;
+          if (pinch.dist > 4) zoomAt(cxy[0], cxy[1], dist / pinch.dist);
+          var nxy = cssToCanvas(mx, my), oxy = cssToCanvas(pinch.mx, pinch.my);
+          view.tx += nxy[0] - oxy[0];
+          view.ty += nxy[1] - oxy[1];
+          clampView();
+          moved = true;
+          draw();
+          return;
+        }
+        if (drag && ids.length === 1) {
+          var dx = css[0] - drag.x, dy = css[1] - drag.y;
+          if (Math.hypot(dx, dy) > 6) {
+            moved = true;
+            canvas.classList.add("drag");
           }
-          var root = document.querySelector("[data-gallery]");
-          (meta.sections || []).forEach(function (sec, i) {
-            if (!sec.shells || !sec.shells.length) return;
-            var s = document.createElement("details");
-            s.className = "inc";
-            if (i === 0) s.open = true;
-            var h = document.createElement("summary");
-            h.textContent = sec.label;
-            s.appendChild(h);
-            sec.shells.forEach(function (sh) {
-              var fig = document.createElement("figure");
-              var img = document.createElement("img");
-              img.src = "./" + sh.file;
-              img.alt = "Starlink " + sec.label + " height " + sh.km + " km";
-              img.loading = "lazy";
-              var cap = document.createElement("figcaption");
-              cap.textContent = "height " + sh.km + " km" + (sh.n ? "  ·  " + sh.n + " satellites" : "");
-              fig.appendChild(img);
-              fig.appendChild(cap);
-              s.appendChild(fig);
-            });
-            root.appendChild(s);
+          if (moved) {
+            var c0 = cssToCanvas(drag.x, drag.y);
+            var c1 = cssToCanvas(css[0], css[1]);
+            view.tx = drag.tx + (c1[0] - c0[0]);
+            view.ty = drag.ty + (c1[1] - c0[1]);
+            clampView();
+            draw();
+          }
+        }
+      });
+
+      function endPtr(e) {
+        var css = eventCss(e);
+        delete pointers[e.pointerId];
+        var ids = Object.keys(pointers);
+        if (ids.length < 2) pinch = null;
+        if (ids.length === 1) {
+          var p = pointers[ids[0]];
+          drag = { x: p.x, y: p.y, tx: view.tx, ty: view.ty };
+        }
+        if (ids.length === 0) {
+          canvas.classList.remove("drag");
+          if (!moved) {
+            selected = nearest(css[0], css[1]);
+            showPick(selected);
+            draw();
+          }
+          drag = null;
+          moved = false;
+        }
+      }
+      canvas.addEventListener("pointerup", endPtr);
+      canvas.addEventListener("pointercancel", endPtr);
+      canvas.addEventListener("dblclick", function (e) {
+        e.preventDefault();
+        resetView();
+      });
+
+      function syncAllBox() {
+        var allBox = document.querySelector("[data-all]");
+        var ids = data.shells.map(function (s) { return s.id; });
+        var nOn = ids.filter(function (id) { return on[id]; }).length;
+        allBox.checked = nOn === ids.length;
+        allBox.indeterminate = nOn > 0 && nOn < ids.length;
+      }
+
+      function buildFilters() {
+        var root = document.querySelector("[data-filters]");
+        var allLab = root.querySelector(".all");
+        data.shells.forEach(function (sh) {
+          on[sh.id] = true;
+          var lab = document.createElement("label");
+          lab.className = "chk";
+          lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
+            "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
+            sh.label + " <em>" + sh.n + "</em>";
+          root.appendChild(lab);
+        });
+        root.querySelector("[data-all]").addEventListener("change", function () {
+          var v = this.checked;
+          data.shells.forEach(function (sh) { on[sh.id] = v; });
+          root.querySelectorAll("[data-shell]").forEach(function (el) { el.checked = v; });
+          this.indeterminate = false;
+          if (selected >= 0 && !on[data.sats[selected].s]) {
+            selected = -1;
+            showPick(-1);
+          }
+          draw();
+        });
+        root.querySelectorAll("[data-shell]").forEach(function (el) {
+          el.addEventListener("change", function () {
+            on[this.getAttribute("data-shell")] = this.checked;
+            if (selected >= 0 && !on[data.sats[selected].s]) {
+              selected = -1;
+              showPick(-1);
+            }
+            syncAllBox();
+            draw();
           });
+        });
+      }
+
+      fetch("./sats.json", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          data = j;
+          buildFilters();
+          draw();
         })
         .catch(function () {
-          document.querySelector("[data-meta]").textContent = "Gallery index missing.";
+          document.querySelector("[data-meta]").textContent = "Sat list missing.";
         });
     })();
   </script>
