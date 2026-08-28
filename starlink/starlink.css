@@ -117,7 +117,6 @@ html, body { overflow-x: hidden; }
 .lead { flex: 0 0 auto; }
 .lead h1 { margin: 0 0 0.25rem; font-size: clamp(1.7rem, 5vw, 2.6rem); font-weight: 560; letter-spacing: -0.03em; }
 .meta, .hint { margin: 0 0 0.3rem; color: var(--mute); line-height: 1.45; }
-.hint p { margin: 0; }
 .meta { font-size: 0.92rem; }
 .pick { margin: 0.45rem 0 0; height: 3.35rem; overflow: hidden; color: var(--ink); }
 .pick strong { display: block; font-size: 1.05rem; margin-bottom: 0.15rem; }
@@ -159,9 +158,9 @@ canvas.drag { cursor: grabbing; }
   }
   .stage { margin-top: 0; flex: 0 0 auto; }
   .side {
-    width: 17.5rem;
+    width: 22rem;
     flex-shrink: 0;
-    overflow: hidden;
+    overflow: visible;
   }
   .filters { margin-top: 0; }
   .lead h1 { font-size: 1.7rem; }
@@ -206,9 +205,16 @@ canvas.drag { cursor: grabbing; }
 .hint {
   margin-top: 0.85rem;
   font-size: 0.94rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
 }
-.hint a { color: rgba(255, 255, 255, 0.58); text-underline-offset: 2px; }
+.hint p {
+  display: block;
+  margin: 0;
+  white-space: normal;
+}
+.hint p + p { margin-top: 0.55rem; }
+.hint a {
+  display: inline;
+  color: rgba(255, 255, 255, 0.58);
+  text-underline-offset: 2px;
+}
 .hint a:hover { color: #fff; }
