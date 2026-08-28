@@ -224,7 +224,6 @@
 
     var gate = document.querySelector("[data-gate]");
     var input = document.querySelector("[data-pass]");
-    var bloom = document.querySelector(".bloom");
     var hint = document.querySelector("[data-hint]");
     if (input) {
       input.blur();
@@ -258,10 +257,9 @@
     var tx = rect.left + rect.width / 2;
     var ty = rect.top + rect.height / 2;
     var corner = Math.floor(Math.random() * 4);
-    var expandDur = 1000;
-    var travelDur = 12444;
-    var contractDur = 1000;
-    var dur = expandDur + travelDur + contractDur;
+    var dur = 12444;
+    var growFor = 0.18;
+    var shrinkFor = 0.18;
     var started = performance.now();
     var lastW = 0;
     var lastH = 0;
@@ -301,31 +299,22 @@
       var x0 = pair[0], y0 = pair[1], x1 = pair[2], y1 = pair[3];
       var elapsed = now - started;
       var t = Math.min(1, elapsed / dur);
-      var hx, hy, rScale, travelT;
+      var e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      var hx = x0 + (x1 - x0) * e;
+      var hy = y0 + (y1 - y0) * e;
       var R = 28 + Math.min(w, h) * 0.078;
-      if (elapsed < expandDur) {
-        var u = elapsed / expandDur;
-        var e = 1 - Math.pow(1 - u, 3);
-        hx = x0;
-        hy = y0;
-        rScale = e;
-        travelT = 0;
-      } else if (elapsed < expandDur + travelDur) {
-        var u = (elapsed - expandDur) / travelDur;
-        var e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-        hx = x0 + (x1 - x0) * e;
-        hy = y0 + (y1 - y0) * e;
-        rScale = 1;
-        travelT = u;
+      var rScale;
+      if (e < growFor) {
+        var u = e / growFor;
+        rScale = 1 - Math.pow(1 - u, 3);
+      } else if (e > 1 - shrinkFor) {
+        var u = (e - (1 - shrinkFor)) / shrinkFor;
+        rScale = 1 - u * u * u;
       } else {
-        var u = Math.min(1, (elapsed - expandDur - travelDur) / contractDur);
-        var e = u * u * u;
-        hx = x1;
-        hy = y1;
-        rScale = 1 - e;
-        travelT = 1;
+        rScale = 1;
       }
       var r = Math.max(0.4, R * rScale);
+      var travelT = e;
 
       paintLensedStars(hx, hy, r);
       hctx.clearRect(0, 0, w, h);
@@ -365,22 +354,6 @@
           "contrast(" + (1 + pull * 0.8).toFixed(2) + ") brightness(" +
           (1 - suck * 0.55).toFixed(2) + ") blur(" + (suck * 2.4).toFixed(2) + "px)";
         gate.style.opacity = eaten && travelT > 0.62 ? "0" : String(1 - suck * 0.25);
-      }
-      if (bloom) {
-        var bPull = Math.max(0, 1 - dist / (Math.hypot(w, h) * 0.55));
-        bloom.style.transformOrigin = hx + "px " + hy + "px";
-        bloom.style.transform =
-          "translate(" + (dx * bPull * 0.08).toFixed(1) + "px," +
-          (dy * bPull * 0.08).toFixed(1) + "px) scale(" +
-          (1 + bPull * 0.22).toFixed(3) + ")";
-        bloom.style.filter =
-          "blur(" + (40 + bPull * 18).toFixed(1) + "px) contrast(" +
-          (1 + bPull * 0.7).toFixed(2) + ") saturate(" +
-          (1 + bPull * 0.4).toFixed(2) + ")";
-        var fade = elapsed > expandDur + travelDur
-          ? Math.max(0, 1 - (elapsed - expandDur - travelDur) / contractDur)
-          : 1;
-        bloom.style.opacity = String(fade);
       }
 
       if (elapsed < dur) requestAnimationFrame(tick);
