@@ -95,3 +95,5 @@ canvas.drag { cursor: grabbing; }
   padding: 0.1rem 0 0.35rem 1.7rem;
 }
 .hint { margin-top: 0.85rem; font-size: 0.82rem; }
+.hint a { color: rgba(255, 255, 255, 0.58); text-underline-offset: 2px; }
+.hint a:hover { color: #fff; }
