@@ -324,11 +324,10 @@
         }
       });
 
-      function clearPick() {
-        if (selected < 0) return;
-        selected = -1;
-        showPick(-1);
-        draw();
+      function inPlotField(cssX, cssY) {
+        var cxy = cssToCanvas(cssX, cssY);
+        var p = pad(), s = canvas.width - 2 * p;
+        return cxy[0] >= p && cxy[0] <= p + s && cxy[1] >= p && cxy[1] <= p + s;
       }
       function endPtr(e) {
         var css = eventCss(e);
@@ -341,7 +340,7 @@
         }
         if (ids.length === 0) {
           canvas.classList.remove("drag");
-          if (!moved) {
+          if (!moved && inPlotField(css[0], css[1])) {
             selected = selected >= 0 ? -1 : nearest(css[0], css[1]);
             showPick(selected);
             draw();
@@ -352,10 +351,6 @@
       }
       canvas.addEventListener("pointerup", endPtr);
       canvas.addEventListener("pointercancel", endPtr);
-      document.addEventListener("pointerdown", function (e) {
-        if (e.target === canvas) return;
-        clearPick();
-      });
       canvas.addEventListener("dblclick", function (e) {
         e.preventDefault();
         resetView();
