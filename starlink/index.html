@@ -191,13 +191,16 @@
         var rMax = rMin * 8;
         var r = rMin * Math.pow(view.k, Math.log(rMax / rMin) / Math.log(KMAX));
         if (r > rMax) r = rMax;
+        var dim = selected >= 0 && on[data.sats[selected].s];
+        var lw = Math.max(0.9, r * 0.28);
         for (var i = 0; i < data.sats.length; i++) {
           var sat = data.sats[i];
-          if (!on[sat.s]) continue;
+          if (!on[sat.s] || i === selected) continue;
           var xy = toPix(sat.x, sat.y);
-          ctx.fillStyle = satFill(sat);
-          ctx.strokeStyle = colorOf(sat.s);
-          ctx.lineWidth = Math.max(0.9, r * 0.28);
+          var hex = colorOf(sat.s);
+          ctx.fillStyle = dim ? hexToRgba(hex, 0.1) : satFill(sat);
+          ctx.strokeStyle = dim ? hexToRgba(hex, 0.1) : hex;
+          ctx.lineWidth = lw;
           ctx.beginPath();
           ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
           ctx.fill();
@@ -206,6 +209,13 @@
         if (selected >= 0 && on[data.sats[selected].s]) {
           var sat = data.sats[selected];
           var xy = toPix(sat.x, sat.y);
+          ctx.fillStyle = satFill(sat);
+          ctx.strokeStyle = colorOf(sat.s);
+          ctx.lineWidth = lw;
+          ctx.beginPath();
+          ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
           ctx.strokeStyle = "#fff";
           ctx.lineWidth = 2;
           ctx.beginPath();
