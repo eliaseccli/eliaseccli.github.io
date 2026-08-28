@@ -1,0 +1,96 @@
+{
+  "updated": "2026-08-28T08:05:32Z",
+  "source": "Celestrak GP JSON",
+  "n": 11042,
+  "sections": [
+    {
+      "inc": 53,
+      "label": "53\u00b0  main",
+      "shells": [
+        {
+          "km": 360,
+          "n": 319,
+          "file": "inc53_shell360.png"
+        },
+        {
+          "km": 460,
+          "n": 355,
+          "file": "inc53_shell460.png"
+        },
+        {
+          "km": 463,
+          "n": 2597,
+          "file": "inc53_shell463.png"
+        },
+        {
+          "km": 465,
+          "n": 232,
+          "file": "inc53_shell465.png"
+        },
+        {
+          "km": 471,
+          "n": 983,
+          "file": "inc53_shell471.png"
+        },
+        {
+          "km": 540,
+          "n": 131,
+          "file": "inc53_shell540.png"
+        }
+      ]
+    },
+    {
+      "inc": 43,
+      "label": "43\u00b0",
+      "shells": [
+        {
+          "km": 356,
+          "n": 326,
+          "file": "inc43_shell356.png"
+        },
+        {
+          "km": 483,
+          "n": 3220,
+          "file": "inc43_shell483.png"
+        }
+      ]
+    },
+    {
+      "inc": 70,
+      "label": "70\u00b0  polar",
+      "shells": [
+        {
+          "km": 350,
+          "n": 27,
+          "file": "inc70_shell350.png"
+        },
+        {
+          "km": 572,
+          "n": 646,
+          "file": "inc70_shell572.png"
+        }
+      ]
+    },
+    {
+      "inc": 97,
+      "label": "97.6\u00b0  polar",
+      "shells": [
+        {
+          "km": 344,
+          "n": 117,
+          "file": "inc97_shell344.png"
+        },
+        {
+          "km": 465,
+          "n": 1053,
+          "file": "inc97_shell465.png"
+        },
+        {
+          "km": 549,
+          "n": 133,
+          "file": "inc97_shell549.png"
+        }
+      ]
+    }
+  ]
+}
