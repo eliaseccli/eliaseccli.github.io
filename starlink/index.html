@@ -148,12 +148,8 @@
         ctx.beginPath();
         ctx.rect(p, p, s, s);
         ctx.clip();
-        var nVis = Math.max(1, visibleCount());
-        var r = 2.6 + 24 / Math.pow(nVis, 0.42);
-        if (r > 7.1) r = 7.1;
-        if (r < 3.1) r = 3.1;
-        r *= Math.pow(view.k, 0.22);
-        if (r > 8.2) r = 8.2;
+        var r = 3.3 * Math.pow(view.k, 0.45);
+        if (r > 10) r = 10;
         for (var i = 0; i < data.sats.length; i++) {
           var sat = data.sats[i];
           if (!on[sat.s]) continue;
