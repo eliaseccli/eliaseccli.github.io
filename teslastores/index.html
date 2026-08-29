@@ -134,3 +134,105 @@
   transform: scaleX(0);
 }
 .nav.is-open .nav-btn span:nth-of-type(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+.nav-list {
+  position: relative;
+  isolation: isolate;
+  margin: 0.45rem 0 0;
+  padding: 0.32rem;
+  list-style: none;
+  min-width: 10.6rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.85rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 14px 32px rgba(0, 0, 0, 0.34);
+}
+
+.nav-list::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(8, 8, 14, 0.72);
+  backdrop-filter: blur(22px) saturate(1.55);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  pointer-events: none;
+}
+
+.nav-list a {
+  display: block;
+  padding: 0.55rem 0.72rem;
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  border-radius: 0.58rem;
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+
+.nav-list a:hover {
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn:focus-visible,
+.nav-list a:focus-visible {
+  outline: 2px solid rgba(190, 220, 255, 0.7);
+  outline-offset: 2px;
+}
+  </style>
+</head>
+<body>
+  <nav class="nav" data-nav>
+    <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-list" id="nav-list" hidden>
+      <li><a href="../">HOME</a></li>
+      <li><a href="./">Tesla-Stores</a></li>
+      <li><a href="../starlink/">Starlink</a></li>
+      <li><a href="../projects/">Projects</a></li>
+    </ul>
+  </nav>
+  <div id="map"></div>
+  <div id="bar">
+    <div id="bar-top">
+      <h1>Tesla in Austria · Voronoi of current centers</h1>
+    </div>
+    <div id="overlays">
+      <label class="overlay-toggle"><input type="checkbox" id="states-toggle" checked> states</label>
+      <label id="overlay-toggle" class="overlay-toggle"><input type="checkbox" id="voronoi-toggle" checked> closest store (distance)</label>
+      <label class="overlay-toggle"><input type="checkbox" id="drive-time-toggle" checked> closest store (driving time)</label>
+    </div>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/d3-delaunay@6"></script>
+  <script src="https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.js"></script>
+  <script>
+    (function () {
+      var nav = document.querySelector("[data-nav]");
+      var btn = document.querySelector("[data-nav-btn]");
+      var list = document.getElementById("nav-list");
+      function setNav(open) {
+        nav.classList.toggle("is-open", open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        list.hidden = !open;
+      }
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        setNav(!nav.classList.contains("is-open"));
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") setNav(false);
+      });
+      document.addEventListener("click", function (e) {
+        if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
+      });
+    })();
+  </script>
+  <script type="module" src="./map.js"></script>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>
