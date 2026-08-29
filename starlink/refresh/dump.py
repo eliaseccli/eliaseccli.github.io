@@ -9,7 +9,7 @@ from pathlib import Path
 from refresh.fetch import load_catalog
 from refresh.orbit import position_at
 from refresh.parse import parse_omm_records, parse_tle_file
-from refresh.shells import INC_WINDOWS, filter_inclination, in_shell, resolve_shells
+from refresh.shells import filter_inclination, in_shell, listed_shells
 
 # Stable colors per (inc, peak). New auto-detected shells cycle the extras.
 COLORS = {
@@ -28,6 +28,7 @@ COLORS = {
     (97, 549): "#6366f1",
 }
 EXTRA = ["#94a3b8", "#e879f9", "#2dd4bf", "#f472b6", "#a3e635"]
+RAISING_COLOR = "#64748b"
 INC_ORDER = (43, 53, 70, 97)
 INC_LABEL = {43: "43°", 53: "53°", 70: "70°", 97: "97.6°"}
 
@@ -50,7 +51,8 @@ def dump_sats(out_path: Path) -> dict:
         subset = filter_inclination(sats, inc)
         if not subset:
             continue
-        for sh in resolve_shells(inc, subset, "auto"):
+        assigned: set[int] = set()
+        for sh in listed_shells(inc, subset):
             if sh.peak_km is None:
                 continue
             members = [s for s in subset if in_shell(s, sh)]
@@ -68,8 +70,32 @@ def dump_sats(out_path: Path) -> dict:
                 "label": f"{INC_LABEL[inc]} · {sh.peak_km} km",
                 "n": len(members),
                 "color": color,
+                "listed": True,
             })
             for s in members:
+                assigned.add(s.norad_id)
+                x, y = position_at(s, t)
+                sats_out.append({
+                    "name": s.name,
+                    "id": s.norad_id,
+                    "x": round(x, 4),
+                    "y": round(y, 4),
+                    "alt": round(s.altitude_km, 3),
+                    "s": sid,
+                })
+        leftover = [s for s in subset if s.norad_id not in assigned]
+        if leftover:
+            sid = f"{inc}-raising"
+            shells_out.append({
+                "id": sid,
+                "inc": inc,
+                "km": None,
+                "label": f"{INC_LABEL[inc]} · raising",
+                "n": len(leftover),
+                "color": RAISING_COLOR,
+                "listed": False,
+            })
+            for s in leftover:
                 x, y = position_at(s, t)
                 sats_out.append({
                     "name": s.name,
