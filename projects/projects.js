@@ -167,8 +167,8 @@
       cr = Math.round(col[0] + (255 - col[0]) * warm * 0.55);
       cg = Math.round(col[1] + (168 - col[1]) * warm);
       cb = Math.round(col[2] + (72 - col[2]) * warm);
-      alpha = Math.min(1, p.a * (0.5 + u * 1.6 + warm * 0.5));
-      lw = Math.max(0.65, p.r * (0.7 + u * 0.55));
+      alpha = Math.min(1, p.a * (1 + u * 1.1 + warm * 0.5));
+      lw = Math.max(p.r, p.r * (1 + u * 0.55));
       span = arc * d;
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = "rgb(" + cr + "," + cg + "," + cb + ")";
