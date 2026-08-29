@@ -54,16 +54,22 @@ html, body { overflow-x: hidden; }
 
 .nav-btn span {
   display: block;
+  width: 100%;
   height: 1.5px;
+  flex: 0 0 1.5px;
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.82);
   transform-origin: center;
   transition: transform 0.22s ease, opacity 0.18s ease;
 }
 
-.nav.is-open .nav-btn span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
-.nav.is-open .nav-btn span:nth-child(2) { opacity: 0; }
-.nav.is-open .nav-btn span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+.nav.is-open .nav-btn span:nth-of-type(1) { transform: translateY(6.5px) rotate(45deg); }
+.nav.is-open .nav-btn span:nth-of-type(2) {
+  opacity: 0;
+  visibility: hidden;
+  transform: scaleX(0);
+}
+.nav.is-open .nav-btn span:nth-of-type(3) { transform: translateY(-6.5px) rotate(-45deg); }
 
 .nav-list {
   position: relative;
