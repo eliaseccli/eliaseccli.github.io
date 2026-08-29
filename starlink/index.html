@@ -74,17 +74,23 @@
         var board = document.querySelector(".board");
         var sideCol = document.querySelector(".side");
         if (landscape) {
-          var menuClear = 72;
-          var edge = 16;
+          var vv = window.visualViewport;
+          var vh = vv ? vv.height : window.innerHeight;
+          var vw = vv ? vv.width : window.innerWidth;
+          var menuClear = 58;
+          var edge = 8;
           var gap = board ? (parseFloat(window.getComputedStyle(board).gap) || 18) : 18;
+          var leadH = (lead && lead.offsetParent !== null) ? lead.offsetHeight : 0;
           var sideW = sideCol ? sideCol.offsetWidth : 256;
-          var availH = window.innerHeight - lead.offsetHeight - edge * 2;
-          var availW = window.innerWidth - menuClear * 2 - sideW - gap;
+          var availH = vh - leadH - edge * 2;
+          var availW = vw - menuClear - edge - sideW - gap;
           var side = Math.floor(Math.min(availH, availW));
-          if (side < 200) side = 200;
+          if (side < 140) side = 140;
           canvas.style.width = side + "px";
           canvas.style.height = side + "px";
+          if (sideCol) sideCol.style.maxHeight = side + "px";
         } else {
+          if (sideCol) sideCol.style.maxHeight = "";
           var side = Math.floor(board.clientWidth);
           canvas.style.width = side + "px";
           canvas.style.height = side + "px";
