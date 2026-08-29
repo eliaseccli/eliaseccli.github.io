@@ -418,6 +418,12 @@
       function shellsOf(inc) {
         return data.shells.filter(function (s) { return s.inc === inc; });
       }
+      function isListed(sh) {
+        return sh.listed !== false && sh.km != null;
+      }
+      function listedOf(inc) {
+        return shellsOf(inc).filter(isListed);
+      }
       function incOrder() {
         var seen = [];
         data.shells.forEach(function (s) {
@@ -473,7 +479,7 @@
           det.appendChild(sum);
           var heights = document.createElement("div");
           heights.className = "heights";
-          group.forEach(function (sh) {
+          listedOf(inc).forEach(function (sh) {
             var lab = document.createElement("label");
             lab.className = "chk";
             lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
