@@ -170,3 +170,38 @@ html, body {
   outline: 2px solid rgba(190, 220, 255, 0.7);
   outline-offset: 2px;
 }
+
+.socials {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(1.05rem, env(safe-area-inset-bottom));
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.05rem;
+}
+.socials a {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.52);
+  text-decoration: none;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+.socials a:hover,
+.socials a:focus-visible {
+  color: rgba(255, 255, 255, 0.96);
+}
+.socials a:focus-visible {
+  outline: 2px solid rgba(190, 220, 255, 0.7);
+  outline-offset: 3px;
+  border-radius: 0.35rem;
+}
+.socials svg {
+  width: 1.12rem;
+  height: 1.12rem;
+  display: block;
+}
