@@ -30,6 +30,8 @@ jobs:
             exit 0
           fi
           PYTHONPATH=starlink python3 -m refresh dump --out starlink/sats.json
+          # TODO: later, append one timeline day from this GP JSON into the month bin.
+          # Do not fetch Space-Track from GitHub Actions. Do not pack historical frames here.
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"

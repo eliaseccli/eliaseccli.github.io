@@ -127,9 +127,73 @@ html, body { overflow-x: hidden; }
 .pick { margin: 0.45rem 0 0; height: 3.35rem; overflow: hidden; color: var(--ink); }
 .pick strong { display: block; font-size: 1.05rem; margin-bottom: 0.15rem; }
 .board { display: flex; flex-direction: column; }
-.stage { margin-top: 0.45rem; }
+.stage {
+  margin-top: 0.45rem;
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  margin-top: 0.4rem;
+  min-width: 0;
+  width: 100%;
+}
+.transport button {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.32rem 0.62rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.transport button:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.transport button:focus-visible {
+  outline: 2px solid rgba(190, 220, 255, 0.7);
+  outline-offset: 2px;
+}
+.scrub {
+  flex: 1 1 8rem;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.scrub input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  accent-color: #fb923c;
+}
+.playhead {
+  flex: 0 0 auto;
+  min-width: 7.2rem;
+  color: var(--mute);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+body.is-timeline .heights { display: none; }
+body.is-timeline .inc-block > summary { pointer-events: none; }
+body.is-timeline .inc-block > summary::before { visibility: hidden; }
+body.is-timeline .inc-block > summary .chk.inc { pointer-events: auto; }
+body.is-timeline .hint-today { display: none; }
+body:not(.is-timeline) .hint-timeline { display: none; }
 canvas {
   display: block;
+  flex-shrink: 0;
   touch-action: none; cursor: grab;
   background: #0a0a10; border-radius: 10px;
   aspect-ratio: 1 / 1;
@@ -166,7 +230,8 @@ canvas.drag { cursor: grabbing; }
     gap: 1.1rem;
     min-height: 0;
   }
-  .stage { margin-top: 0; flex: 0 0 auto; }
+  .stage { margin-top: 0; flex: 0 0 auto; display: flex; flex-direction: column; }
+  .transport { flex-wrap: nowrap; }
   .side {
     width: 22rem;
     max-width: 42vw;
@@ -184,6 +249,8 @@ canvas.drag { cursor: grabbing; }
 @media (orientation: landscape) and (max-height: 560px) {
   .lead { display: none; }
   .side { width: min(20rem, 40vw); }
+  .transport { flex-wrap: wrap; }
+  .playhead { min-width: 0; }
 }
 .chk {
   display: inline-flex; align-items: center; gap: 0.45rem;

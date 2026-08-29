@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#050508">
   <meta name="color-scheme" content="dark">
   <title>Starlink Constellation · Elias Eccli</title>
-  <link rel="stylesheet" href="./starlink.css?v=x">
+  <link rel="stylesheet" href="./starlink.css?v=tl1">
 </head>
 <body>
   <nav class="nav" data-nav>
@@ -31,6 +31,14 @@
     <div class="board">
       <div class="stage">
         <canvas id="c" width="1400" height="1400"></canvas>
+        <div class="transport" data-transport>
+          <button type="button" data-tl-play aria-label="Play">Play</button>
+          <button type="button" data-tl-stop aria-label="Stop">Stop</button>
+          <label class="scrub">
+            <input type="range" data-tl-scrub min="0" max="1" value="1" step="1" aria-label="Timeline date">
+            <span class="playhead" data-tl-date>Today</span>
+          </label>
+        </div>
       </div>
       <div class="side">
         <div class="filters" data-filters>
@@ -38,14 +46,16 @@
         </div>
         <div class="hint">
           <p>Scroll or pinch to zoom. Drag to pan. Double-click to reset.</p>
-          <p>Color coding: Hue denotes the shell, transparency the distance from the median altitude in that shell.</p>
-          <p>Orbital data from <a href="https://celestrak.org/" target="_blank" rel="noopener">Celestrak</a>, refreshed once a day. Axes are <a href="https://en.wikipedia.org/wiki/Mean_anomaly" target="_blank" rel="noopener">Anomaly</a> and <a href="https://en.wikipedia.org/wiki/Longitude_of_the_ascending_node" target="_blank" rel="noopener">RAAN</a>.</p>
+          <p class="hint-today">Color coding: Hue denotes the shell, transparency the distance from the median altitude in that shell.</p>
+          <p class="hint-timeline">In history mode, color is inclination: 43° emerald, 53° orange, 70° cyan, 97° violet.</p>
+          <p>Daily now-view orbital data from <a href="https://celestrak.org/" target="_blank" rel="noopener">Celestrak</a>, refreshed once a day. Historical frames are derived from <a href="https://www.space-track.org/" target="_blank" rel="noopener">Space-Track</a> TLEs. Axes are <a href="https://en.wikipedia.org/wiki/Mean_anomaly" target="_blank" rel="noopener">Anomaly</a> and <a href="https://en.wikipedia.org/wiki/Longitude_of_the_ascending_node" target="_blank" rel="noopener">RAAN</a>.</p>
           <p>This site is a progression of the original <a href="https://youtu.be/rddTXl_7Wr8" target="_blank" rel="noopener">animations</a> I created showing the Starlink Constellation build-out.</p>
         </div>
       </div>
     </div>
     </div>
   </main>
+  <script src="./timeline.js?v=1"></script>
   <script>
     (function () {
       var nav = document.querySelector("[data-nav]");
@@ -74,6 +84,17 @@
         var lead = document.querySelector(".lead");
         var board = document.querySelector(".board");
         var sideCol = document.querySelector(".side");
+        var transport = document.querySelector("[data-transport]");
+        var stage = document.querySelector(".stage");
+        function transportH() {
+          return transport ? transport.offsetHeight + 8 : 0;
+        }
+        function applySize(side) {
+          canvas.style.width = side + "px";
+          canvas.style.height = side + "px";
+          if (stage) stage.style.width = side + "px";
+          if (transport) transport.style.width = side + "px";
+        }
         if (landscape) {
           var vv = window.visualViewport;
           var vh = vv ? vv.height : window.innerHeight;
@@ -83,18 +104,25 @@
           var gap = board ? (parseFloat(window.getComputedStyle(board).gap) || 18) : 18;
           var leadH = (lead && lead.offsetParent !== null) ? lead.offsetHeight : 0;
           var sideW = sideCol ? sideCol.offsetWidth : 256;
-          var availH = vh - leadH - edge * 2;
+          var bar = transportH();
+          var availH = vh - leadH - edge * 2 - bar;
           var availW = vw - menuClear - edge - sideW - gap;
           var side = Math.floor(Math.min(availH, availW));
           if (side < 140) side = 140;
-          canvas.style.width = side + "px";
-          canvas.style.height = side + "px";
+          applySize(side);
+          var bar2 = transportH();
+          if (bar2 !== bar) {
+            availH = vh - leadH - edge * 2 - bar2;
+            side = Math.floor(Math.min(availH, availW));
+            if (side < 140) side = 140;
+            applySize(side);
+          }
           if (sideCol) sideCol.style.maxHeight = side + "px";
         } else {
           if (sideCol) sideCol.style.maxHeight = "";
+          if (stage) stage.style.width = "";
           var side = Math.floor(board.clientWidth);
-          canvas.style.width = side + "px";
-          canvas.style.height = side + "px";
+          applySize(side);
         }
       }
       window.addEventListener("resize", fitPlot);
@@ -211,6 +239,10 @@
       }
 
       function draw() {
+        if (tl && tl.active()) {
+          tl.draw();
+          return;
+        }
         if (!data) return;
         var w = canvas.width, p = pad(), s = w - 2 * p;
         ctx.fillStyle = "#0a0a10";
@@ -398,8 +430,12 @@
         if (ids.length === 0) {
           canvas.classList.remove("drag");
           if (!moved && inPlotField(css[0], css[1])) {
-            selected = selected >= 0 ? -1 : nearest(css[0], css[1]);
-            showPick(selected);
+            if (tl && tl.active()) {
+              if (!tl.playing()) tl.pickAt(css[0], css[1]);
+            } else {
+              selected = selected >= 0 ? -1 : nearest(css[0], css[1]);
+              showPick(selected);
+            }
             draw();
           }
           drag = null;
@@ -515,6 +551,51 @@
             syncTree();
             draw();
           });
+        });
+      }
+
+      function incOn(inc) {
+        if (inc === 43 || inc === 53 || inc === 70 || inc === 97) {
+          var box = document.querySelector('[data-inc="' + inc + '"]');
+          if (!box) return true;
+          return box.checked || box.indeterminate;
+        }
+        var all = document.querySelector("[data-all]");
+        return !all || all.checked || all.indeterminate;
+      }
+
+      var tl = null;
+      if (window.StarlinkTimeline) {
+        tl = window.StarlinkTimeline.mount({
+          canvas: canvas,
+          ctx: ctx,
+          view: view,
+          KMAX: KMAX,
+          pad: pad,
+          toPix: toPix,
+          fromCanvas: fromCanvas,
+          cssToCanvas: cssToCanvas,
+          catalogUrl: "/starlink/timeline/catalog.json",
+          binUrl: function (ym) { return "/starlink/timeline/v1/" + ym + ".bin"; },
+          incOn: incOn,
+          onRedraw: function () { draw(); },
+          onMode: function (timeline) {
+            document.body.classList.toggle("is-timeline", timeline);
+            if (!timeline) {
+              selected = -1;
+              showPick(-1);
+              if (data) updateMeta();
+            }
+            fitPlot();
+          },
+          onMeta: function (text) {
+            document.querySelector("[data-meta]").textContent = text;
+          },
+          onPick: function (html, text) {
+            var el = document.querySelector("[data-pick]");
+            if (html) el.innerHTML = html;
+            else el.textContent = text || "Tap a satellite";
+          }
         });
       }
 

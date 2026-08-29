@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "start": "2019-05-24",
+  "end": "2026-08-29",
+  "fps": 30,
+  "sats": [
+    {"id": 44235, "name": "STARLINK-31", "inc": 53},
+    {"id": 44236, "name": "STARLINK-32", "inc": 53},
+    {"id": 44237, "name": "STARLINK-33", "inc": 43}
+  ]
+}
