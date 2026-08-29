@@ -257,7 +257,7 @@
     var tx = rect.left + rect.width / 2;
     var ty = rect.top + rect.height / 2;
     var corner = Math.floor(Math.random() * 4);
-    var dur = 12444;
+    var dur = 6222;
     var growFor = 0.18;
     var shrinkFor = 0.18;
     var started = performance.now();
