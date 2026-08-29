@@ -248,6 +248,7 @@
           todayIndex = nDays;
           index = todayIndex;
           syncUi();
+          prefetch(monthKey(start));
           return catalog;
         });
     }
@@ -278,7 +279,7 @@
           return storeMonth(ym, { status: "missing" });
         })
         .then(function (done) {
-          if (mode === "timeline" && start && monthKey(dateAt(index)) === ym) redraw();
+          if (mode === "timeline") redraw();
           return done;
         });
       months[ym] = { status: "pending", promise: p };
@@ -292,6 +293,24 @@
         if (days[i].date === dateInt) return days[i];
       }
       return null;
+    }
+
+    function holdFrame(dateInt) {
+      if (lastFrame && lastFrame.date <= dateInt) return lastFrame;
+      var best = null, bestDate = -1, ym, rec, days, i;
+      for (ym in months) {
+        rec = months[ym];
+        if (!rec || rec.status !== "ok" || !rec.data) continue;
+        days = rec.data.days;
+        for (i = 0; i < days.length; i++) {
+          if (days[i].date <= dateInt && days[i].date >= bestDate) {
+            bestDate = days[i].date;
+            best = days[i];
+          }
+        }
+      }
+      if (best) lastFrame = best;
+      return lastFrame;
     }
 
     function prefetch(ym) {
@@ -308,13 +327,13 @@
       prefetch(nextMonthKey(p));
       rec = months[ym];
       if (!rec || rec.status === "pending") return lastFrame;
-      if (rec.status === "missing") return lastFrame;
+      if (rec.status === "missing") return holdFrame(ymdInt(p));
       var found = frameFromMonth(rec, ymdInt(p));
       if (found) {
         lastFrame = found;
         return found;
       }
-      return lastFrame;
+      return holdFrame(ymdInt(p));
     }
 
     function ensureFrame(i) {
