@@ -27,6 +27,11 @@ KNOWN_SHELLS: dict[int, list[tuple[int, float, float]]] = {
     ],
 }
 
+# Promote a km checkbox only when the pile is tight and not parking/ascent.
+TIGHT_SPREAD_KM = 4.5
+PARKING_MAX_N = 80
+PARKING_BELOW_KM = 80.0
+
 
 @dataclass(frozen=True)
 class Shell:
@@ -49,9 +54,9 @@ def filter_inclination(sats: list[Sat], inc: int | str) -> list[Sat]:
 def resolve_shells(inc: int | str, sats: list[Sat], shell_arg: str) -> list[Shell]:
     if shell_arg == "all":
         return [Shell(None, float("-inf"), float("inf"))]
-    catalog = _catalog(inc, sats)
     if shell_arg == "auto":
-        return catalog
+        return listed_shells(inc, sats)
+    catalog = _catalog(inc, sats)
     km = float(shell_arg)
     for sh in catalog:
         if sh.lo <= km < sh.hi:
@@ -100,3 +105,44 @@ def detect_peaks(altitudes: list[float], min_count: int = 25) -> list[Shell]:
 
 def in_shell(sat: Sat, shell: Shell) -> bool:
     return shell.lo <= sat.altitude_km < shell.hi
+
+
+def alt_spread(alts: list[float]) -> float:
+    """90th minus 10th percentile (km). 0 if fewer than two values."""
+    if len(alts) < 2:
+        return 0.0
+    a = np.asarray(alts, dtype=float)
+    return float(np.percentile(a, 90) - np.percentile(a, 10))
+
+
+def is_tight(alts: list[float], max_spread: float = TIGHT_SPREAD_KM) -> bool:
+    return alt_spread(alts) <= max_spread
+
+
+def listed_shells(inc: int | str, sats: list[Sat]) -> list[Shell]:
+    """Tight stationkeeping piles only. Parking/ascent piles are omitted.
+
+    Tight: p90-p10 of member altitudes <= TIGHT_SPREAD_KM.
+    Parking: n < PARKING_MAX_N and median is more than PARKING_BELOW_KM
+    below this inclination's highest-count tight pile.
+    """
+    scored: list[tuple[Shell, int, float]] = []
+    for sh in _catalog(inc, sats):
+        if sh.peak_km is None:
+            continue
+        members = [s for s in sats if in_shell(s, sh)]
+        if not members:
+            continue
+        alts = [s.altitude_km for s in members]
+        if not is_tight(alts):
+            continue
+        scored.append((sh, len(members), float(np.median(alts))))
+    if not scored:
+        return []
+    _ref_sh, _ref_n, ref_med = max(scored, key=lambda t: t[1])
+    out: list[Shell] = []
+    for sh, n, med in scored:
+        if n < PARKING_MAX_N and (ref_med - med) > PARKING_BELOW_KM:
+            continue
+        out.append(sh)
+    return out
