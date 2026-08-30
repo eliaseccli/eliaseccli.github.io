@@ -180,8 +180,7 @@ body {
   filter: drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
 }
 
-.float img,
-.float model-viewer {
+.float img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -192,8 +191,7 @@ body {
   transition: opacity 0.45s ease;
 }
 
-.float img.is-on,
-.float model-viewer.is-on { opacity: 1; }
+.float img.is-on { opacity: 1; }
 
 .empty {
   position: absolute;
@@ -267,6 +265,5 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .track,
-  .float img,
-  .float model-viewer { transition: none !important; }
+  .float img { transition: none !important; }
 }

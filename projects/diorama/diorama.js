@@ -40,7 +40,6 @@
   var nightOf = Object.create(null);
   var width = 0;
   var drag = null;
-  var mvLoaded = false;
 
   function fileName(slug, when) {
     return "stills/diorama-" + slug + "-" + when + ".png";
@@ -53,12 +52,14 @@
     return [];
   }
 
+  function slugFromStill(path) {
+    var m = String(path || "").match(/diorama-([a-z0-9-]+)-(?:day|night)\.(?:png|webp|jpe?g)/i);
+    return m ? m[1] : "";
+  }
+
   function normalize(raw) {
     var slug = String(raw.slug || raw.id || "").trim();
-    if (!slug && raw.day) {
-      var m = String(raw.day).match(/diorama-([a-z0-9-]+)-day\.png/i);
-      if (m) slug = m[1];
-    }
+    if (!slug) slug = slugFromStill(raw.day) || slugFromStill(raw.night);
     if (!slug) return null;
     var day = raw.day || raw.dayPng || fileName(slug, "day");
     var night = raw.night || raw.nightPng || fileName(slug, "night");
@@ -68,18 +69,8 @@
       slug: slug,
       title: String(raw.title || slug),
       day: day,
-      night: night,
-      glb: raw.glb || ""
+      night: night
     };
-  }
-
-  function loadModelViewer() {
-    if (mvLoaded) return;
-    mvLoaded = true;
-    var s = document.createElement("script");
-    s.type = "module";
-    s.src = "https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js";
-    document.head.appendChild(s);
   }
 
   function render() {
@@ -100,32 +91,21 @@
       slot.setAttribute("data-slot", String(i));
       var hold = document.createElement("div");
       hold.className = "float";
-      if (place.glb) {
-        loadModelViewer();
-        var mv = document.createElement("model-viewer");
-        mv.setAttribute("src", place.glb);
-        mv.setAttribute("camera-controls", "");
-        mv.setAttribute("touch-action", "none");
-        mv.setAttribute("interaction-prompt", "none");
-        mv.className = "is-on";
-        hold.appendChild(mv);
-      } else {
-        if (place.day) {
-          var day = document.createElement("img");
-          day.src = place.day;
-          day.alt = "";
-          day.draggable = false;
-          day.setAttribute("data-when", "day");
-          hold.appendChild(day);
-        }
-        if (place.night) {
-          var night = document.createElement("img");
-          night.src = place.night;
-          night.alt = "";
-          night.draggable = false;
-          night.setAttribute("data-when", "night");
-          hold.appendChild(night);
-        }
+      if (place.day) {
+        var day = document.createElement("img");
+        day.src = place.day;
+        day.alt = "";
+        day.draggable = false;
+        day.setAttribute("data-when", "day");
+        hold.appendChild(day);
+      }
+      if (place.night) {
+        var night = document.createElement("img");
+        night.src = place.night;
+        night.alt = "";
+        night.draggable = false;
+        night.setAttribute("data-when", "night");
+        hold.appendChild(night);
       }
       slot.appendChild(hold);
       track.appendChild(slot);
@@ -137,7 +117,7 @@
 
   function paintSlot(i) {
     var place = places[i];
-    if (!place || place.glb) return;
+    if (!place) return;
     var slot = track.children[i];
     if (!slot) return;
     var showNight = !!nightOf[place.slug] && !!place.night;
@@ -159,7 +139,7 @@
   }
 
   function hasPair(place) {
-    return !!(place && place.day && place.night && !place.glb);
+    return !!(place && place.day && place.night);
   }
 
   function syncMeta() {

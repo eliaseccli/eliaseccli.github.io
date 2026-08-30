@@ -18,7 +18,6 @@ Then list them in `stills.json` (array of places; one carousel slot per slug):
       }
     ]
 
-If `day` / `night` are omitted, paths are inferred from `slug` with the same pattern.
+If `day` / `night` are omitted, paths are inferred from `slug` with the same PNG pattern.
+`.webp` (and jpeg already in a path) are accepted; Lens may list `diorama-<slug>-day.webp`.
 Empty array ships as the v1 void. Do not invent a first scene.
-
-Optional later: add `"glb": "stills/diorama-<slug>.glb"` to render a model in that slot.
