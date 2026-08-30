@@ -196,14 +196,17 @@
   }
 
   function makeStill(src, when) {
+    var wrap = document.createElement("div");
+    wrap.className = "still";
+    wrap.setAttribute("data-when", when);
     var img = document.createElement("img");
     img.src = src;
     img.alt = "";
     img.draggable = false;
     img.decoding = "async";
     img.loading = "eager";
-    img.setAttribute("data-when", when);
-    return img;
+    wrap.appendChild(img);
+    return wrap;
   }
 
   function warmImg(img) {
@@ -220,7 +223,8 @@
 
   function incomingStill(slot, showNight) {
     if (!slot) return null;
-    return slot.querySelector(showNight ? 'img[data-when="night"]' : 'img[data-when="day"]');
+    var wrap = slot.querySelector(showNight ? '.still[data-when="night"]' : '.still[data-when="day"]');
+    return wrap ? wrap.querySelector("img") : null;
   }
 
   function flip() {
@@ -248,15 +252,15 @@
     var slot = track.children[i];
     if (!slot) return;
     var showNight = showNightFor(place);
-    var imgs = slot.querySelectorAll("img");
-    var n, img, when;
-    for (n = 0; n < imgs.length; n++) {
-      img = imgs[n];
-      when = img.getAttribute("data-when");
-      img.classList.toggle("is-on", showNight ? when === "night" : when === "day");
+    var stills = slot.querySelectorAll(".still");
+    var n, wrap, when;
+    for (n = 0; n < stills.length; n++) {
+      wrap = stills[n];
+      when = wrap.getAttribute("data-when");
+      wrap.classList.toggle("is-on", showNight ? when === "night" : when === "day");
     }
     if (!place.day && place.night) {
-      var only = slot.querySelector('img[data-when="night"]');
+      var only = slot.querySelector('.still[data-when="night"]');
       if (only) only.classList.add("is-on");
     }
   }
