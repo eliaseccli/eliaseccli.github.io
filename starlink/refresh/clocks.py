@@ -1,4 +1,4 @@
-"""Assign each sat a J2 pile clock: frozen tight pile, closest-n draft, or own."""
+"""Assign each sat a J2 pile clock: frozen tight pile, closest-n draft, clump, or own."""
 
 from __future__ import annotations
 
@@ -133,7 +133,7 @@ class Clock:
     i_ref: float
     e_ref: float
     pile_id: str | None
-    kind: str  # pile | draft | own
+    kind: str  # pile | draft | clump | own
 
 
 def inc_bucket(inclination: float) -> int | None:
@@ -339,6 +339,17 @@ def _closest_draft(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
     return None
 
 
+def _clump_clock(unmatched: list[Sat]) -> Clock:
+    """One shared clock: daily median n/i/e of unmatched sats at this inclination."""
+    return Clock(
+        _median([s.mean_motion for s in unmatched]),
+        _median([s.inclination for s in unmatched]),
+        _median([s.ecc for s in unmatched]),
+        None,
+        "clump",
+    )
+
+
 def assign_clocks(
     sats: list[Sat],
     refs: ShellRefs,
@@ -349,8 +360,10 @@ def assign_clocks(
     kind=pile only for today's tight members of a frozen pile. Else draft
     to the frozen pile at that inc with closest n, and only if
     |n_sat − n_pile| <= PILE_MATCH_N. Never draft to the largest/first
-    pile. Else kind=own with that sat's own n, i, e (no daily-median clump).
-    Pending streaks persist on refs for the daily Action to resume.
+    pile. Remaining sats at that inclination share one kind=clump clock
+    (daily median n, i, e of those unmatched sats). Odd-inclination
+    loners stay kind=own with that sat's own n, i, e. Pending streaks
+    persist on refs for the daily Action to resume.
     """
     by_inc: dict[int, list[Sat]] = {k: [] for k in INC_WINDOWS}
     other: list[Sat] = []
@@ -381,6 +394,7 @@ def assign_clocks(
                 if d_new < d_old:
                     sat_pile[s.norad_id] = pile
 
+        unmatched: list[Sat] = []
         for s in group:
             pile = sat_pile.get(s.norad_id)
             if pile is not None:
@@ -390,9 +404,11 @@ def assign_clocks(
             if draft is not None:
                 clocks[s.norad_id] = Clock(draft.n, draft.i, draft.e, draft.id, "draft")
             else:
-                clocks[s.norad_id] = Clock(
-                    s.mean_motion, s.inclination, s.ecc, None, "own"
-                )
+                unmatched.append(s)
+        if unmatched:
+            clump = _clump_clock(unmatched)
+            for s in unmatched:
+                clocks[s.norad_id] = clump
 
     today = _day(day)
     refs.pending = [

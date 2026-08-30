@@ -1,4 +1,4 @@
-"""Pile freeze after 5 stable days, closest-n draft, own clocks, small-clump."""
+"""Pile freeze after 5 stable days, closest-n draft, shared unmatched clump."""
 
 from __future__ import annotations
 
@@ -91,7 +91,8 @@ class TestClocks(unittest.TestCase):
             self.assertEqual(refs.piles, [])
             self.assertEqual(len(refs.pending), 1)
             self.assertEqual(refs.pending[0].streak, i + 1)
-            self.assertEqual(clocks[58000].kind, "own")
+            self.assertEqual(clocks[58000].kind, "clump")
+            self.assertAlmostEqual(clocks[58000].n_shell, n, places=6)
 
         clocks = assign_clocks(_pile_sats(n, inc, 40, 58000), refs, _iso("2025-06-29", 4))
         self.assertEqual(len(refs.piles), 1)
@@ -133,7 +134,7 @@ class TestClocks(unittest.TestCase):
         clocks = assign_clocks(
             _pile_sats(15.70, 97.65, 40, 1000) + [stray], refs, "2022-07-27"
         )
-        self.assertEqual(clocks[99999].kind, "own")
+        self.assertEqual(clocks[99999].kind, "clump")
         self.assertIsNone(clocks[99999].pile_id)
         self.assertAlmostEqual(clocks[99999].n_shell, 15.01, places=6)
         self.assertAlmostEqual(clocks[99999].i_ref, 97.65, places=6)
@@ -156,7 +157,7 @@ class TestClocks(unittest.TestCase):
                 _pile_sats(n_550, 53.16, 40, 1000), refs, _iso("2021-01-01", i)
             )
             self.assertEqual(len(refs.piles), 1)
-            self.assertEqual(clocks[1000].kind, "own")
+            self.assertEqual(clocks[1000].kind, "clump")
             self.assertIsNone(clocks[1000].pile_id)
             self.assertAlmostEqual(clocks[1000].n_shell, n_550, places=6)
             self.assertNotEqual(first_id, clocks[1000].pile_id)
@@ -178,7 +179,7 @@ class TestClocks(unittest.TestCase):
                 self.assertGreater(abs(n - ladder_n[i - 1]), PILE_MATCH_N)
             clocks = assign_clocks(_pile_sats(n, 53.16, 40, 1000), refs, _iso("2019-11-24", i))
             self.assertEqual(refs.piles, [])
-            self.assertEqual(clocks[1000].kind, "own")
+            self.assertEqual(clocks[1000].kind, "clump")
         self.assertEqual(refs.piles, [])
         self.assertTrue(refs.pending)
         self.assertTrue(all(p.streak == 1 for p in refs.pending))
@@ -197,7 +198,7 @@ class TestClocks(unittest.TestCase):
             n = n0 + 0.004 * i
             clocks = assign_clocks(_pile_sats(n, 53.16, 40, 1000), refs, _iso("2020-01-01", i))
             self.assertEqual(refs.piles, [])
-            self.assertEqual(clocks[1000].kind, "own")
+            self.assertEqual(clocks[1000].kind, "clump")
         self.assertEqual(refs.piles, [])
         self.assertTrue(all(p.streak < STABLE_DAYS for p in refs.pending))
         today_n = n0 + 0.004 * 7
@@ -282,7 +283,7 @@ class TestClocks(unittest.TestCase):
             self.assertEqual(refs.piles, [])
             self.assertEqual(len(refs.pending), 1)
             self.assertEqual(refs.pending[0].streak, i + 1)
-            self.assertEqual(clocks[47000].kind, "own")
+            self.assertEqual(clocks[47000].kind, "clump")
             self.assertAlmostEqual(clocks[47000].n_shell, n, places=6)
         clocks = assign_clocks(_pile_sats(n, inc, 10, 47000), refs, _iso("2021-02-01", 4))
         self.assertEqual(len(refs.piles), 1)
@@ -297,7 +298,7 @@ class TestClocks(unittest.TestCase):
         clocks = assign_clocks(_pile_sats(15.1435, 97.6, 7, 47000), refs, "2021-02-01")
         self.assertEqual(refs.piles, [])
         self.assertEqual(refs.pending, [])
-        self.assertEqual(clocks[47000].kind, "own")
+        self.assertEqual(clocks[47000].kind, "clump")
 
     def test_pending_persists_across_shell_refs_json_roundtrip(self):
         refs = ShellRefs()
@@ -355,6 +356,37 @@ class TestClocks(unittest.TestCase):
         p = PendingPile(inc=53, km=475, n=N_475, i=53.16, e=1e-4, streak=3, last="2025-07-01")
         q = PendingPile.from_json(p.to_json())
         self.assertEqual(q, p)
+
+    def test_unmatched_sats_share_one_clump_clock(self):
+        refs = ShellRefs()
+        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, count=40, start_id=1000)
+        self.assertEqual(len(refs.piles), 1)
+        low = _sat(90001, 15.01, 97.60)
+        high = _sat(90002, 15.40, 97.70)
+        self.assertGreater(abs(15.01 - 15.70), PILE_MATCH_N)
+        self.assertGreater(abs(15.40 - 15.70), PILE_MATCH_N)
+        clocks = assign_clocks(
+            _pile_sats(15.70, 97.65, 40, 1000) + [low, high], refs, "2022-07-27"
+        )
+        self.assertEqual(clocks[90001].kind, "clump")
+        self.assertEqual(clocks[90002].kind, "clump")
+        self.assertEqual(clocks[90001].n_shell, clocks[90002].n_shell)
+        self.assertEqual(clocks[90001].i_ref, clocks[90002].i_ref)
+        self.assertEqual(clocks[90001].e_ref, clocks[90002].e_ref)
+        self.assertAlmostEqual(clocks[90001].n_shell, (15.01 + 15.40) / 2.0, places=6)
+        self.assertAlmostEqual(clocks[90001].i_ref, (97.60 + 97.70) / 2.0, places=6)
+        self.assertNotAlmostEqual(clocks[90001].n_shell, 15.01, places=3)
+        self.assertNotAlmostEqual(clocks[90002].n_shell, 15.40, places=3)
+        self.assertEqual(clocks[1000].kind, "pile")
+
+    def test_odd_inclination_loner_stays_own(self):
+        refs = ShellRefs()
+        loner = _sat(80000, 15.20, 30.0)
+        clocks = assign_clocks([loner], refs, "2019-05-24")
+        self.assertEqual(clocks[80000].kind, "own")
+        self.assertAlmostEqual(clocks[80000].n_shell, 15.20, places=6)
+        self.assertAlmostEqual(clocks[80000].i_ref, 30.0, places=6)
+        self.assertIsNone(clocks[80000].pile_id)
 
 
 if __name__ == "__main__":
