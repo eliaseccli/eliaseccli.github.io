@@ -207,13 +207,6 @@ body {
   position: relative;
   width: min(72vmin, 34rem);
   aspect-ratio: 1;
-  filter:
-    drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
-    drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))
-    drop-shadow(0 0 28px rgba(255, 255, 255, 0.16))
-    drop-shadow(0 0 72px rgba(200, 220, 255, 0.10))
-    drop-shadow(0 0 120px rgba(180, 210, 255, 0.06))
-    drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
 }
 
 .float img {
@@ -225,6 +218,13 @@ body {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.45s ease;
+  filter:
+    drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
+    drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))
+    drop-shadow(0 0 28px rgba(255, 255, 255, 0.16))
+    drop-shadow(0 0 72px rgba(200, 220, 255, 0.10))
+    drop-shadow(0 0 120px rgba(180, 210, 255, 0.06))
+    drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
 }
 
 .float img.is-on { opacity: 1; }
