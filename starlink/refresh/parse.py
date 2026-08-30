@@ -1,12 +1,16 @@
-"""Parse Celestrak GP/OMM JSON or classic 3LE TLE into Sat records."""
+"""Parse Celestrak GP/OMM JSON or classic 2LE/3LE TLE into Sat records."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Iterator
 
 from refresh.orbit import altitude_km
+
+# Alpha-5: A=10 … Z=33, skip I and O (24 letters).
+_ALPHA5 = "ABCDEFGHJKLMNPQRSTUVWXYZ"
 
 
 @dataclass(frozen=True)
@@ -33,21 +37,51 @@ def parse_omm_records(records: list[dict]) -> list[Sat]:
     return sats
 
 
+def parse_norad_id(field: str) -> int:
+    """Decode a 5-column TLE / Alpha-5 NORAD catalog number."""
+    field = field.strip().upper()
+    if not field:
+        raise ValueError("empty NORAD field")
+    if field[0].isdigit():
+        return int(field)
+    letter = field[0]
+    if letter not in _ALPHA5:
+        raise ValueError(f"bad Alpha-5 letter {letter!r}")
+    rest = field[1:]
+    if rest and not rest.isdigit():
+        raise ValueError(f"bad Alpha-5 digits {field!r}")
+    return (10 + _ALPHA5.index(letter)) * 10000 + int(rest or "0")
+
+
 def parse_tle_file(path: Path) -> list[Sat]:
-    lines = [ln for ln in path.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
-    sats: list[Sat] = []
-    i = 0
-    while i < len(lines) - 2:
-        name, line1, line2 = lines[i], lines[i + 1], lines[i + 2]
-        if line1.startswith("1") and line2.startswith("2"):
-            try:
-                sats.append(_from_tle(name, line1, line2))
-            except (ValueError, IndexError):
-                pass
-            i += 3
-        else:
-            i += 1
-    return sats
+    return list(iter_tle_file(path))
+
+
+def iter_tle_file(path: Path) -> Iterator[Sat]:
+    """Yield sats from a 2LE or 3LE file. Does not modify the file."""
+    name_hold: str | None = None
+    line1: str | None = None
+    with path.open(encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            ln = raw.rstrip("\n\r")
+            if not ln.strip():
+                continue
+            if _is_tle_line(ln, "1"):
+                line1 = ln
+            elif _is_tle_line(ln, "2") and line1 is not None:
+                try:
+                    yield _from_tle(name_hold or "", line1, ln)
+                except (ValueError, IndexError):
+                    pass
+                name_hold = None
+                line1 = None
+            else:
+                name_hold = ln
+                line1 = None
+
+
+def _is_tle_line(ln: str, num: str) -> bool:
+    return ln.startswith(num) and (len(ln) < 2 or ln[1] in " ")
 
 
 def _from_omm(rec: dict) -> Sat:
@@ -79,10 +113,13 @@ def _parse_omm_epoch(s: str) -> datetime:
 def _from_tle(name: str, line1: str, line2: str) -> Sat:
     # Same field slices as Animation_vertical.Satellite (lines 114–176).
     name = name[1:].strip() if name.startswith("0") else name.strip()
-    norad_id = int(line1[2:7].lstrip().rstrip())
+    norad_id = parse_norad_id(line1[2:7])
+    if not name:
+        name = f"STARLINK-{norad_id}"
     epoch_year = int(line1[18:20].lstrip().rstrip())
     epoch_day = float(line1[20:32].lstrip().rstrip())
-    epoch = datetime(2000 + epoch_year, 1, 1) + timedelta(days=epoch_day - 1)
+    century = 1900 if epoch_year >= 57 else 2000
+    epoch = datetime(century + epoch_year, 1, 1) + timedelta(days=epoch_day - 1)
     ecc = float("0." + line2[26:33].lstrip().rstrip())
     mm = float(line2[52:63].lstrip().rstrip())
     return Sat(
