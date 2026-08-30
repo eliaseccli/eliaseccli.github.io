@@ -22,9 +22,9 @@ STABLE_DAYS = 5
 # Keep an unseen pending while (today - last) is within this many days.
 PENDING_MISS_DAYS = 2
 # detect_peaks min_count stays 25 for km checkboxes. CLOCKS only: a tight
-# inclination group this large can pending-freeze when no histogram peak exists
-# (e.g. a 10-sat polar plane at 523 km).
-CLOCKS_MIN_CLUMP = 8
+# clump this large may pending-freeze as its own pile (histogram peak or
+# whole-inclination fallback when no peak exists).
+CLOCK_MIN_COUNT = 50
 
 
 @dataclass
@@ -312,13 +312,15 @@ def _match_piles(
 def _clock_detected(inc: int, group: list[Sat]) -> list[tuple[Shell, list[Sat]]]:
     """Tight piles for clock freeze. listed_shells / detect_peaks stay at 25.
 
-    When the histogram finds nothing, a tight inclination group of at least
-    CLOCKS_MIN_CLUMP sats is one candidate at median km (Feb 2021 polar plane).
+    Only a tight clump of at least CLOCK_MIN_COUNT sats may pending-freeze.
+    Histogram peaks below that floor are dropped (they do not merge via the
+    whole-inclination fallback). When the histogram finds nothing, a tight
+    inclination group of that size is one candidate at median km.
     """
-    detected = tight_piles(inc, group)
-    if detected:
-        return detected
-    if len(group) < CLOCKS_MIN_CLUMP:
+    raw = tight_piles(inc, group)
+    if raw:
+        return [(sh, members) for sh, members in raw if len(members) >= CLOCK_MIN_COUNT]
+    if len(group) < CLOCK_MIN_COUNT:
         return []
     alts = [s.altitude_km for s in group]
     if not is_tight(alts):
@@ -329,11 +331,18 @@ def _clock_detected(inc: int, group: list[Sat]) -> list[tuple[Shell, list[Sat]]]
     return [(Shell(km, lo, hi), list(group))]
 
 
-def _closest_draft(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
-    """Draft only to the closest-n frozen pile at this inc, and only if |Δn|<=N."""
+def _closest_pile(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
+    """Closest frozen pile at this inc by |Δn|. No match-radius check."""
     if not frozen:
         return None
-    best = min(frozen, key=lambda p: abs(sat.mean_motion - p.n))
+    return min(frozen, key=lambda p: abs(sat.mean_motion - p.n))
+
+
+def _closest_draft(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
+    """Draft only to the closest-n frozen pile at this inc, and only if |Δn|<=N."""
+    best = _closest_pile(sat, frozen)
+    if best is None:
+        return None
     if abs(sat.mean_motion - best.n) <= PILE_MATCH_N:
         return best
     return None
@@ -358,10 +367,11 @@ def assign_clocks(
     """Assign a clock to each sat. Stable tight piles freeze into refs.
 
     kind=pile only for today's tight members of a frozen pile. Else draft
-    to the frozen pile at that inc with closest n, and only if
-    |n_sat − n_pile| <= PILE_MATCH_N. Never draft to the largest/first
-    pile. Remaining sats at that inclination share one kind=clump clock
-    (daily median n, i, e of those unmatched sats). Odd-inclination
+    to the frozen pile at that inc with closest n if
+    |n_sat − n_pile| <= PILE_MATCH_N. Remaining unmatched: if there are
+    fewer than CLOCK_MIN_COUNT and a frozen pile exists at that inc, each
+    leftover drafts to the closest frozen pile by n (any Δn). Otherwise
+    they share one kind=clump clock (daily median n, i, e). Odd-inclination
     loners stay kind=own with that sat's own n, i, e. Pending streaks
     persist on refs for the daily Action to resume.
     """
@@ -406,9 +416,18 @@ def assign_clocks(
             else:
                 unmatched.append(s)
         if unmatched:
-            clump = _clump_clock(unmatched)
-            for s in unmatched:
-                clocks[s.norad_id] = clump
+            if len(unmatched) < CLOCK_MIN_COUNT and frozen_here:
+                for s in unmatched:
+                    closest = _closest_pile(s, frozen_here)
+                    if closest is None:
+                        continue
+                    clocks[s.norad_id] = Clock(
+                        closest.n, closest.i, closest.e, closest.id, "draft"
+                    )
+            else:
+                clump = _clump_clock(unmatched)
+                for s in unmatched:
+                    clocks[s.norad_id] = clump
 
     today = _day(day)
     refs.pending = [
