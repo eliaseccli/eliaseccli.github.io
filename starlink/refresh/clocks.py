@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -17,10 +17,10 @@ from refresh.shells import INC_WINDOWS, tight_piles
 # agrees and |Δn| is within this. 0.005 rev/day is ~1.5 km: enough for
 # 1 km histogram jitter, not enough to merge 460/463/465 (Δn ≈ 0.012).
 PILE_MATCH_N = 0.005
-# Consecutive tight days at that n/km before (n, i, e) freeze.
+# Tight days at the same first-day n before (n, i, e) freeze.
 STABLE_DAYS = 5
-# Pending streak continues only if today's peak is within this of yesterday.
-STABLE_KM = 4.0
+# Keep an unseen pending while (today - last) is within this many days.
+PENDING_MISS_DAYS = 2
 
 
 @dataclass
@@ -211,9 +211,12 @@ def _match_piles(
 ) -> list[tuple]:
     """Return [(shell, members, pile_ref), ...] for *frozen* piles only.
 
-    A newly detected tight pile is stored as pending until STABLE_DAYS of
-    consecutive same-inc detections with |Δn|<=PILE_MATCH_N and
-    |Δkm|<=STABLE_KM versus yesterday. Frozen (n, i, e) never update.
+    A newly detected tight pile is stored as pending until STABLE_DAYS
+    sightings at the same inc with |n_today - n0|<=PILE_MATCH_N. n0 is the
+    first-day mean motion and is never updated (a slow climb cannot chase
+    n into a freeze). Peak-km is a label: km/i/e refresh on each sighting
+    for the freeze-day name. Misses of PENDING_MISS_DAYS are kept.
+    Frozen (n, i, e) never update after freeze.
     """
     stats = [_peak_stats(sh, members) for sh, members in detected]
     frozen = list(refs.piles_at(inc))
@@ -230,31 +233,50 @@ def _match_piles(
     pend_here = [(pi, p) for pi, p in enumerate(refs.pending) if p.inc == inc]
     pend_pairs: list[tuple[int, int, float]] = []
     for di in unmatched:
-        km, n, _i, _e = stats[di]
+        _km, n, _i, _e = stats[di]
         for local_j, (_pi, prev) in enumerate(pend_here):
-            if abs(n - prev.n) <= PILE_MATCH_N and abs(float(km) - float(prev.km)) <= STABLE_KM:
+            if abs(n - prev.n) <= PILE_MATCH_N:
                 pend_pairs.append((di, local_j, abs(n - prev.n)))
     det_to_pend = _greedy_pairs(pend_pairs)
 
     today = _day(day)
+    used_local: set[int] = set()
     kept: list[PendingPile] = []
     for di in unmatched:
         km, n, i, e = stats[di]
         if di in det_to_pend:
-            prev = pend_here[det_to_pend[di]][1]
-            prev_d = _day(prev.last)
-            if prev_d == today:
+            local_j = det_to_pend[di]
+            used_local.add(local_j)
+            prev = pend_here[local_j][1]
+            gap = (today - _day(prev.last)).days
+            if gap == 0:
                 streak = prev.streak
-            elif today - prev_d == timedelta(days=1):
+                n0 = prev.n
+                last = prev.last
+            elif gap <= PENDING_MISS_DAYS:
                 streak = prev.streak + 1
+                n0 = prev.n
+                last = _day_s(day)
             else:
                 streak = 1
-        else:
-            streak = 1
-        if streak >= STABLE_DAYS:
-            pile = _freeze_new(inc, km, n, i, e, day, refs)
-            refs.piles.append(pile)
-            matched[di] = pile
+                n0 = n
+                last = _day_s(day)
+            if streak >= STABLE_DAYS:
+                pile = _freeze_new(inc, km, n0, i, e, day, refs)
+                refs.piles.append(pile)
+                matched[di] = pile
+            else:
+                kept.append(
+                    PendingPile(
+                        inc=inc,
+                        km=km,
+                        n=n0,
+                        i=i,
+                        e=e,
+                        streak=streak,
+                        last=last,
+                    )
+                )
         else:
             kept.append(
                 PendingPile(
@@ -263,10 +285,16 @@ def _match_piles(
                     n=n,
                     i=i,
                     e=e,
-                    streak=streak,
+                    streak=1,
                     last=_day_s(day),
                 )
             )
+
+    for local_j, (_pi, prev) in enumerate(pend_here):
+        if local_j in used_local:
+            continue
+        if (today - _day(prev.last)).days <= PENDING_MISS_DAYS:
+            kept.append(prev)
 
     refs.pending = [p for p in refs.pending if p.inc != inc] + kept
 
@@ -337,7 +365,10 @@ def assign_clocks(
             else:
                 clocks[s.norad_id] = Clock(med_n, med_i, med_e, None, "clump")
 
-    refs.pending = [p for p in refs.pending if p.last == _day_s(day)]
+    today = _day(day)
+    refs.pending = [
+        p for p in refs.pending if (today - _day(p.last)).days <= PENDING_MISS_DAYS
+    ]
 
     for s in other:
         clocks[s.norad_id] = Clock(s.mean_motion, s.inclination, s.ecc, None, "own")

@@ -160,8 +160,46 @@ class TestClocks(unittest.TestCase):
             self.assertEqual(refs.piles, [])
             self.assertEqual(clocks[1000].kind, "clump")
         self.assertEqual(refs.piles, [])
-        self.assertEqual(len(refs.pending), 1)
-        self.assertEqual(refs.pending[0].streak, 1)
+        self.assertTrue(refs.pending)
+        self.assertTrue(all(p.streak == 1 for p in refs.pending))
+
+    def test_slow_climb_004_per_day_does_not_freeze(self):
+        # n0 is identity; chasing n would freeze a 0.004/day climb.
+        n0 = N_550
+        refs = ShellRefs()
+        assign_clocks(_pile_sats(n0, 53.16, 40, 1000), refs, _iso("2020-01-01", 0))
+        self.assertAlmostEqual(refs.pending[0].n, n0, places=6)
+        assign_clocks(_pile_sats(n0 + 0.004, 53.16, 40, 1000), refs, _iso("2020-01-01", 1))
+        self.assertEqual(refs.piles, [])
+        self.assertEqual(refs.pending[0].n, n0)
+        self.assertEqual(refs.pending[0].streak, 2)
+        for i in range(2, 8):
+            n = n0 + 0.004 * i
+            clocks = assign_clocks(_pile_sats(n, 53.16, 40, 1000), refs, _iso("2020-01-01", i))
+            self.assertEqual(refs.piles, [])
+            self.assertEqual(clocks[1000].kind, "clump")
+        self.assertEqual(refs.piles, [])
+        self.assertTrue(all(p.streak < STABLE_DAYS for p in refs.pending))
+        today_n = n0 + 0.004 * 7
+        self.assertTrue(all(abs(p.n - today_n) > 1e-9 for p in refs.pending))
+
+    def test_three_days_skip_one_then_two_more_freezes(self):
+        refs = ShellRefs()
+        for i in (0, 1, 2):
+            assign_clocks(_pile_sats(N_475, 53.16, 40, 58000), refs, _iso("2025-06-29", i))
+        self.assertEqual(refs.piles, [])
+        self.assertEqual(refs.pending[0].streak, 3)
+        n0 = refs.pending[0].n
+        # Skip 2025-07-02 (day +3). Next sightings are +4 and +5.
+        clocks = assign_clocks(_pile_sats(N_475, 53.16, 40, 58000), refs, _iso("2025-06-29", 4))
+        self.assertEqual(refs.piles, [])
+        self.assertEqual(refs.pending[0].streak, 4)
+        self.assertEqual(refs.pending[0].n, n0)
+        clocks = assign_clocks(_pile_sats(N_475, 53.16, 40, 58000), refs, _iso("2025-06-29", 5))
+        self.assertEqual(len(refs.piles), 1)
+        self.assertEqual(refs.pending, [])
+        self.assertEqual(clocks[58000].kind, "pile")
+        self.assertAlmostEqual(refs.piles[0].n, n0, places=6)
 
     def test_smear_541_then_540_same_n_is_one_pile(self):
         refs = ShellRefs()

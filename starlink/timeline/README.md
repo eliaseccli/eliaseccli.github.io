@@ -8,10 +8,11 @@ player uses 15 either way.
 today-view `sats.json`). Binary layout is unchanged: 32-byte header, per-day
 date + flags + catalog bitmask + `u16` x/y pairs.
 
-`shell_refs.json` freezes `(n, i, e)` after **5 consecutive days** of a tight
-pile at the same inclination with `|Δn| ≤ 0.005` (~1.5 km) and `|Δkm| ≤ 4`
-versus yesterday. Matching is by inclination and mean motion, not altitude
-nametag, so 460/463/465 stay separate and a one-week descent smear does not
+`shell_refs.json` freezes `(n, i, e)` after **5 tight-pile sightings** at the
+same inclination whose mean motion stays within `|n − n0| ≤ 0.005` of the
+**first-day** `n` (pending identity; `n` is never chased). Peak-km is a label
+only. A miss of up to 2 days does not reset the streak. 460/463/465 stay
+separate; a one-week descent smear or a slow climb of 0.004/day does not
 freeze. Pending streaks live in `pending: [{inc, km, n, i, e, streak, last}]`
 so the daily Action can finish a freeze across runs. Frozen numbers are never
 edited. Replace this file when historical frames are rebuilt.
