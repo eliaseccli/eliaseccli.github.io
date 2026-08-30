@@ -162,6 +162,7 @@
       return;
     }
     emptyEl.hidden = true;
+    index = places.length - 1;
     places.forEach(function (place, i) {
       var slot = document.createElement("div");
       slot.className = "slot";
@@ -381,6 +382,7 @@
     return res.ok ? res.json() : [];
   }).then(function (raw) {
     places = asList(raw).map(normalize).filter(Boolean).sort(newestFirst);
+    places.reverse();
     render();
   }).catch(function () {
     places = [];
