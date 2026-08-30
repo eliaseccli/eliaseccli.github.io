@@ -8,10 +8,13 @@ player uses 15 either way.
 today-view `sats.json`). Binary layout is unchanged: 32-byte header, per-day
 date + flags + catalog bitmask + `u16` x/y pairs.
 
-`shell_refs.json` freezes `(n, i, e)` the first time a tight stationkeeping
-pile is seen. The daily Action appends new piles only; it never edits frozen
-numbers. This committed file starts empty (`piles: []`). Replace it when
-historical frames are rebuilt.
+`shell_refs.json` freezes `(n, i, e)` after **5 consecutive days** of a tight
+pile at the same inclination with `|Δn| ≤ 0.005` (~1.5 km) and `|Δkm| ≤ 4`
+versus yesterday. Matching is by inclination and mean motion, not altitude
+nametag, so 460/463/465 stay separate and a one-week descent smear does not
+freeze. Pending streaks live in `pending: [{inc, km, n, i, e, streak, last}]`
+so the daily Action can finish a freeze across runs. Frozen numbers are never
+edited. Replace this file when historical frames are rebuilt.
 
 ## Rebuild from Space-Track yearly TLEs
 

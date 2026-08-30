@@ -168,6 +168,84 @@ class TestPackAndAppend(unittest.TestCase):
             self.assertEqual(month.days[0].date, 20260830)
             self.assertEqual(month.days[0].slots, [0, 1])
 
+    def test_append_day_persists_pending_across_action_runs(self):
+        """Daily Action loads/saves shell_refs.json; a new shell freezes over a week."""
+        from datetime import date
+
+        from refresh.clocks import STABLE_DAYS
+        from refresh.parse import Sat
+        from refresh.orbit import altitude_km
+
+        n = N_SK
+        inc = 53.16
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            timeline = root / "timeline"
+            (timeline / "v1").mkdir(parents=True)
+            cat = TimelineCatalog(end="2025-06-28")
+            cat.sats = []
+            seed = Sat(
+                name="STARLINK-31",
+                norad_id=58000,
+                epoch=datetime(2025, 6, 28, 12, 0, 0),
+                inclination=inc,
+                raan=10.0,
+                argp=20.0,
+                mean_anomaly=30.0,
+                ecc=0.0001,
+                mean_motion=n,
+                altitude_km=altitude_km(n, 0.0001),
+            )
+            cat.append_sat(seed)
+            cat.save(timeline / "catalog.json")
+            ShellRefs().save(timeline / "shell_refs.json")
+
+            def gp_records(epoch: str) -> list[dict]:
+                return [
+                    {
+                        "OBJECT_NAME": f"STARLINK-{58000 + i}",
+                        "NORAD_CAT_ID": 58000 + i,
+                        "EPOCH": epoch,
+                        "INCLINATION": inc,
+                        "RA_OF_ASC_NODE": 10.0,
+                        "ARG_OF_PERICENTER": 20.0,
+                        "MEAN_ANOMALY": 30.0,
+                        "ECCENTRICITY": 0.0001,
+                        "MEAN_MOTION": n,
+                    }
+                    for i in range(40)
+                ]
+
+            gp_path = root / "starlink_gp.json"
+            start = date(2025, 6, 29)
+            for i in range(STABLE_DAYS - 1):
+                d = start + timedelta(days=i)
+                gp_path.write_text(
+                    json.dumps(gp_records(d.isoformat() + "T12:00:00")),
+                    encoding="utf-8",
+                )
+                info = append_today(timeline, gp_path=gp_path, frame_date=d)
+                self.assertEqual(info["piles"], 0)
+                self.assertEqual(info["pending"], 1)
+                refs = ShellRefs.load(timeline / "shell_refs.json")
+                self.assertEqual(refs.piles, [])
+                self.assertEqual(len(refs.pending), 1)
+                self.assertEqual(refs.pending[0].streak, i + 1)
+                self.assertEqual(refs.pending[0].last, d.isoformat())
+
+            d5 = start + timedelta(days=STABLE_DAYS - 1)
+            gp_path.write_text(
+                json.dumps(gp_records(d5.isoformat() + "T12:00:00")),
+                encoding="utf-8",
+            )
+            info = append_today(timeline, gp_path=gp_path, frame_date=d5)
+            self.assertEqual(info["piles"], 1)
+            self.assertEqual(info["pending"], 0)
+            refs = ShellRefs.load(timeline / "shell_refs.json")
+            self.assertEqual(len(refs.piles), 1)
+            self.assertEqual(refs.pending, [])
+            self.assertAlmostEqual(refs.piles[0].n, n, places=6)
+
 
 if __name__ == "__main__":
     unittest.main()

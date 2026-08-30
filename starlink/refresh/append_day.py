@@ -44,9 +44,10 @@ def append_today(
     """Write today's J2-locked frame into the current month bin.
 
     Loads catalog.json, shell_refs.json, and the current YYYY-MM.bin when
-    present. New NORADs append to the catalog; new tight piles append to
-    shell_refs.json. Does not fetch Space-Track. Raises TimelineSkip if
-    the catalog or v1 directory is missing.
+    present. New NORADs append to the catalog. Pending tight-pile streaks
+    persist in shell_refs.json so a freeze can finish across daily Action
+    runs; frozen (n, i, e) are never edited. Does not fetch Space-Track.
+    Raises TimelineSkip if the catalog or v1 directory is missing.
     """
     timeline_dir = Path(timeline_dir)
     catalog_path = timeline_dir / "catalog.json"
@@ -130,5 +131,6 @@ def append_today(
         "n": len(slots),
         "catalog": len(catalog.sats),
         "piles": len(refs.piles),
+        "pending": len(refs.pending),
         "month": str(month_path),
     }
