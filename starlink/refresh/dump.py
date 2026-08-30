@@ -6,8 +6,11 @@ import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from refresh.binary import read_month
+from refresh.catalog import TimelineCatalog
 from refresh.clocks import ShellRefs, assign_clocks
 from refresh.fetch import GP_CACHE, load_catalog
+from refresh.j2 import unpack_u16
 from refresh.lock import LockState, apply_locks
 from refresh.parse import Sat, parse_omm_records, parse_tle_file
 from refresh.shells import filter_inclination, in_shell, listed_shells
@@ -56,6 +59,57 @@ def _load_sats(sats: list[Sat] | None) -> tuple[list[Sat], str]:
     return parsed, source
 
 
+def last_packed_xy(timeline_dir: Path) -> dict[int, tuple[float, float]]:
+    """Play last-frame (x, y) from the newest STLK day, keyed by NORAD.
+
+    Today must sit on the same clock as Stop / last Play. Celestrak dump
+    lock can diverge (different t, n refine, missing x0/y0). Overlapping
+    NORADs reuse the packed u16 coords; new sats keep dump lock.
+    """
+    td = Path(timeline_dir)
+    catalog_path = td / "catalog.json"
+    v1 = td / "v1"
+    if not catalog_path.exists() or not v1.exists():
+        return {}
+    try:
+        catalog = TimelineCatalog.load(catalog_path)
+        end = date.fromisoformat(catalog.end)
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    month_path = v1 / f"{end.year:04d}-{end.month:02d}.bin"
+    if not month_path.exists():
+        return {}
+    try:
+        month = read_month(month_path)
+    except ValueError:
+        return {}
+    if not month.days:
+        return {}
+    last = month.days[-1]
+    out: dict[int, tuple[float, float]] = {}
+    for slot, xu, yu in zip(last.slots, last.xs, last.ys):
+        if slot < 0 or slot >= len(catalog.sats):
+            continue
+        out[catalog.sats[slot].id] = (unpack_u16(xu), unpack_u16(yu))
+    return out
+
+
+def overlay_packed_xy(
+    xy: dict[int, tuple[float, float]],
+    packed: dict[int, tuple[float, float]],
+    norads: set[int],
+) -> int:
+    """Replace dump lock with packed last-frame coords for overlapping NORADs."""
+    n = 0
+    for nid in norads:
+        pos = packed.get(nid)
+        if pos is None:
+            continue
+        xy[nid] = pos
+        n += 1
+    return n
+
+
 def dump_sats(
     out_path: Path,
     *,
@@ -74,6 +128,8 @@ def dump_sats(
     lock_state = LockState.load(td / "lock_state.json")
     clocks = assign_clocks(parsed, refs, day.isoformat())
     xy = apply_locks(parsed, clocks, t, lock_state, day.isoformat())
+    packed = last_packed_xy(td)
+    overlay_packed_xy(xy, packed, {s.norad_id for s in parsed})
 
     shells_out: list[dict] = []
     sats_out: list[dict] = []

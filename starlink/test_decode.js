@@ -38,6 +38,21 @@ assert.ok(!/fps = j\.fps \|\| 30/.test(src), "player must not fall back to catal
 assert.ok(/data-tl-fps/.test(html) && /min="1"/.test(html) && /max="15"/.test(html), "speed control is 1–15");
 assert.ok(/rMin = 3\.36/.test(src), "timeline 0-zoom radius is 3.36");
 assert.ok(/rMin = 3\.36/.test(html), "today 0-zoom radius is 3.36");
+assert.ok(/data-tl-scrub/.test(html) && /data-tl-date/.test(html), "scrub keeps data-tl-scrub / data-tl-date");
+assert.ok(!/<input[^>]*data-tl-scrub/.test(html), "scrub is not a native range input");
+assert.ok(/role="slider"/.test(html), "scrub stays a keyboard slider");
+assert.ok(/transport-controls/.test(html), "play/stop/fps sit on their own row");
+assert.ok(/alignToday/.test(src), "today overlays last packed frame coords");
+assert.ok(typeof tl.scrubDaysPerPx === "function", "fine-scrub scale is exported");
+
+var width = 400;
+var nSteps = 2655;
+var coarse = tl.scrubDaysPerPx(0, width, nSteps);
+assert.ok(Math.abs(coarse - nSteps / width) < 1e-12, "on-track scrub is 1:1");
+var far = tl.scrubDaysPerPx(tl.SCRUB_FINE_RANGE_PX, width, nSteps);
+assert.ok(Math.abs(far - 1 / tl.SCRUB_DAY_STEP_PX) < 1e-12, "max vertical distance is one day per step");
+var mid = tl.scrubDaysPerPx(tl.SCRUB_FINE_RANGE_PX * 0.5, width, nSteps);
+assert.ok(mid < coarse && mid > far, "vertical-away interpolates toward day-by-day");
 
 console.log("timeline fixture decode: ok");
 console.log("  magic=" + m.magic + " n_days=" + m.nDays + " catalog_len=" + m.catalogLen);

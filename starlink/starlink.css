@@ -12,6 +12,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 html, body { overflow-x: hidden; }
+html.is-scrubbing, body.is-scrubbing { overflow: hidden; touch-action: none; }
 .nav {
   position: fixed;
   top: max(0.9rem, calc(env(safe-area-inset-top) + 0.55rem));
@@ -136,11 +137,19 @@ html, body { overflow-x: hidden; }
 }
 .transport {
   display: flex;
-  align-items: center;
-  gap: 0.4rem 0.55rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
   margin-top: 0.4rem;
   min-width: 0;
   width: 100%;
+}
+.transport-controls {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  min-width: 0;
 }
 .transport button {
   flex: 0 0 auto;
@@ -193,19 +202,58 @@ html, body { overflow-x: hidden; }
   outline-offset: 2px;
 }
 .scrub {
-  flex: 1 1 8rem;
+  flex: 0 0 auto;
   min-width: 0;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin: 0;
 }
-.scrub input[type="range"] {
+.scrub-track {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
-  margin: 0;
-  accent-color: #fb923c;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.scrub-track:focus-visible {
+  outline: 2px solid rgba(190, 220, 255, 0.7);
+  outline-offset: 2px;
+}
+.scrub-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 4px;
+  width: 0;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: #fb923c;
+  pointer-events: none;
+}
+.scrub-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-left: -0.5rem;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: #fb923c;
+  box-shadow: 0 0 0 2px rgba(5, 5, 8, 0.55);
+  pointer-events: none;
+}
+.scrub-track.is-scrubbing {
+  cursor: grabbing;
 }
 .playhead {
   flex: 0 0 auto;
@@ -262,7 +310,6 @@ canvas.drag { cursor: grabbing; }
     min-height: 0;
   }
   .stage { margin-top: 0; flex: 0 0 auto; display: flex; flex-direction: column; }
-  .transport { flex-wrap: nowrap; }
   .side {
     width: 22rem;
     max-width: 42vw;
@@ -280,7 +327,6 @@ canvas.drag { cursor: grabbing; }
 @media (orientation: landscape) and (max-height: 560px) {
   .lead { display: none; }
   .side { width: min(20rem, 40vw); }
-  .transport { flex-wrap: wrap; }
   .playhead { min-width: 0; }
 }
 .chk {
