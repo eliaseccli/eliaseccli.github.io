@@ -12,6 +12,7 @@ from refresh.append_day import append_today
 from refresh.binary import decode_month
 from refresh.catalog import TimelineCatalog
 from refresh.clocks import ShellRefs
+from refresh.lock import LockState
 from refresh.j2 import T0, j2_rates, lock_xy, unpack_u16
 from refresh.orbit import deg_per_sec
 from refresh.pack_timeline import pack_timeline
@@ -73,6 +74,9 @@ class TestPackAndAppend(unittest.TestCase):
             info = pack_timeline(tle_dir, out)
             self.assertEqual(info["days"], 8)
             self.assertEqual(info["catalog"], 1)
+            self.assertTrue((out / "lock_state.json").exists())
+            locks = LockState.load(out / "lock_state.json")
+            self.assertIn(44235, locks.sats)
             cat = TimelineCatalog.load(out / "catalog.json")
             self.assertEqual(cat.fps, 15)
             self.assertEqual(cat.sats[0].id, 44235)
@@ -84,7 +88,7 @@ class TestPackAndAppend(unittest.TestCase):
             self.assertEqual(len(month.days), 8)
             xs = [unpack_u16(d.xs[0]) for d in month.days]
             ys = [unpack_u16(d.ys[0]) for d in month.days]
-            # 8 sats < detect_peaks min_count → clump clock; synthetic SK still locks.
+            # One sat → own clock (held n); synthetic SK still locks.
             self.assertLess(max(xs) - min(xs), 0.02)
             self.assertLess(max(ys) - min(ys), 0.02)
             want_x, want_y = lock_xy(
@@ -159,6 +163,11 @@ class TestPackAndAppend(unittest.TestCase):
             info = append_today(timeline, gp_path=gp_path, frame_date=date(2026, 8, 30))
             self.assertEqual(info["n"], 2)
             self.assertEqual(info["catalog"], 2)
+            self.assertTrue((timeline / "lock_state.json").exists())
+            locks = LockState.load(timeline / "lock_state.json")
+            self.assertEqual(locks.day, "2026-08-30")
+            self.assertIn(44235, locks.sats)
+            self.assertIn(99999, locks.sats)
             cat2 = TimelineCatalog.load(timeline / "catalog.json")
             self.assertEqual(cat2.sats[0].id, 44235)
             self.assertEqual(cat2.sats[1].id, 99999)

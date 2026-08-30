@@ -29,11 +29,13 @@ jobs:
             echo "Skip: not 08:00 Vienna"
             exit 0
           fi
-          PYTHONPATH=starlink python3 -m refresh dump --out starlink/sats.json
-          # Append today's J2-locked timeline day from the already-fetched GP JSON.
+          # Append today's J2-locked frame (and lock_state) before dump so Today
+          # matches the last play day. Append fetches GP if the cache is empty.
           # Do not fetch Space-Track. Missing timeline files must not fail sats.json.
           PYTHONPATH=starlink python3 -m refresh append-day --timeline starlink/timeline \
             || echo "timeline append skipped (exit $?)"
+          PYTHONPATH=starlink python3 -m refresh dump --out starlink/sats.json \
+            --timeline starlink/timeline
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
@@ -41,6 +43,7 @@ jobs:
           git add starlink/sats.json \
             starlink/timeline/catalog.json \
             starlink/timeline/shell_refs.json \
+            starlink/timeline/lock_state.json \
             starlink/timeline/manifest.json \
             starlink/timeline/v1/*.bin
           if git diff --cached --quiet; then

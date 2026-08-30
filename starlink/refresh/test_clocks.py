@@ -1,4 +1,4 @@
-"""Pile freeze after 5 stable days, draft-lock, and new-pile-on-lower."""
+"""Pile freeze after 5 stable days, closest-n draft, own clocks, small-clump."""
 
 from __future__ import annotations
 
@@ -9,12 +9,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from refresh.clocks import (
+    CLOCKS_MIN_CLUMP,
     PILE_MATCH_N,
     STABLE_DAYS,
     PendingPile,
     ShellRefs,
     assign_clocks,
 )
+from refresh.shells import listed_shells
 from refresh.orbit import altitude_km
 from refresh.parse import Sat
 
@@ -89,7 +91,7 @@ class TestClocks(unittest.TestCase):
             self.assertEqual(refs.piles, [])
             self.assertEqual(len(refs.pending), 1)
             self.assertEqual(refs.pending[0].streak, i + 1)
-            self.assertEqual(clocks[58000].kind, "clump")
+            self.assertEqual(clocks[58000].kind, "own")
 
         clocks = assign_clocks(_pile_sats(n, inc, 40, 58000), refs, _iso("2025-06-29", 4))
         self.assertEqual(len(refs.piles), 1)
@@ -108,18 +110,34 @@ class TestClocks(unittest.TestCase):
         self.assertEqual(refs.piles[0].i, frozen_i)
         self.assertEqual(refs.piles[0].e, frozen_e)
 
-    def test_raiser_draft_locks_once_a_frozen_pile_exists(self):
+    def test_close_n_drafts_to_nearest_frozen_pile(self):
         n_shell = N_475
-        n_low = 15.50  # lower altitude / higher mean motion
+        n_close = n_shell + 0.003
+        self.assertLessEqual(abs(n_close - n_shell), PILE_MATCH_N)
         refs = ShellRefs()
-        raiser = _sat(59000, n_low, 53.10)
+        raiser = _sat(59000, n_close, 53.10)
         clocks = _hold(refs, n_shell, 53.16, "2025-07-01", STABLE_DAYS, extra=[raiser])
         self.assertEqual(len(refs.piles), 1)
         self.assertEqual(clocks[59000].kind, "draft")
         self.assertEqual(clocks[59000].pile_id, refs.piles[0].id)
         self.assertEqual(clocks[59000].n_shell, refs.piles[0].n)
-        self.assertNotAlmostEqual(raiser.mean_motion, clocks[59000].n_shell, places=3)
         self.assertEqual(clocks[58000].kind, "pile")
+
+    def test_far_n_does_not_draft_to_frozen_pile(self):
+        refs = ShellRefs()
+        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, count=40, start_id=1000)
+        self.assertEqual(len(refs.piles), 1)
+        frozen_n = refs.piles[0].n
+        stray = _sat(99999, 15.01, 97.65)
+        self.assertGreater(abs(15.01 - frozen_n), PILE_MATCH_N)
+        clocks = assign_clocks(
+            _pile_sats(15.70, 97.65, 40, 1000) + [stray], refs, "2022-07-27"
+        )
+        self.assertEqual(clocks[99999].kind, "own")
+        self.assertIsNone(clocks[99999].pile_id)
+        self.assertAlmostEqual(clocks[99999].n_shell, 15.01, places=6)
+        self.assertAlmostEqual(clocks[99999].i_ref, 97.65, places=6)
+        self.assertEqual(clocks[1000].kind, "pile")
 
     def test_lowered_shell_is_new_pile_after_five_stable_days(self):
         n_high = N_475
@@ -138,9 +156,11 @@ class TestClocks(unittest.TestCase):
                 _pile_sats(n_550, 53.16, 40, 1000), refs, _iso("2021-01-01", i)
             )
             self.assertEqual(len(refs.piles), 1)
-            self.assertEqual(clocks[1000].kind, "draft")
-            self.assertEqual(clocks[1000].pile_id, first_id)
-            self.assertEqual(clocks[1000].n_shell, first_n)
+            self.assertEqual(clocks[1000].kind, "own")
+            self.assertIsNone(clocks[1000].pile_id)
+            self.assertAlmostEqual(clocks[1000].n_shell, n_550, places=6)
+            self.assertNotEqual(first_id, clocks[1000].pile_id)
+            self.assertNotAlmostEqual(clocks[1000].n_shell, first_n, places=3)
 
         clocks = assign_clocks(_pile_sats(n_550, 53.16, 40, 1000), refs, _iso("2021-01-01", 4))
         self.assertEqual(len(refs.piles), 2)
@@ -158,7 +178,7 @@ class TestClocks(unittest.TestCase):
                 self.assertGreater(abs(n - ladder_n[i - 1]), PILE_MATCH_N)
             clocks = assign_clocks(_pile_sats(n, 53.16, 40, 1000), refs, _iso("2019-11-24", i))
             self.assertEqual(refs.piles, [])
-            self.assertEqual(clocks[1000].kind, "clump")
+            self.assertEqual(clocks[1000].kind, "own")
         self.assertEqual(refs.piles, [])
         self.assertTrue(refs.pending)
         self.assertTrue(all(p.streak == 1 for p in refs.pending))
@@ -177,7 +197,7 @@ class TestClocks(unittest.TestCase):
             n = n0 + 0.004 * i
             clocks = assign_clocks(_pile_sats(n, 53.16, 40, 1000), refs, _iso("2020-01-01", i))
             self.assertEqual(refs.piles, [])
-            self.assertEqual(clocks[1000].kind, "clump")
+            self.assertEqual(clocks[1000].kind, "own")
         self.assertEqual(refs.piles, [])
         self.assertTrue(all(p.streak < STABLE_DAYS for p in refs.pending))
         today_n = n0 + 0.004 * 7
@@ -249,16 +269,35 @@ class TestClocks(unittest.TestCase):
         self.assertEqual(clocks[3000].kind, "pile")
         self.assertEqual(len({clocks[1000].pile_id, clocks[2000].pile_id, clocks[3000].pile_id}), 3)
 
-    def test_early_clump_uses_daily_median(self):
-        # Fewer than detect_peaks min_count (25) → no pile yet.
+    def test_ten_tight_polar_sats_freeze_after_five_days(self):
+        # detect_peaks min_count 25 would miss a 10-sat polar plane.
+        n = 15.1435
+        inc = 97.6
         refs = ShellRefs()
-        clump = _pile_sats(15.20, 53.05, 10, 44235)
-        clocks = assign_clocks(clump, refs, "2019-05-24")
+        group = _pile_sats(n, inc, 10, 47000)
+        self.assertGreaterEqual(len(group), CLOCKS_MIN_CLUMP)
+        self.assertEqual(listed_shells(97, group), [])
+        for i in range(STABLE_DAYS - 1):
+            clocks = assign_clocks(_pile_sats(n, inc, 10, 47000), refs, _iso("2021-02-01", i))
+            self.assertEqual(refs.piles, [])
+            self.assertEqual(len(refs.pending), 1)
+            self.assertEqual(refs.pending[0].streak, i + 1)
+            self.assertEqual(clocks[47000].kind, "own")
+            self.assertAlmostEqual(clocks[47000].n_shell, n, places=6)
+        clocks = assign_clocks(_pile_sats(n, inc, 10, 47000), refs, _iso("2021-02-01", 4))
+        self.assertEqual(len(refs.piles), 1)
+        self.assertEqual(refs.pending, [])
+        self.assertEqual(clocks[47000].kind, "pile")
+        self.assertEqual(clocks[47000].pile_id, refs.piles[0].id)
+        self.assertAlmostEqual(refs.piles[0].n, n, places=6)
+        self.assertEqual(listed_shells(97, _pile_sats(n, inc, 10, 47000)), [])
+
+    def test_seven_tight_sats_do_not_pending(self):
+        refs = ShellRefs()
+        clocks = assign_clocks(_pile_sats(15.1435, 97.6, 7, 47000), refs, "2021-02-01")
         self.assertEqual(refs.piles, [])
         self.assertEqual(refs.pending, [])
-        self.assertEqual(clocks[44235].kind, "clump")
-        self.assertIsNone(clocks[44235].pile_id)
-        self.assertAlmostEqual(clocks[44235].n_shell, 15.20, places=6)
+        self.assertEqual(clocks[47000].kind, "own")
 
     def test_pending_persists_across_shell_refs_json_roundtrip(self):
         refs = ShellRefs()

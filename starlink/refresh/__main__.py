@@ -14,13 +14,19 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     dump = sub.add_parser("dump")
     dump.add_argument("--out", required=True)
+    dump.add_argument("--timeline", default="starlink/timeline")
+    dump.add_argument("--date", default="", help="Frame date YYYY-MM-DD (default: UTC today)")
     ap = sub.add_parser("append-day", help="Append today's J2-locked timeline day from cached GP JSON")
     ap.add_argument("--timeline", default="starlink/timeline")
     ap.add_argument("--gp", default="", help="GP JSON path (default: STARLINK_CACHE/starlink_gp.json)")
     ap.add_argument("--date", default="", help="Frame date YYYY-MM-DD (default: UTC today)")
     args = parser.parse_args(argv)
     if args.cmd == "dump":
-        payload = dump_sats(Path(args.out))
+        payload = dump_sats(
+            Path(args.out),
+            timeline_dir=Path(args.timeline),
+            frame_date=date.fromisoformat(args.date) if args.date else None,
+        )
         print(
             f"wrote {args.out}: {payload['n']} sats in {len(payload['shells'])} shells "
             f"(catalog {payload['catalog']}, epoch {payload['epoch']})"

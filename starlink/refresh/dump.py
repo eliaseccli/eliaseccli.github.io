@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from refresh.fetch import load_catalog
-from refresh.orbit import position_at
-from refresh.parse import parse_omm_records, parse_tle_file
+from refresh.clocks import ShellRefs, assign_clocks
+from refresh.fetch import GP_CACHE, load_catalog
+from refresh.lock import LockState, apply_locks
+from refresh.parse import Sat, parse_omm_records, parse_tle_file
 from refresh.shells import filter_inclination, in_shell, listed_shells
 
 # Stable colors per (inc, peak). New auto-detected shells cycle the extras.
@@ -31,24 +32,55 @@ EXTRA = ["#94a3b8", "#e879f9", "#2dd4bf", "#f472b6", "#a3e635"]
 RAISING_COLOR = "#64748b"
 INC_ORDER = (43, 53, 70, 97)
 INC_LABEL = {43: "43°", 53: "53°", 70: "70°", 97: "97.6°"}
+DEFAULT_TIMELINE = Path("starlink/timeline")
 
 
-def dump_sats(out_path: Path) -> dict:
+def _utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def _load_sats(sats: list[Sat] | None) -> tuple[list[Sat], str]:
+    if sats is not None:
+        return sats, "injected"
+    if GP_CACHE.exists():
+        rec = json.loads(GP_CACHE.read_text(encoding="utf-8"))
+        if isinstance(rec, list):
+            return parse_omm_records(rec), "Celestrak GP JSON"
     catalog = load_catalog()
     if catalog.kind == "json":
-        sats = parse_omm_records(catalog.records or [])
+        parsed = parse_omm_records(catalog.records or [])
+        source = "Celestrak GP JSON"
     else:
-        sats = parse_tle_file(catalog.path)
-    if not sats:
+        parsed = parse_tle_file(catalog.path)
+        source = "TLE fallback"
+    return parsed, source
+
+
+def dump_sats(
+    out_path: Path,
+    *,
+    timeline_dir: Path | None = None,
+    frame_date: date | None = None,
+    sats: list[Sat] | None = None,
+) -> dict:
+    parsed, source = _load_sats(sats)
+    if not parsed:
         raise SystemExit("no satellites parsed")
 
-    t = max(s.epoch for s in sats)
+    day = frame_date or _utc_today()
+    t = datetime(day.year, day.month, day.day, 12, 0, 0)
+    td = Path(timeline_dir) if timeline_dir is not None else DEFAULT_TIMELINE
+    refs = ShellRefs.load(td / "shell_refs.json")
+    lock_state = LockState.load(td / "lock_state.json")
+    clocks = assign_clocks(parsed, refs, day.isoformat())
+    xy = apply_locks(parsed, clocks, t, lock_state, day.isoformat())
+
     shells_out: list[dict] = []
     sats_out: list[dict] = []
     extra_i = 0
 
     for inc in INC_ORDER:
-        subset = filter_inclination(sats, inc)
+        subset = filter_inclination(parsed, inc)
         if not subset:
             continue
         assigned: set[int] = set()
@@ -74,7 +106,7 @@ def dump_sats(out_path: Path) -> dict:
             })
             for s in members:
                 assigned.add(s.norad_id)
-                x, y = position_at(s, t)
+                x, y = xy.get(s.norad_id, (0.0, 0.0))
                 sats_out.append({
                     "name": s.name,
                     "id": s.norad_id,
@@ -96,7 +128,7 @@ def dump_sats(out_path: Path) -> dict:
                 "listed": False,
             })
             for s in leftover:
-                x, y = position_at(s, t)
+                x, y = xy.get(s.norad_id, (0.0, 0.0))
                 sats_out.append({
                     "name": s.name,
                     "id": s.norad_id,
@@ -106,11 +138,12 @@ def dump_sats(out_path: Path) -> dict:
                     "s": sid,
                 })
 
+    catalog_epoch = max(s.epoch for s in parsed)
     payload = {
-        "epoch": t.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": "Celestrak GP JSON" if catalog.kind == "json" else "TLE fallback",
+        "epoch": catalog_epoch.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": source,
         "n": len(sats_out),
-        "catalog": len(sats),
+        "catalog": len(parsed),
         "shells": shells_out,
         "sats": sats_out,
     }
