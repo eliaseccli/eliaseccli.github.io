@@ -1,18 +1,18 @@
 [
   {
     "slug": "pizza",
-    "title": "Pizza in Südtirol",
+    "title": "Pizza in S\u00fcdtirol",
     "date": "2025-08-09",
     "captured": "2025:08:09 19:09:32",
-    "day": "stills/diorama-pizza-day.png",
-    "night": "stills/diorama-pizza-night.png"
+    "day": "stills/diorama-pizza-day.png?v=clay1",
+    "night": "stills/diorama-pizza-night.png?v=clay1"
   },
   {
     "slug": "forest",
     "title": "Sunset in Sweden",
     "date": "2025-07-24",
-    "day": "stills/diorama-forest-day.png",
-    "night": "stills/diorama-forest-night.png"
+    "day": "stills/diorama-forest-day.png?v=clay1",
+    "night": "stills/diorama-forest-night.png?v=clay1"
   },
   {
     "slug": "sas-window",
