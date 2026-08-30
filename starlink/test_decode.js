@@ -39,7 +39,8 @@ assert.ok(/data-tl-fps/.test(html) && /min="1"/.test(html) && /max="15"/.test(ht
 assert.ok(/rMin = 3\.36/.test(src), "timeline 0-zoom radius is 3.36");
 assert.ok(/rMin = 3\.36/.test(html), "today 0-zoom radius is 3.36");
 assert.ok(/data-tl-scrub/.test(html) && /data-tl-date/.test(html), "scrub keeps data-tl-scrub / data-tl-date");
-assert.ok(!/<input[^>]*data-tl-scrub/.test(html), "scrub is not a native range input");
+assert.ok(html.indexOf("data-tl-scrub-input") !== -1, "native range is a keyboard a11y fallback only");
+assert.ok(!/<input[^>]*data-tl-scrub[\s>=]/.test(html), "visible scrub host is not a native range input");
 assert.ok(/role="slider"/.test(html), "scrub stays a keyboard slider");
 assert.ok(/transport-controls/.test(html), "play/stop/fps sit on their own row");
 assert.ok(/alignToday/.test(src), "today overlays last packed frame coords");
@@ -53,6 +54,11 @@ var far = tl.scrubDaysPerPx(tl.SCRUB_FINE_RANGE_PX, width, nSteps);
 assert.ok(Math.abs(far - 1 / tl.SCRUB_DAY_STEP_PX) < 1e-12, "max vertical distance is one day per step");
 var mid = tl.scrubDaysPerPx(tl.SCRUB_FINE_RANGE_PX * 0.5, width, nSteps);
 assert.ok(mid < coarse && mid > far, "vertical-away interpolates toward day-by-day");
+assert.strictEqual(tl.scrubKeyDelta("ArrowLeft"), -1, "arrow left is one day back");
+assert.strictEqual(tl.scrubKeyDelta("ArrowRight"), 1, "arrow right is one day forward");
+assert.strictEqual(tl.scrubKeyDelta("Home"), "start");
+assert.strictEqual(tl.scrubKeyDelta("End"), "end");
+assert.strictEqual(tl.scrubKeyDelta("a"), 0);
 
 console.log("timeline fixture decode: ok");
 console.log("  magic=" + m.magic + " n_days=" + m.nDays + " catalog_len=" + m.catalogLen);

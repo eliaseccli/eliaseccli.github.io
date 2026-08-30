@@ -69,6 +69,14 @@
     return coarse + (fine - coarse) * t;
   }
 
+  function scrubKeyDelta(key, keyCode) {
+    if (key === "ArrowLeft" || key === "Left" || key === "ArrowDown" || keyCode === 37 || keyCode === 40) return -1;
+    if (key === "ArrowRight" || key === "Right" || key === "ArrowUp" || keyCode === 39 || keyCode === 38) return 1;
+    if (key === "Home" || keyCode === 36) return "start";
+    if (key === "End" || keyCode === 35) return "end";
+    return 0;
+  }
+
   function hexToRgba(hex, a) {
     var h = hex.replace("#", "");
     var r = parseInt(h.slice(0, 2), 16);
@@ -155,6 +163,7 @@
     var playBtn = document.querySelector("[data-tl-play]");
     var stopBtn = document.querySelector("[data-tl-stop]");
     var scrub = document.querySelector("[data-tl-scrub]");
+    var scrubInput = document.querySelector("[data-tl-scrub-input]");
     var dateEl = document.querySelector("[data-tl-date]");
     var fpsEl = document.querySelector("[data-tl-fps]");
     var fpsLabel = document.querySelector("[data-tl-fps-label]");
@@ -223,6 +232,12 @@
       scrub.setAttribute("aria-valuenow", String(v));
       var label = mode === "today" ? "Today" : (start ? formatPlayhead(dateAt(index)) : "Today");
       scrub.setAttribute("aria-valuetext", label);
+      if (scrubInput) {
+        scrubInput.max = String(max);
+        scrubInput.min = "0";
+        scrubInput.step = "1";
+        scrubInput.value = String(v);
+      }
       var pct = (100 * v / max);
       var fill = scrub.querySelector("[data-tl-fill]");
       var thumb = scrub.querySelector("[data-tl-thumb]");
@@ -386,6 +401,7 @@
 
     function prefetch(ym) {
       if (!ym || months[ym]) return;
+      if (end && ym > monthKey(end)) return;
       loadMonth(ym);
     }
 
@@ -663,7 +679,8 @@
 
     function onScrub() {
       if (!catalog || !scrub) return;
-      var raw = scrub.tagName === "INPUT" ? scrub.value : scrub.getAttribute("data-value");
+      var raw = scrubInput ? scrubInput.value
+        : (scrub.tagName === "INPUT" ? scrub.value : scrub.getAttribute("data-value"));
       applyScrubIndex(parseInt(raw, 10));
     }
 
@@ -698,6 +715,16 @@
         applyScrubIndex(v);
       }
 
+      function keyStep(e) {
+        var delta = scrubKeyDelta(e.key, e.keyCode || e.which);
+        if (!delta) return false;
+        e.preventDefault();
+        if (delta === "start") moveTo(0);
+        else if (delta === "end") moveTo(todayIndex);
+        else moveTo(scrubIndex() + delta);
+        return true;
+      }
+
       function onWindowTouchMove(e) {
         if (drag) e.preventDefault();
       }
@@ -705,6 +732,7 @@
       function onPointerDown(e) {
         if (e.pointerType === "mouse" && e.button !== 0) return;
         e.preventDefault();
+        try { scrub.focus({ preventScroll: true }); } catch (err) {}
         if (scrub.setPointerCapture) {
           try { scrub.setPointerCapture(e.pointerId); } catch (err) {}
         }
@@ -740,21 +768,16 @@
       scrub.addEventListener("pointerdown", onPointerDown);
       scrub.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
       scrub.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
-      scrub.addEventListener("keydown", function (e) {
-        var v = scrubIndex();
-        if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-          e.preventDefault();
-          moveTo(v - 1);
-        } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-          e.preventDefault();
-          moveTo(v + 1);
-        } else if (e.key === "Home") {
-          e.preventDefault();
-          moveTo(0);
-        } else if (e.key === "End") {
-          e.preventDefault();
-          moveTo(todayIndex);
-        }
+      scrub.addEventListener("keydown", keyStep);
+      if (scrubInput) {
+        scrubInput.addEventListener("keydown", keyStep);
+        scrubInput.addEventListener("input", onScrub);
+        scrubInput.addEventListener("change", onScrub);
+      }
+      document.addEventListener("keydown", function (e) {
+        var active = document.activeElement;
+        if (active !== scrub && active !== scrubInput) return;
+        keyStep(e);
       });
     }
 
@@ -815,6 +838,7 @@
     INC_OTHER: INC_OTHER,
     mount: mount,
     scrubDaysPerPx: scrubDaysPerPx,
+    scrubKeyDelta: scrubKeyDelta,
     SCRUB_FINE_RANGE_PX: SCRUB_FINE_RANGE_PX,
     SCRUB_DAY_STEP_PX: SCRUB_DAY_STEP_PX
   };
