@@ -332,20 +332,10 @@ def _clock_detected(inc: int, group: list[Sat]) -> list[tuple[Shell, list[Sat]]]
 
 
 def _closest_pile(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
-    """Closest frozen pile at this inc by |Δn|. No match-radius check."""
+    """Closest pile by |Δn|. No match-radius check."""
     if not frozen:
         return None
     return min(frozen, key=lambda p: abs(sat.mean_motion - p.n))
-
-
-def _closest_draft(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
-    """Draft only to the closest-n frozen pile at this inc, and only if |Δn|<=N."""
-    best = _closest_pile(sat, frozen)
-    if best is None:
-        return None
-    if abs(sat.mean_motion - best.n) <= PILE_MATCH_N:
-        return best
-    return None
 
 
 def _clump_clock(unmatched: list[Sat]) -> Clock:
@@ -366,14 +356,14 @@ def assign_clocks(
 ) -> dict[int, Clock]:
     """Assign a clock to each sat. Stable tight piles freeze into refs.
 
-    kind=pile only for today's tight members of a frozen pile. Else draft
-    to the frozen pile at that inc with closest n if
-    |n_sat − n_pile| <= PILE_MATCH_N. Remaining unmatched: if there are
-    fewer than CLOCK_MIN_COUNT and a frozen pile exists at that inc, each
-    leftover drafts to the closest frozen pile by n (any Δn). Otherwise
-    they share one kind=clump clock (daily median n, i, e). Odd-inclination
-    loners stay kind=own with that sat's own n, i, e. Pending streaks
-    persist on refs for the daily Action to resume.
+    A frozen pile is an active shell today only if it has at least
+    CLOCK_MIN_COUNT members in today's sat_pile. Those members use the
+    pile's frozen n/i/e (kind=pile). Members of a sub-50 pile are leftovers,
+    same as unmatched. If at least one active 50+ shell exists at that
+    inclination, each leftover drafts to the closest active shell by n
+    (any Δn, kind=draft). If there is no 50+ shell yet, leftovers share
+    one kind=clump clock (daily median n, i, e). Odd-inclination loners
+    stay kind=own. Pending streaks persist on refs for the daily Action.
     """
     by_inc: dict[int, list[Sat]] = {k: [] for k in INC_WINDOWS}
     other: list[Sat] = []
@@ -404,29 +394,31 @@ def assign_clocks(
                 if d_new < d_old:
                     sat_pile[s.norad_id] = pile
 
-        unmatched: list[Sat] = []
+        pile_count: dict[str, int] = {}
+        for pile in sat_pile.values():
+            pile_count[pile.id] = pile_count.get(pile.id, 0) + 1
+        active = [p for p in frozen_here if pile_count.get(p.id, 0) >= CLOCK_MIN_COUNT]
+        active_ids = {p.id for p in active}
+
+        leftovers: list[Sat] = []
         for s in group:
             pile = sat_pile.get(s.norad_id)
-            if pile is not None:
+            if pile is not None and pile.id in active_ids:
                 clocks[s.norad_id] = Clock(pile.n, pile.i, pile.e, pile.id, "pile")
-                continue
-            draft = _closest_draft(s, frozen_here)
-            if draft is not None:
-                clocks[s.norad_id] = Clock(draft.n, draft.i, draft.e, draft.id, "draft")
             else:
-                unmatched.append(s)
-        if unmatched:
-            if len(unmatched) < CLOCK_MIN_COUNT and frozen_here:
-                for s in unmatched:
-                    closest = _closest_pile(s, frozen_here)
+                leftovers.append(s)
+        if leftovers:
+            if active:
+                for s in leftovers:
+                    closest = _closest_pile(s, active)
                     if closest is None:
                         continue
                     clocks[s.norad_id] = Clock(
                         closest.n, closest.i, closest.e, closest.id, "draft"
                     )
             else:
-                clump = _clump_clock(unmatched)
-                for s in unmatched:
+                clump = _clump_clock(leftovers)
+                for s in leftovers:
                     clocks[s.norad_id] = clump
 
     today = _day(day)

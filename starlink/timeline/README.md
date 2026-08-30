@@ -20,13 +20,12 @@ its own pile clock. `detect_peaks` min_count stays **25** for km checkboxes /
 so the daily Action can finish a freeze across runs. Frozen numbers are never
 edited. Replace this file when historical frames are rebuilt.
 
-A sat not in a frozen pile drafts to the closest-n frozen pile at that
-inclination if `|n_sat − n_pile| ≤ 0.005`. If fewer than 50 unmatched remain
-and a frozen pile exists at that inclination, each leftover drafts to the
-closest frozen pile by `n` (any Δn) — small clumps ride the closest shell.
-Otherwise unmatched sats at one inclination share one `kind=clump` clock:
-that day's median `n, i, e` of those unmatched sats. Odd-inclination loners
-stay `kind=own`. There is no
+A frozen pile is an **active shell today** only if it has ≥ 50 members in
+today's `sat_pile`. Members of a sub-50 pile are leftovers, same as unmatched.
+If at least one active 50+ shell exists at that inclination, each leftover
+drafts to the closest active shell by `n` (any Δn). If there is no 50+ shell
+yet, leftovers share one `kind=clump` clock: that day's median `n, i, e`.
+Odd-inclination loners stay `kind=own`. There is no
 per-sat continuity offset and no held-own-n. `lock_state.json` stores
 per-sat `n, i, e, pile_id, ox, oy, x, y, kind` with `ox=oy=0` (last `x,y`
 are for same-day reuse and pile EMA). Light circular EMA (α=0.4) applies

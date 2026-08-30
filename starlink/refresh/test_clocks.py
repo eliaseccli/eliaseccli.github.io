@@ -1,4 +1,4 @@
-"""Pile freeze after 5 stable days, closest-n draft, small leftovers ride the shell."""
+"""Pile freeze after 5 stable days; only 50+ piles are active shells today."""
 
 from __future__ import annotations
 
@@ -374,10 +374,11 @@ class TestClocks(unittest.TestCase):
             self.assertEqual(rec.i_ref, pile.i)
             self.assertEqual(rec.e_ref, pile.e)
 
-    def test_sixty_unmatched_share_a_clump(self):
+    def test_sixty_leftovers_draft_to_active_shell(self):
         refs = ShellRefs()
         _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
         self.assertEqual(len(refs.piles), 1)
+        pile = refs.piles[0]
         leftovers = _pile_sats(15.01, 97.60, 30, 90000) + _pile_sats(15.40, 97.70, 30, 91000)
         self.assertGreater(abs(15.01 - 15.70), PILE_MATCH_N)
         self.assertGreater(abs(15.40 - 15.70), PILE_MATCH_N)
@@ -386,20 +387,50 @@ class TestClocks(unittest.TestCase):
             _pile_sats(15.70, 97.65, FREEZE_N, 1000) + leftovers, refs, "2022-07-27"
         )
         self.assertEqual(clocks[1000].kind, "pile")
-        clump_n = clocks[90000].n_shell
-        clump_i = clocks[90000].i_ref
-        clump_e = clocks[90000].e_ref
         for s in leftovers:
             rec = clocks[s.norad_id]
-            self.assertEqual(rec.kind, "clump")
-            self.assertIsNone(rec.pile_id)
-            self.assertEqual(rec.n_shell, clump_n)
-            self.assertEqual(rec.i_ref, clump_i)
-            self.assertEqual(rec.e_ref, clump_e)
-        self.assertAlmostEqual(clump_n, (15.01 + 15.40) / 2.0, places=6)
-        self.assertAlmostEqual(clump_i, (97.60 + 97.70) / 2.0, places=6)
-        self.assertNotAlmostEqual(clocks[90000].n_shell, 15.01, places=3)
-        self.assertNotAlmostEqual(clocks[91000].n_shell, 15.40, places=3)
+            self.assertEqual(rec.kind, "draft")
+            self.assertEqual(rec.pile_id, pile.id)
+            self.assertEqual(rec.n_shell, pile.n)
+
+    def test_shrunk_pile_members_draft_to_closest_50(self):
+        # Frozen when big, then 20 sats at that n: not an active shell today.
+        refs = ShellRefs()
+        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
+        _hold(refs, 15.01, 97.65, "2022-08-01", STABLE_DAYS, start_id=2000)
+        self.assertEqual(len(refs.piles), 2)
+        shrunk = next(p for p in refs.piles if abs(p.n - 15.70) < 1e-6)
+        big = next(p for p in refs.piles if abs(p.n - 15.01) < 1e-6)
+        small = _pile_sats(15.70, 97.65, 20, 1000)
+        clocks = assign_clocks(
+            small + _pile_sats(15.01, 97.65, FREEZE_N, 2000), refs, "2022-08-06"
+        )
+        self.assertEqual(len(refs.piles), 2)
+        self.assertEqual(clocks[2000].kind, "pile")
+        self.assertEqual(clocks[2000].pile_id, big.id)
+        self.assertEqual(clocks[2000].n_shell, big.n)
+        for s in small:
+            rec = clocks[s.norad_id]
+            self.assertEqual(rec.kind, "draft")
+            self.assertEqual(rec.pile_id, big.id)
+            self.assertEqual(rec.n_shell, big.n)
+            self.assertNotEqual(rec.pile_id, shrunk.id)
+            self.assertNotAlmostEqual(rec.n_shell, shrunk.n, places=3)
+
+    def test_no_active_shell_leftovers_share_clump(self):
+        refs = ShellRefs()
+        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
+        self.assertEqual(len(refs.piles), 1)
+        leftover_n = 15.01
+        leftover_n2 = 15.40
+        leftovers = _pile_sats(leftover_n, 97.60, 20, 90000) + _pile_sats(leftover_n2, 97.70, 20, 91000)
+        clocks = assign_clocks(leftovers, refs, "2022-07-27")
+        self.assertEqual(len(refs.piles), 1)
+        self.assertEqual(clocks[90000].kind, "clump")
+        self.assertIsNone(clocks[90000].pile_id)
+        self.assertEqual(clocks[90000].n_shell, clocks[91000].n_shell)
+        self.assertAlmostEqual(clocks[90000].n_shell, (leftover_n + leftover_n2) / 2.0, places=6)
+        self.assertNotAlmostEqual(clocks[90000].n_shell, refs.piles[0].n, places=3)
 
     def test_odd_inclination_loner_stays_own(self):
         refs = ShellRefs()
