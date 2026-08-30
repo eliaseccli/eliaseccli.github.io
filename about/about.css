@@ -10,6 +10,7 @@ html {
   height: 100%;
   height: 100svh;
   height: 100dvh;
+  max-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--bg);
@@ -20,8 +21,7 @@ body {
   inset: 0;
   width: 100%;
   height: 100%;
-  height: 100svh;
-  height: 100dvh;
+  max-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--bg);
@@ -30,9 +30,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   overflow: hidden;
+  overscroll-behavior: none;
   pointer-events: none;
   z-index: 0;
 }
