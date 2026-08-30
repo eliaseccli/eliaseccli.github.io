@@ -1,4 +1,4 @@
-"""Pile freeze after 5 stable days; only 50+ piles are active shells today."""
+"""Pile freeze after 5 stable days; occupancy does not revoke a freeze."""
 
 from __future__ import annotations
 
@@ -354,47 +354,8 @@ class TestClocks(unittest.TestCase):
         q = PendingPile.from_json(p.to_json())
         self.assertEqual(q, p)
 
-    def test_forty_unmatched_draft_to_closest_pile(self):
-        refs = ShellRefs()
-        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
-        self.assertEqual(len(refs.piles), 1)
-        pile = refs.piles[0]
-        leftovers = _pile_sats(15.01, 97.65, 40, 90000)
-        self.assertGreater(abs(15.01 - pile.n), PILE_MATCH_N)
-        self.assertLess(len(leftovers), CLOCK_MIN_COUNT)
-        clocks = assign_clocks(
-            _pile_sats(15.70, 97.65, FREEZE_N, 1000) + leftovers, refs, "2022-07-27"
-        )
-        self.assertEqual(clocks[1000].kind, "pile")
-        for s in leftovers:
-            rec = clocks[s.norad_id]
-            self.assertEqual(rec.kind, "draft")
-            self.assertEqual(rec.pile_id, pile.id)
-            self.assertEqual(rec.n_shell, pile.n)
-            self.assertEqual(rec.i_ref, pile.i)
-            self.assertEqual(rec.e_ref, pile.e)
-
-    def test_sixty_leftovers_draft_to_active_shell(self):
-        refs = ShellRefs()
-        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
-        self.assertEqual(len(refs.piles), 1)
-        pile = refs.piles[0]
-        leftovers = _pile_sats(15.01, 97.60, 30, 90000) + _pile_sats(15.40, 97.70, 30, 91000)
-        self.assertGreater(abs(15.01 - 15.70), PILE_MATCH_N)
-        self.assertGreater(abs(15.40 - 15.70), PILE_MATCH_N)
-        self.assertGreaterEqual(len(leftovers), CLOCK_MIN_COUNT)
-        clocks = assign_clocks(
-            _pile_sats(15.70, 97.65, FREEZE_N, 1000) + leftovers, refs, "2022-07-27"
-        )
-        self.assertEqual(clocks[1000].kind, "pile")
-        for s in leftovers:
-            rec = clocks[s.norad_id]
-            self.assertEqual(rec.kind, "draft")
-            self.assertEqual(rec.pile_id, pile.id)
-            self.assertEqual(rec.n_shell, pile.n)
-
-    def test_shrunk_pile_members_draft_to_closest_50(self):
-        # Frozen when big, then 20 sats at that n: not an active shell today.
+    def test_occupancy_20_does_not_revoke_a_freeze(self):
+        # Frozen when big, then 20 sats at that n plus a far 50+ shell.
         refs = ShellRefs()
         _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
         _hold(refs, 15.01, 97.65, "2022-08-01", STABLE_DAYS, start_id=2000)
@@ -412,10 +373,34 @@ class TestClocks(unittest.TestCase):
         for s in small:
             rec = clocks[s.norad_id]
             self.assertEqual(rec.kind, "draft")
-            self.assertEqual(rec.pile_id, big.id)
-            self.assertEqual(rec.n_shell, big.n)
-            self.assertNotEqual(rec.pile_id, shrunk.id)
-            self.assertNotAlmostEqual(rec.n_shell, shrunk.n, places=3)
+            self.assertEqual(rec.pile_id, shrunk.id)
+            self.assertEqual(rec.n_shell, shrunk.n)
+            self.assertNotEqual(rec.pile_id, big.id)
+            self.assertNotAlmostEqual(rec.n_shell, big.n, places=3)
+
+    def test_leftover_200km_away_is_clump_not_draft(self):
+        refs = ShellRefs()
+        _hold(refs, 15.70, 97.65, "2022-07-22", STABLE_DAYS, start_id=1000)
+        self.assertEqual(len(refs.piles), 1)
+        pile = refs.piles[0]
+        leftover_n = 15.01
+        leftovers = _pile_sats(leftover_n, 97.65, 40, 90000)
+        self.assertGreater(abs(leftover_n - pile.n), PILE_MATCH_N)
+        self.assertGreater(
+            abs(altitude_km(leftover_n, 0.0) - altitude_km(pile.n, 0.0)), 200
+        )
+        self.assertLess(len(leftovers), CLOCK_MIN_COUNT)
+        clocks = assign_clocks(
+            _pile_sats(15.70, 97.65, FREEZE_N, 1000) + leftovers, refs, "2022-07-27"
+        )
+        self.assertEqual(clocks[1000].kind, "pile")
+        self.assertEqual(clocks[1000].pile_id, pile.id)
+        for s in leftovers:
+            rec = clocks[s.norad_id]
+            self.assertEqual(rec.kind, "clump")
+            self.assertIsNone(rec.pile_id)
+            self.assertAlmostEqual(rec.n_shell, leftover_n, places=6)
+            self.assertNotAlmostEqual(rec.n_shell, pile.n, places=3)
 
     def test_no_active_shell_leftovers_share_clump(self):
         refs = ShellRefs()
