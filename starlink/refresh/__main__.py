@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(
             f"timeline {info['date']}: {info['n']} sats, catalog {info['catalog']}, "
-            f"piles {info['piles']} -> {info['month']}"
+            f"piles {info['piles']} pending {info['pending']} -> {info['month']}"
         )
         return 0
     return 2

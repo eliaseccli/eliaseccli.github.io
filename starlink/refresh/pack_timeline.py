@@ -7,7 +7,7 @@ Clemens:
 
 Range is 2019-05-24 through the latest TLE day. Does not modify the TLE files.
 Writes STATUS.txt year by year. New NORADs append to catalog.json; new tight
-piles freeze n/i/e into shell_refs.json. Playback packing is 15 fps metadata;
+piles freeze n/i/e into shell_refs.json after 5 stable days. Playback packing is 15 fps metadata;
 one day per frame.
 
 Does not fetch Space-Track. Does not write into the git tree unless --out

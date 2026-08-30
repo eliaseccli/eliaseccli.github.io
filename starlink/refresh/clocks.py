@@ -13,10 +13,14 @@ from refresh.j2 import T0, T0_ISO, j2_rates, lock_xy, noon_utc
 from refresh.parse import Sat
 from refresh.shells import INC_WINDOWS, tight_piles
 
-# Pair a newly detected peak to a frozen pile if |Δkm| is within this
-# and closer than any other unpaired pile (greedy). 2.5 km absorbs 1 km
-# histogram jitter without merging the 460/463/465 operational shells.
-PILE_MATCH_KM = 2.5
+# Match a detected tight pile to a frozen pile only when inclination
+# agrees and |Δn| is within this. 0.005 rev/day is ~1.5 km: enough for
+# 1 km histogram jitter, not enough to merge 460/463/465 (Δn ≈ 0.012).
+PILE_MATCH_N = 0.005
+# Tight days at the same first-day n before (n, i, e) freeze.
+STABLE_DAYS = 5
+# Keep an unseen pending while (today - last) is within this many days.
+PENDING_MISS_DAYS = 2
 
 
 @dataclass
@@ -54,12 +58,53 @@ class PileRef:
 
 
 @dataclass
+class PendingPile:
+    """Unfrozen tight-pile streak. Persisted so a daily Action can finish a freeze."""
+
+    inc: int
+    km: int
+    n: float
+    i: float
+    e: float
+    streak: int
+    last: str
+
+    def to_json(self) -> dict:
+        return {
+            "inc": self.inc,
+            "km": self.km,
+            "n": self.n,
+            "i": self.i,
+            "e": self.e,
+            "streak": self.streak,
+            "last": self.last,
+        }
+
+    @classmethod
+    def from_json(cls, rec: dict) -> PendingPile:
+        return cls(
+            inc=int(rec["inc"]),
+            km=int(rec["km"]),
+            n=float(rec["n"]),
+            i=float(rec["i"]),
+            e=float(rec["e"]),
+            streak=int(rec["streak"]),
+            last=str(rec["last"]),
+        )
+
+
+@dataclass
 class ShellRefs:
     t0: datetime = T0
     piles: list[PileRef] = field(default_factory=list)
+    pending: list[PendingPile] = field(default_factory=list)
 
     def to_json(self) -> dict:
-        return {"t0": T0_ISO, "piles": [p.to_json() for p in self.piles]}
+        return {
+            "t0": T0_ISO,
+            "piles": [p.to_json() for p in self.piles],
+            "pending": [p.to_json() for p in self.pending],
+        }
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,7 +116,8 @@ class ShellRefs:
             return cls()
         rec = json.loads(path.read_text(encoding="utf-8"))
         piles = [PileRef.from_json(p) for p in rec.get("piles", [])]
-        return cls(t0=T0, piles=piles)
+        pending = [PendingPile.from_json(p) for p in rec.get("pending", [])]
+        return cls(t0=T0, piles=piles, pending=pending)
 
     def piles_at(self, inc: int) -> list[PileRef]:
         return [p for p in self.piles if p.inc == inc]
@@ -104,15 +150,56 @@ def _median(vals: list[float]) -> float:
     return float(np.median(np.asarray(vals, dtype=float)))
 
 
-def _freeze_new(inc: int, peak_km: int, members: list[Sat], day: str) -> PileRef:
+def _day(day: str) -> date:
+    return date.fromisoformat(day[:10])
+
+
+def _day_s(day: str) -> str:
+    return day[:10]
+
+
+def _greedy_pairs(pairs: list[tuple[int, int, float]]) -> dict[int, int]:
+    """Greedy closest assignment: pairs are (left_i, right_j, dist)."""
+    assigned: dict[int, int] = {}
+    used: set[int] = set()
+    for li, rj, _dist in sorted(pairs, key=lambda t: t[2]):
+        if li in assigned or rj in used:
+            continue
+        assigned[li] = rj
+        used.add(rj)
+    return assigned
+
+
+def _peak_stats(sh, members: list[Sat]) -> tuple[int, float, float, float]:
+    km = int(sh.peak_km or 0)
+    return (
+        km,
+        _median([s.mean_motion for s in members]),
+        _median([s.inclination for s in members]),
+        _median([s.ecc for s in members]),
+    )
+
+
+def _unique_pile_id(refs: ShellRefs, inc: int, km: int) -> str:
+    existing = {p.id for p in refs.piles}
+    base = f"{inc}-{km}"
+    if base not in existing:
+        return base
+    suffix = 2
+    while f"{inc}-{km}-{suffix}" in existing:
+        suffix += 1
+    return f"{inc}-{km}-{suffix}"
+
+
+def _freeze_new(inc: int, km: int, n: float, i: float, e: float, day: str, refs: ShellRefs) -> PileRef:
     return PileRef(
-        id=f"{inc}-{peak_km}",
+        id=_unique_pile_id(refs, inc, km),
         inc=inc,
-        km=int(peak_km),
-        n=_median([s.mean_motion for s in members]),
-        i=_median([s.inclination for s in members]),
-        e=_median([s.ecc for s in members]),
-        first=day,
+        km=int(km),
+        n=n,
+        i=i,
+        e=e,
+        first=_day_s(day),
     )
 
 
@@ -122,52 +209,99 @@ def _match_piles(
     refs: ShellRefs,
     day: str,
 ) -> list[tuple]:
-    """Return [(shell, members, pile_ref), ...] after freezing new piles.
+    """Return [(shell, members, pile_ref), ...] for *frozen* piles only.
 
-    `detected` is the list from tight_piles: (Shell, members).
+    A newly detected tight pile is stored as pending until STABLE_DAYS
+    sightings at the same inc with |n_today - n0|<=PILE_MATCH_N. n0 is the
+    first-day mean motion and is never updated (a slow climb cannot chase
+    n into a freeze). Peak-km is a label: km/i/e refresh on each sighting
+    for the freeze-day name. Misses of PENDING_MISS_DAYS are kept.
+    Frozen (n, i, e) never update after freeze.
     """
+    stats = [_peak_stats(sh, members) for sh, members in detected]
     frozen = list(refs.piles_at(inc))
-    pairs: list[tuple[int, int, float]] = []  # (det_i, fr_j, dist)
-    for di, (sh, _members) in enumerate(detected):
-        pk = sh.peak_km if sh.peak_km is not None else 0
+    frozen_pairs: list[tuple[int, int, float]] = []
+    for di, (_km, n, _i, _e) in enumerate(stats):
         for fj, fr in enumerate(frozen):
-            dist = abs(float(pk) - float(fr.km))
-            if dist <= PILE_MATCH_KM:
-                pairs.append((di, fj, dist))
-    pairs.sort(key=lambda t: t[2])
-    assigned: dict[int, PileRef] = {}
-    used_fr: set[int] = set()
-    for di, fj, _dist in pairs:
-        if di in assigned or fj in used_fr:
+            dist = abs(n - fr.n)
+            if dist <= PILE_MATCH_N:
+                frozen_pairs.append((di, fj, dist))
+    det_to_frozen = _greedy_pairs(frozen_pairs)
+    matched: dict[int, PileRef] = {di: frozen[fj] for di, fj in det_to_frozen.items()}
+
+    unmatched = [di for di in range(len(detected)) if di not in matched]
+    pend_here = [(pi, p) for pi, p in enumerate(refs.pending) if p.inc == inc]
+    pend_pairs: list[tuple[int, int, float]] = []
+    for di in unmatched:
+        _km, n, _i, _e = stats[di]
+        for local_j, (_pi, prev) in enumerate(pend_here):
+            if abs(n - prev.n) <= PILE_MATCH_N:
+                pend_pairs.append((di, local_j, abs(n - prev.n)))
+    det_to_pend = _greedy_pairs(pend_pairs)
+
+    today = _day(day)
+    used_local: set[int] = set()
+    kept: list[PendingPile] = []
+    for di in unmatched:
+        km, n, i, e = stats[di]
+        if di in det_to_pend:
+            local_j = det_to_pend[di]
+            used_local.add(local_j)
+            prev = pend_here[local_j][1]
+            gap = (today - _day(prev.last)).days
+            if gap == 0:
+                streak = prev.streak
+                n0 = prev.n
+                last = prev.last
+            elif gap <= PENDING_MISS_DAYS:
+                streak = prev.streak + 1
+                n0 = prev.n
+                last = _day_s(day)
+            else:
+                streak = 1
+                n0 = n
+                last = _day_s(day)
+            if streak >= STABLE_DAYS:
+                pile = _freeze_new(inc, km, n0, i, e, day, refs)
+                refs.piles.append(pile)
+                matched[di] = pile
+            else:
+                kept.append(
+                    PendingPile(
+                        inc=inc,
+                        km=km,
+                        n=n0,
+                        i=i,
+                        e=e,
+                        streak=streak,
+                        last=last,
+                    )
+                )
+        else:
+            kept.append(
+                PendingPile(
+                    inc=inc,
+                    km=km,
+                    n=n,
+                    i=i,
+                    e=e,
+                    streak=1,
+                    last=_day_s(day),
+                )
+            )
+
+    for local_j, (_pi, prev) in enumerate(pend_here):
+        if local_j in used_local:
             continue
-        assigned[di] = frozen[fj]
-        used_fr.add(fj)
+        if (today - _day(prev.last)).days <= PENDING_MISS_DAYS:
+            kept.append(prev)
+
+    refs.pending = [p for p in refs.pending if p.inc != inc] + kept
 
     out: list[tuple] = []
     for di, (sh, members) in enumerate(detected):
-        if di in assigned:
-            out.append((sh, members, assigned[di]))
-            continue
-        pk = int(sh.peak_km or 0)
-        pile = _freeze_new(inc, pk, members, day)
-        # Keep pile ids unique if detect_peaks repeats a km.
-        existing = {p.id for p in refs.piles}
-        if pile.id in existing:
-            pile = _freeze_new(inc, pk, members, day)
-            suffix = 2
-            while f"{inc}-{pk}-{suffix}" in existing:
-                suffix += 1
-            pile = PileRef(
-                id=f"{inc}-{pk}-{suffix}",
-                inc=inc,
-                km=pk,
-                n=pile.n,
-                i=pile.i,
-                e=pile.e,
-                first=day,
-            )
-        refs.piles.append(pile)
-        out.append((sh, members, pile))
+        if di in matched:
+            out.append((sh, members, matched[di]))
     return out
 
 
@@ -176,7 +310,13 @@ def assign_clocks(
     refs: ShellRefs,
     day: str,
 ) -> dict[int, Clock]:
-    """Assign a clock to each sat. New tight piles are appended to refs."""
+    """Assign a clock to each sat. Stable tight piles freeze into refs.
+
+    kind=pile only for today's tight members of a frozen pile. Else draft
+    to the largest frozen pile at that inc (today's member count, or any
+    frozen pile if none is detected today). Else daily-median clump.
+    Pending streaks persist on refs for the daily Action to resume.
+    """
     by_inc: dict[int, list[Sat]] = {k: [] for k in INC_WINDOWS}
     other: list[Sat] = []
     for s in sats:
@@ -192,9 +332,12 @@ def assign_clocks(
             continue
         detected = tight_piles(inc, group)
         matched = _match_piles(inc, detected, refs, day)
+        frozen_here = refs.piles_at(inc)
         largest: PileRef | None = None
         if matched:
             largest = max(matched, key=lambda t: len(t[1]))[2]
+        elif frozen_here:
+            largest = frozen_here[0]
         med_n = _median([s.mean_motion for s in group])
         med_i = _median([s.inclination for s in group])
         med_e = _median([s.ecc for s in group])
@@ -221,6 +364,11 @@ def assign_clocks(
                 )
             else:
                 clocks[s.norad_id] = Clock(med_n, med_i, med_e, None, "clump")
+
+    today = _day(day)
+    refs.pending = [
+        p for p in refs.pending if (today - _day(p.last)).days <= PENDING_MISS_DAYS
+    ]
 
     for s in other:
         clocks[s.norad_id] = Clock(s.mean_motion, s.inclination, s.ecc, None, "own")
