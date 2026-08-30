@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050508">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Diorama · Elias</title>
+  <script>
+    (function () {
+      var ok = false;
+      try { ok = !!sessionStorage.getItem("projects.ok"); } catch (e) {}
+      if (!ok) {
+        location.replace("../");
+      } else {
+        document.documentElement.classList.add("is-open");
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./diorama.css?v=diorama1">
+</head>
+<body>
+  <nav class="nav" data-nav>
+    <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-list" id="nav-list" hidden>
+      <li><a href="../../">HOME</a></li>
+      <li><a href="../../teslastores/">Tesla-Stores</a></li>
+      <li><a href="../../starlink/">Starlink</a></li>
+      <li><a href="../">Projects</a></li>
+      <li><a href="../../about/">About</a></li>
+    </ul>
+  </nav>
+  <main class="stage" data-stage>
+    <div class="track" data-track></div>
+    <p class="empty" data-empty>Nothing in the void yet.</p>
+  </main>
+  <p class="caption" data-caption hidden></p>
+  <p class="phase" data-phase hidden></p>
+  <p class="note">
+    After <a href="https://pengzhe.ng" target="_blank" rel="noopener noreferrer">Peng Zheng</a>
+    · <a href="https://x.com/pengzheng_/status/2094115772838903817" target="_blank" rel="noopener noreferrer">the post</a>
+  </p>
+  <script src="./diorama.js?v=diorama1"></script>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
+</body>
+</html>
