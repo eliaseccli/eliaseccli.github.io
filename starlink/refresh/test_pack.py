@@ -222,7 +222,7 @@ class TestPackAndAppend(unittest.TestCase):
                         "ECCENTRICITY": 0.0001,
                         "MEAN_MOTION": n,
                     }
-                    for i in range(40)
+                    for i in range(50)
                 ]
 
             gp_path = root / "starlink_gp.json"
