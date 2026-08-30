@@ -36,6 +36,7 @@
   var caption = document.querySelector("[data-caption]");
   var phaseEl = document.querySelector("[data-phase]");
   var places = [];
+  var nightOf = Object.create(null);
   var index = 0;
   var width = 0;
   var drag = null;
@@ -150,10 +151,18 @@
 
   function showNightFor(place) {
     if (!place) return false;
-    var night = isNightNow();
+    var forced = nightOf[place.slug];
+    var night = (forced === true || forced === false) ? forced : isNightNow();
     if (night && place.night) return true;
     if (!night && place.day) return false;
     return !!place.night;
+  }
+
+  function flip() {
+    var place = current();
+    if (!place || !place.day || !place.night) return;
+    nightOf[place.slug] = !showNightFor(place);
+    paintSlot(index);
   }
 
   function paintSlot(i) {
@@ -295,6 +304,7 @@
     if (!moved) {
       drag = null;
       apply(true);
+      flip();
       return;
     }
     var next = index;
@@ -315,11 +325,6 @@
     if (e.key === "ArrowRight") go(index + 1, true);
     else if (e.key === "ArrowLeft") go(index - 1, true);
   });
-
-  setInterval(function () {
-    var i;
-    for (i = 0; i < places.length; i++) paintSlot(i);
-  }, 60000);
 
   window.addEventListener("resize", function () { layout(false); });
 

@@ -28,4 +28,4 @@ If `day` / `night` are omitted, paths are inferred from `slug` with the same PNG
 `.webp` (and jpeg already in a path) are accepted; Lens may list `diorama-<slug>-day.webp`.
 Empty array ships as the v1 void. Do not invent a first scene.
 
-Day vs night follows the viewer's local clock (night 19:00–06:59). No tap-to-swap.
+First view follows the viewer's local clock (night 19:00–06:59). Tap the still to flip day/night; swipe still swipes. Clock does not lock after that.
