@@ -6,11 +6,13 @@
   <meta name="theme-color" content="#050508">
   <meta name="color-scheme" content="dark">
   <title>About · Elias</title>
-  <link rel="stylesheet" href="./about.css?v=mail">
+  <link rel="stylesheet" href="./about.css?v=overscroll">
 </head>
 <body>
-  <div class="bloom" aria-hidden="true"></div>
-  <canvas class="stars" aria-hidden="true"></canvas>
+  <div class="backdrop" aria-hidden="true">
+    <div class="bloom"></div>
+    <canvas class="stars"></canvas>
+  </div>
   <nav class="nav" data-nav>
     <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -24,11 +26,13 @@
     </ul>
   </nav>
   <main class="page">
-    <div class="bubble">
-      <p>Hi, I’m Elias and I don’t like about-pages.</p>
-      <p>I do like space (big surprise, I know), physics, cars, and tech.</p>
-      <p>I’m terrible at coding, so I had Grok Bot make everything here.</p>
-      <p>Except the lame jokes. Those are still human.</p>
+    <div class="page-slot">
+      <div class="bubble">
+        <p>Hi, I’m Elias and I don’t like about-pages.</p>
+        <p>I do like space (big surprise, I know), physics, cars, and tech.</p>
+        <p>I’m terrible at coding, so I had Grok Bot make everything here.</p>
+        <p>Except the lame jokes. Those are still human.</p>
+      </div>
     </div>
   </main>
   <footer class="socials">
