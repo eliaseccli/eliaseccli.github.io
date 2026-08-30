@@ -119,6 +119,35 @@ def is_tight(alts: list[float], max_spread: float = TIGHT_SPREAD_KM) -> bool:
     return alt_spread(alts) <= max_spread
 
 
+def tight_piles(inc: int | str, sats: list[Sat]) -> list[tuple[Shell, list[Sat]]]:
+    """Tight stationkeeping piles via detect_peaks (no KNOWN_SHELLS).
+
+    Same tightness / parking rules as listed_shells. Used for J2 clock
+    assignment so historical and newly lowered shells get their own pile id.
+    """
+    subset = filter_inclination(sats, inc)
+    scored: list[tuple[Shell, list[Sat], float]] = []
+    for sh in detect_peaks([s.altitude_km for s in subset]):
+        if sh.peak_km is None:
+            continue
+        members = [s for s in subset if in_shell(s, sh)]
+        if not members:
+            continue
+        alts = [s.altitude_km for s in members]
+        if not is_tight(alts):
+            continue
+        scored.append((sh, members, float(np.median(alts))))
+    if not scored:
+        return []
+    _ref_sh, _ref_members, ref_med = max(scored, key=lambda t: len(t[1]))
+    out: list[tuple[Shell, list[Sat]]] = []
+    for sh, members, med in scored:
+        if len(members) < PARKING_MAX_N and (ref_med - med) > PARKING_BELOW_KM:
+            continue
+        out.append((sh, members))
+    return out
+
+
 def listed_shells(inc: int | str, sats: list[Sat]) -> list[Shell]:
     """Tight stationkeeping piles only. Parking/ascent piles are omitted.
 

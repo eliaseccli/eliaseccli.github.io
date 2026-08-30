@@ -143,7 +143,8 @@
     var start = null;
     var end = null;
     var nDays = 0;
-    var fps = 30;
+    var PLAYBACK_FPS = 15;
+    var fps = PLAYBACK_FPS;
     var index = 0;
     var todayIndex = 0;
     var mode = "today";
@@ -153,6 +154,7 @@
     var acc = 0;
     var selected = -1;
     var lastFrame = null;
+    var lastFrameDate = 0;
     var months = {};
 
     function emitMode() {
@@ -243,7 +245,7 @@
           catalog = j;
           start = parseISO(j.start);
           end = parseISO(j.end);
-          fps = j.fps || 30;
+          fps = PLAYBACK_FPS;
           nDays = daysInclusive(start, end);
           todayIndex = nDays;
           index = todayIndex;
