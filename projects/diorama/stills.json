@@ -1,5 +1,12 @@
 [
   {
+    "slug": "pizza",
+    "title": "Pizza",
+    "date": "2025-08-09",
+    "day": "stills/diorama-pizza-day.png",
+    "night": "stills/diorama-pizza-night.png"
+  },
+  {
     "slug": "forest",
     "title": "Forest",
     "date": "2025-07-24",
