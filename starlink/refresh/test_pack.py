@@ -88,7 +88,7 @@ class TestPackAndAppend(unittest.TestCase):
             self.assertEqual(len(month.days), 8)
             xs = [unpack_u16(d.xs[0]) for d in month.days]
             ys = [unpack_u16(d.ys[0]) for d in month.days]
-            # One sat → own clock (held n); synthetic SK still locks.
+            # One sat → shared unmatched clump (its own n); synthetic SK still locks.
             self.assertLess(max(xs) - min(xs), 0.02)
             self.assertLess(max(ys) - min(ys), 0.02)
             want_x, want_y = lock_xy(

@@ -1,11 +1,7 @@
-"""Per-sat clock continuity offsets and light pile-only smoothing.
+"""Pile-only circular EMA. No per-sat plot offsets.
 
-Changing n_shell after years wraps x/y by 360*Δn*days. On a clock change
-(different pile_id or Δn), set offsets so plot x,y match yesterday. Keep
-those offsets while the sat stays on that clock.
-
-Persisted as timeline/lock_state.json (not secret):
-  norad -> n, i, e, pile_id, ox, oy, x, y, kind
+Persists last x,y in timeline/lock_state.json for same-day reuse and EMA.
+ox/oy are always 0 and never shift the plot.
 """
 
 from __future__ import annotations
@@ -52,8 +48,8 @@ class SatLock:
             "i": self.i,
             "e": self.e,
             "pile_id": self.pile_id,
-            "ox": self.ox,
-            "oy": self.oy,
+            "ox": 0.0,
+            "oy": 0.0,
             "x": self.x,
             "y": self.y,
             "kind": self.kind,
@@ -67,8 +63,8 @@ class SatLock:
             i=float(rec["i"]),
             e=float(rec["e"]),
             pile_id=None if pile in (None, "") else str(pile),
-            ox=float(rec.get("ox", 0.0)),
-            oy=float(rec.get("oy", 0.0)),
+            ox=0.0,
+            oy=0.0,
             x=float(rec["x"]),
             y=float(rec["y"]),
             kind=str(rec.get("kind", "own")),
@@ -114,13 +110,6 @@ class LockState:
         return cls(day=day, sats=sats)
 
 
-def hold_own_clock(clock: Clock, prev: SatLock | None) -> Clock:
-    """Keep the first own n/i/e until the sat joins a pile."""
-    if clock.kind != "own" or prev is None or prev.kind != "own":
-        return clock
-    return Clock(prev.n, prev.i, prev.e, None, "own")
-
-
 def clock_changed(prev: SatLock | None, clock: Clock) -> bool:
     if prev is None:
         return False
@@ -136,7 +125,7 @@ def apply_locks(
     state: LockState,
     day: str,
 ) -> dict[int, tuple[float, float]]:
-    """Offsets + pile-only EMA. Mutates state. Same day returns stored x,y."""
+    """Pile-only EMA. ox/oy stay 0. Mutates state. Same day returns stored x,y."""
     same_day = bool(state.day) and state.day == day
     out: dict[int, tuple[float, float]] = {}
     for s in sats:
@@ -147,33 +136,24 @@ def apply_locks(
         if same_day and prev is not None:
             out[s.norad_id] = (prev.x, prev.y)
             continue
-        clock = hold_own_clock(clock, prev)
         raw_x, raw_y = locked_xy(s, clock, t)
-        changed = clock_changed(prev, clock)
-        if prev is None:
-            ox = oy = 0.0
-            plot_x, plot_y = wrap360(raw_x), wrap360(raw_y)
-        elif changed:
-            ox = (prev.x - raw_x) % 360.0
-            oy = (prev.y - raw_y) % 360.0
-            plot_x = wrap360(raw_x + ox)
-            plot_y = wrap360(raw_y + oy)
+        raw_x, raw_y = wrap360(raw_x), wrap360(raw_y)
+        if (
+            prev is not None
+            and clock.kind == "pile"
+            and not clock_changed(prev, clock)
+        ):
+            plot_x = circular_ema(prev.x, raw_x, EMA_ALPHA)
+            plot_y = circular_ema(prev.y, raw_y, EMA_ALPHA)
         else:
-            ox, oy = prev.ox, prev.oy
-            adj_x = wrap360(raw_x + ox)
-            adj_y = wrap360(raw_y + oy)
-            if clock.kind == "pile":
-                plot_x = circular_ema(prev.x, adj_x, EMA_ALPHA)
-                plot_y = circular_ema(prev.y, adj_y, EMA_ALPHA)
-            else:
-                plot_x, plot_y = adj_x, adj_y
+            plot_x, plot_y = raw_x, raw_y
         state.sats[s.norad_id] = SatLock(
             n=clock.n_shell,
             i=clock.i_ref,
             e=clock.e_ref,
             pile_id=clock.pile_id,
-            ox=ox,
-            oy=oy,
+            ox=0.0,
+            oy=0.0,
             x=plot_x,
             y=plot_y,
             kind=clock.kind,

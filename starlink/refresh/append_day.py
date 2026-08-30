@@ -59,8 +59,9 @@ def append_today(
     Loads catalog.json, shell_refs.json, lock_state.json, and the current
     YYYY-MM.bin when present. New NORADs append to the catalog. Pending
     tight-pile streaks persist in shell_refs.json so a freeze can finish
-    across daily Action runs; frozen (n, i, e) are never edited. Per-sat
-    offsets and last plot x,y persist in lock_state.json. Does not fetch
+    across daily Action runs; frozen (n, i, e) are never edited. Last plot
+    x,y persist in lock_state.json for same-day reuse and pile EMA; ox/oy
+    stay 0. Does not fetch
     Space-Track. Raises TimelineSkip if the catalog or v1 directory is missing.
     """
     timeline_dir = Path(timeline_dir)

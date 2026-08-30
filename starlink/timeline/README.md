@@ -20,12 +20,13 @@ so the daily Action can finish a freeze across runs. Frozen numbers are never
 edited. Replace this file when historical frames are rebuilt.
 
 A sat not in a frozen pile drafts only to the closest-n frozen pile at that
-inclination, and only if `|n_sat − n_pile| ≤ 0.005`. Otherwise `kind=own`
-with that sat’s own `n, i, e` (no daily-median clump). `lock_state.json`
-stores per-sat `n, i, e, pile_id, ox, oy, x, y, kind` so a clock change
-keeps plot x/y continuous; own clocks hold the first own `n/i/e` until the
-sat joins a pile. Light circular EMA (α=0.4) applies only to `kind=pile`
-when the clock did not change that day.
+inclination, and only if `|n_sat − n_pile| ≤ 0.005`. Unmatched sats at one
+inclination share one `kind=clump` clock: that day's median `n, i, e` of
+those unmatched sats. Odd-inclination loners stay `kind=own`. There is no
+per-sat continuity offset and no held-own-n. `lock_state.json` stores
+per-sat `n, i, e, pile_id, ox, oy, x, y, kind` with `ox=oy=0` (last `x,y`
+are for same-day reuse and pile EMA). Light circular EMA (α=0.4) applies
+only to `kind=pile` when the clock did not change that day.
 
 ## Rebuild from Space-Track yearly TLEs
 
