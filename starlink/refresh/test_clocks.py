@@ -1,4 +1,4 @@
-"""Pile freeze after 5 stable days; occupancy does not revoke a freeze."""
+"""Pile freeze after 5 stable days; n refine + clock phase; no occupancy revoke."""
 
 from __future__ import annotations
 
@@ -13,9 +13,13 @@ from refresh.clocks import (
     CLOCK_MIN_COUNT,
     PILE_MATCH_N,
     STABLE_DAYS,
+    Clock,
+    ClumpRef,
     PendingPile,
     ShellRefs,
     assign_clocks,
+    clock_phase_delta,
+    locked_xy,
 )
 from refresh.shells import detect_peaks, listed_shells
 from refresh.orbit import altitude_km
@@ -42,11 +46,12 @@ def _sat(
     argp: float = 20.0,
     m: float = 30.0,
     name: str = "",
+    epoch: datetime | None = None,
 ) -> Sat:
     return Sat(
         name=name or f"STARLINK-{norad}",
         norad_id=norad,
-        epoch=datetime(2025, 6, 29, 12, 0, 0),
+        epoch=epoch or datetime(2025, 6, 29, 12, 0, 0),
         inclination=inc,
         raan=raan,
         argp=argp,
@@ -106,14 +111,18 @@ class TestClocks(unittest.TestCase):
         self.assertAlmostEqual(pile.n, n, places=6)
         self.assertEqual(clocks[58000].kind, "pile")
         self.assertEqual(clocks[58000].pile_id, pile.id)
-        frozen_n, frozen_i, frozen_e = pile.n, pile.i, pile.e
+        frozen_n = pile.n
 
         day6 = _pile_sats(n + 0.002, inc + 0.05, FREEZE_N, 58000)
-        assign_clocks(day6, refs, _iso("2025-06-29", 5))
+        clocks = assign_clocks(day6, refs, _iso("2025-06-29", 5))
         self.assertEqual(len(refs.piles), 1)
-        self.assertEqual(refs.piles[0].n, frozen_n)
-        self.assertEqual(refs.piles[0].i, frozen_i)
-        self.assertEqual(refs.piles[0].e, frozen_e)
+        # Matched pile refines n/i/e; x0/y0 absorb the wrap.
+        self.assertAlmostEqual(refs.piles[0].n, n + 0.002, places=6)
+        self.assertAlmostEqual(refs.piles[0].i, inc + 0.05, places=6)
+        self.assertNotAlmostEqual(refs.piles[0].n, frozen_n, places=6)
+        self.assertNotAlmostEqual(refs.piles[0].x0, 0.0, places=3)
+        self.assertEqual(clocks[58000].n_shell, refs.piles[0].n)
+        self.assertAlmostEqual(clocks[58000].x0, refs.piles[0].x0, places=9)
 
     def test_close_n_drafts_to_nearest_frozen_pile(self):
         n_shell = N_475
@@ -425,6 +434,116 @@ class TestClocks(unittest.TestCase):
         self.assertAlmostEqual(clocks[80000].n_shell, 15.20, places=6)
         self.assertAlmostEqual(clocks[80000].i_ref, 30.0, places=6)
         self.assertIsNone(clocks[80000].pile_id)
+
+    def test_n_change_without_phase_wraps_by_dn_times_days(self):
+        # The packed-bin bug: Δx ≈ −Δn · 360 · (t − t0) when n_shell changes.
+        t = datetime(2020, 12, 14, 12, 0, 0)
+        sat = _sat(58000, N_475, 53.16, epoch=t)
+        dn = 0.008
+        clock0 = Clock(N_475, 53.16, 1e-4, "53-549", "pile")
+        clock1 = Clock(N_475 + dn, 53.16, 1e-4, "53-547", "pile")
+        x0, _y0 = locked_xy(sat, clock0, t)
+        x1, _y1 = locked_xy(sat, clock1, t)
+        got = ((x1 - x0 + 180.0) % 360.0) - 180.0
+        # Full wrap includes ω̇(n); clock_phase_delta is the exact cancel term.
+        want_dx, _ = clock_phase_delta(N_475, 53.16, 1e-4, N_475 + dn, 53.16, 1e-4, t)
+        want = ((-want_dx + 180.0) % 360.0) - 180.0
+        self.assertAlmostEqual(got, want, places=6)
+        self.assertGreater(abs(got), 20.0)
+
+    def test_phase_cancels_n_shell_wrap(self):
+        t = datetime(2020, 12, 14, 12, 0, 0)
+        sat = _sat(58000, N_475, 53.16, epoch=t)
+        n0, n1 = N_475, N_475 + 0.008
+        dx, dy = clock_phase_delta(n0, 53.16, 1e-4, n1, 53.16, 1e-4, t)
+        clock0 = Clock(n0, 53.16, 1e-4, "53-549", "pile", 0.0, 0.0)
+        clock1 = Clock(n1, 53.16, 1e-4, "53-549", "pile", dx, dy)
+        x0, y0 = locked_xy(sat, clock0, t)
+        x1, y1 = locked_xy(sat, clock1, t)
+        self.assertAlmostEqual(((x1 - x0 + 180.0) % 360.0) - 180.0, 0.0, places=6)
+        self.assertAlmostEqual(((y1 - y0 + 180.0) % 360.0) - 180.0, 0.0, places=6)
+
+    def test_clump_n_change_keeps_x_continuous(self):
+        # 2019 first-lane case: unmatched clump n changes; phase absorbs the wrap.
+        n0, n1 = 15.20, 15.21
+        refs = ShellRefs()
+        t1 = datetime(2019, 7, 2, 12, 0, 0)
+        sats0 = _pile_sats(n0, 53.16, FREEZE_N, 1000)
+        sats1 = _pile_sats(n1, 53.16, FREEZE_N, 1000)
+        clocks0 = assign_clocks(sats0, refs, "2019-07-01")
+        self.assertEqual(clocks0[1000].kind, "clump")
+        self.assertEqual(len(refs.clumps), 1)
+        clocks1 = assign_clocks(sats1, refs, "2019-07-02")
+        self.assertEqual(clocks1[1000].kind, "clump")
+        self.assertEqual(len(refs.clumps), 1)
+        self.assertAlmostEqual(refs.clumps[0].n, n1, places=6)
+        self.assertNotAlmostEqual(refs.clumps[0].x0, 0.0, places=3)
+        # Same TLE elements, new clump n: x must match the old-n lock at t1.
+        old_at_t1 = Clock(n0, 53.16, sats0[0].ecc, None, "clump", 0.0, 0.0)
+        x_old, _ = locked_xy(sats0[0], old_at_t1, t1)
+        x_new, _ = locked_xy(sats0[0], clocks1[1000], t1)
+        self.assertAlmostEqual(((x_new - x_old + 180.0) % 360.0) - 180.0, 0.0, places=5)
+
+    def test_slow_matched_drift_stays_one_pile_and_tracks_n(self):
+        # 0.001/day stays inside N_MATCH; one pile, n follows, phase non-zero.
+        n0 = N_550
+        refs = ShellRefs()
+        _hold(refs, n0, 53.16, "2020-04-01", STABLE_DAYS, start_id=1000)
+        self.assertEqual(len(refs.piles), 1)
+        for i in range(1, 9):
+            n = n0 + 0.001 * i
+            clocks = assign_clocks(_pile_sats(n, 53.16, FREEZE_N, 1000), refs, _iso("2020-04-05", i))
+            self.assertEqual(len(refs.piles), 1)
+            self.assertEqual(clocks[1000].kind, "pile")
+            self.assertAlmostEqual(refs.piles[0].n, n, places=6)
+        self.assertNotAlmostEqual(refs.piles[0].x0, 0.0, places=3)
+
+    def test_new_freeze_inherits_clump_phase(self):
+        refs = ShellRefs()
+        n = N_475
+        for i in range(STABLE_DAYS - 1):
+            assign_clocks(_pile_sats(n, 53.16, FREEZE_N, 58000), refs, _iso("2019-07-01", i))
+            self.assertEqual(refs.piles, [])
+            self.assertTrue(refs.clumps)
+        clump_x0 = refs.clumps[0].x0
+        assign_clocks(_pile_sats(n, 53.16, FREEZE_N, 58000), refs, _iso("2019-07-01", 4))
+        self.assertEqual(len(refs.piles), 1)
+        # Same n as the clump: inherited x0 equals the clump's (possibly 0).
+        self.assertAlmostEqual(refs.piles[0].x0, clump_x0, places=6)
+
+    def test_load_shell_refs_without_clumps_or_phase(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "shell_refs.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "t0": "2019-05-24T12:00:00",
+                        "piles": [
+                            {
+                                "id": "53-549",
+                                "inc": 53,
+                                "km": 549,
+                                "n": 15.05585582,
+                                "i": 53.0,
+                                "e": 0.0002,
+                                "first": "2020-03-18",
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            refs = ShellRefs.load(path)
+            self.assertEqual(len(refs.piles), 1)
+            self.assertEqual(refs.piles[0].x0, 0.0)
+            self.assertEqual(refs.piles[0].y0, 0.0)
+            self.assertEqual(refs.clumps, [])
+            self.assertEqual(refs.pending, [])
+
+    def test_clump_ref_roundtrip(self):
+        c = ClumpRef(inc=53, n=15.2, i=53.16, e=1e-4, x0=12.5, y0=3.0)
+        self.assertEqual(ClumpRef.from_json(c.to_json()), c)
 
 
 if __name__ == "__main__":
