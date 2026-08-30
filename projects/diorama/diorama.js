@@ -86,6 +86,7 @@
   var phaseEl = document.querySelector("[data-phase]");
   var places = [];
   var nightOf = Object.create(null);
+  var leaveTimer = Object.create(null);
   var index = 0;
   var width = 0;
   var drag = null;
@@ -231,13 +232,14 @@
     var place = current();
     if (!place || !place.day || !place.night) return;
     var i = index;
+    var leavingWhen = showNightFor(place) ? "night" : "day";
     nightOf[place.slug] = !showNightFor(place);
     var showNight = showNightFor(place);
     var slot = track.children[i];
     var incoming = incomingStill(slot, showNight);
     function paint() {
       if (index !== i) return;
-      paintSlot(i);
+      paintSlot(i, leavingWhen);
     }
     if (incoming && typeof incoming.decode === "function") {
       incoming.decode().then(paint).catch(paint);
@@ -246,22 +248,42 @@
     }
   }
 
-  function paintSlot(i) {
+  function paintSlot(i, leavingWhen) {
     var place = places[i];
     if (!place) return;
     var slot = track.children[i];
     if (!slot) return;
     var showNight = showNightFor(place);
     var stills = slot.querySelectorAll(".still");
-    var n, wrap, when;
+    var n, wrap, when, on;
     for (n = 0; n < stills.length; n++) {
       wrap = stills[n];
       when = wrap.getAttribute("data-when");
-      wrap.classList.toggle("is-on", showNight ? when === "night" : when === "day");
+      on = showNight ? when === "night" : when === "day";
+      if (!place.day && place.night && when === "night") on = true;
+      if (on) {
+        wrap.classList.add("is-on");
+        wrap.classList.remove("is-leaving");
+      } else if (leavingWhen && when === leavingWhen) {
+        wrap.classList.add("is-leaving");
+        wrap.classList.add("is-on");
+      } else {
+        wrap.classList.remove("is-on");
+        wrap.classList.remove("is-leaving");
+      }
     }
-    if (!place.day && place.night) {
-      var only = slot.querySelector('.still[data-when="night"]');
-      if (only) only.classList.add("is-on");
+    if (leaveTimer[i]) clearTimeout(leaveTimer[i]);
+    if (leavingWhen) {
+      leaveTimer[i] = setTimeout(function () {
+        var s = track.children[i];
+        if (!s) return;
+        var gone = s.querySelectorAll(".still.is-leaving");
+        var k;
+        for (k = 0; k < gone.length; k++) {
+          gone[k].classList.remove("is-on");
+          gone[k].classList.remove("is-leaving");
+        }
+      }, 480);
     }
   }
 
