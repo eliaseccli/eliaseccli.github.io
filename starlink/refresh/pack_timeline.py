@@ -7,7 +7,8 @@ Clemens:
 
 Range is 2019-05-24 through the latest TLE day. Does not modify the TLE files.
 Writes STATUS.txt year by year. New NORADs append to catalog.json; new tight
-piles freeze n/i/e into shell_refs.json after 5 stable days. Playback packing is 15 fps metadata;
+piles freeze n/i/e into shell_refs.json after 5 stable days. Per-sat offsets
+and last plot x/y go into lock_state.json. Playback packing is 15 fps metadata;
 one day per frame.
 
 Does not fetch Space-Track. Does not write into the git tree unless --out
@@ -25,7 +26,8 @@ from pathlib import Path
 
 from refresh.binary import DayFrame, MonthBin, write_month, ymd_int
 from refresh.catalog import PLAYBACK_FPS, TimelineCatalog, write_manifest
-from refresh.clocks import ShellRefs, assign_clocks, locked_xy
+from refresh.clocks import ShellRefs, assign_clocks
+from refresh.lock import LockState, apply_locks
 from refresh.j2 import T0, pack_u16
 from refresh.parse import Sat, iter_tle_file
 
@@ -88,6 +90,7 @@ def pack_timeline(
 
     catalog = TimelineCatalog(start=start.isoformat(), end=start.isoformat(), fps=PLAYBACK_FPS)
     refs = ShellRefs()
+    lock_state = LockState()
     # Carry TLEs whose epoch year differs from the filename year.
     leftover: dict[date, dict[int, Sat]] = {}
     months_written: list[str] = []
@@ -113,15 +116,16 @@ def pack_timeline(
             catalog.append_sat(s)
         clocks = assign_clocks(day_sats, refs, d.isoformat())
         t = datetime(d.year, d.month, d.day, 12, 0, 0)
+        xy = apply_locks(day_sats, clocks, t, lock_state, d.isoformat())
         slots: list[int] = []
         xs: list[int] = []
         ys: list[int] = []
         for s in day_sats:
             slot = catalog.slot_of(s.norad_id)
-            clock = clocks.get(s.norad_id)
-            if slot is None or clock is None:
+            pos = xy.get(s.norad_id)
+            if slot is None or pos is None:
                 continue
-            x, y = locked_xy(s, clock, t)
+            x, y = pos
             slots.append(slot)
             xs.append(pack_u16(x))
             ys.append(pack_u16(y))
@@ -185,6 +189,7 @@ def pack_timeline(
             raise SystemExit("no TLE days in range")
         catalog.save(out_dir / "catalog.json")
         refs.save(out_dir / "shell_refs.json")
+        lock_state.save(out_dir / "lock_state.json")
         bytes_total = sum(p.stat().st_size for p in v1.glob("*.bin"))
         write_manifest(
             out_dir / "manifest.json",
@@ -219,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out",
         required=True,
-        help="Output directory (catalog.json, shell_refs.json, manifest.json, v1/, STATUS.txt)",
+        help="Output directory (catalog.json, shell_refs.json, lock_state.json, manifest.json, v1/, STATUS.txt)",
     )
     parser.add_argument(
         "--tle-dir",

@@ -1,4 +1,4 @@
-"""Assign each sat a J2 pile clock: frozen tight pile, draft-lock, or daily clump."""
+"""Assign each sat a J2 pile clock: frozen tight pile, closest-n draft, or own."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import numpy as np
 
 from refresh.j2 import T0, T0_ISO, j2_rates, lock_xy, noon_utc
 from refresh.parse import Sat
-from refresh.shells import INC_WINDOWS, tight_piles
+from refresh.shells import INC_WINDOWS, Shell, is_tight, tight_piles
 
 # Match a detected tight pile to a frozen pile only when inclination
 # agrees and |Δn| is within this. 0.005 rev/day is ~1.5 km: enough for
@@ -21,6 +21,10 @@ PILE_MATCH_N = 0.005
 STABLE_DAYS = 5
 # Keep an unseen pending while (today - last) is within this many days.
 PENDING_MISS_DAYS = 2
+# detect_peaks min_count stays 25 for km checkboxes. CLOCKS only: a tight
+# inclination group this large can pending-freeze when no histogram peak exists
+# (e.g. a 10-sat polar plane at 523 km).
+CLOCKS_MIN_CLUMP = 8
 
 
 @dataclass
@@ -129,7 +133,7 @@ class Clock:
     i_ref: float
     e_ref: float
     pile_id: str | None
-    kind: str  # pile | draft | clump | own
+    kind: str  # pile | draft | own
 
 
 def inc_bucket(inclination: float) -> int | None:
@@ -305,6 +309,36 @@ def _match_piles(
     return out
 
 
+def _clock_detected(inc: int, group: list[Sat]) -> list[tuple[Shell, list[Sat]]]:
+    """Tight piles for clock freeze. listed_shells / detect_peaks stay at 25.
+
+    When the histogram finds nothing, a tight inclination group of at least
+    CLOCKS_MIN_CLUMP sats is one candidate at median km (Feb 2021 polar plane).
+    """
+    detected = tight_piles(inc, group)
+    if detected:
+        return detected
+    if len(group) < CLOCKS_MIN_CLUMP:
+        return []
+    alts = [s.altitude_km for s in group]
+    if not is_tight(alts):
+        return []
+    km = int(round(_median(alts)))
+    lo = float(min(alts))
+    hi = float(max(alts)) + 1e-6
+    return [(Shell(km, lo, hi), list(group))]
+
+
+def _closest_draft(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
+    """Draft only to the closest-n frozen pile at this inc, and only if |Δn|<=N."""
+    if not frozen:
+        return None
+    best = min(frozen, key=lambda p: abs(sat.mean_motion - p.n))
+    if abs(sat.mean_motion - best.n) <= PILE_MATCH_N:
+        return best
+    return None
+
+
 def assign_clocks(
     sats: list[Sat],
     refs: ShellRefs,
@@ -313,8 +347,9 @@ def assign_clocks(
     """Assign a clock to each sat. Stable tight piles freeze into refs.
 
     kind=pile only for today's tight members of a frozen pile. Else draft
-    to the largest frozen pile at that inc (today's member count, or any
-    frozen pile if none is detected today). Else daily-median clump.
+    to the frozen pile at that inc with closest n, and only if
+    |n_sat − n_pile| <= PILE_MATCH_N. Never draft to the largest/first
+    pile. Else kind=own with that sat's own n, i, e (no daily-median clump).
     Pending streaks persist on refs for the daily Action to resume.
     """
     by_inc: dict[int, list[Sat]] = {k: [] for k in INC_WINDOWS}
@@ -330,17 +365,9 @@ def assign_clocks(
     for inc, group in by_inc.items():
         if not group:
             continue
-        detected = tight_piles(inc, group)
+        detected = _clock_detected(inc, group)
         matched = _match_piles(inc, detected, refs, day)
         frozen_here = refs.piles_at(inc)
-        largest: PileRef | None = None
-        if matched:
-            largest = max(matched, key=lambda t: len(t[1]))[2]
-        elif frozen_here:
-            largest = frozen_here[0]
-        med_n = _median([s.mean_motion for s in group])
-        med_i = _median([s.inclination for s in group])
-        med_e = _median([s.ecc for s in group])
 
         sat_pile: dict[int, PileRef] = {}
         for sh, members, pile in matched:
@@ -358,12 +385,14 @@ def assign_clocks(
             pile = sat_pile.get(s.norad_id)
             if pile is not None:
                 clocks[s.norad_id] = Clock(pile.n, pile.i, pile.e, pile.id, "pile")
-            elif largest is not None:
-                clocks[s.norad_id] = Clock(
-                    largest.n, largest.i, largest.e, largest.id, "draft"
-                )
+                continue
+            draft = _closest_draft(s, frozen_here)
+            if draft is not None:
+                clocks[s.norad_id] = Clock(draft.n, draft.i, draft.e, draft.id, "draft")
             else:
-                clocks[s.norad_id] = Clock(med_n, med_i, med_e, None, "clump")
+                clocks[s.norad_id] = Clock(
+                    s.mean_motion, s.inclination, s.ecc, None, "own"
+                )
 
     today = _day(day)
     refs.pending = [
