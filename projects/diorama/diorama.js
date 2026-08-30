@@ -37,7 +37,6 @@
   var phaseEl = document.querySelector("[data-phase]");
   var places = [];
   var index = 0;
-  var nightOf = Object.create(null);
   var width = 0;
   var drag = null;
 
@@ -143,12 +142,26 @@
     syncMeta();
   }
 
+
+  function isNightNow() {
+    var h = new Date().getHours();
+    return h >= 19 || h < 7;
+  }
+
+  function showNightFor(place) {
+    if (!place) return false;
+    var night = isNightNow();
+    if (night && place.night) return true;
+    if (!night && place.day) return false;
+    return !!place.night;
+  }
+
   function paintSlot(i) {
     var place = places[i];
     if (!place) return;
     var slot = track.children[i];
     if (!slot) return;
-    var showNight = !!nightOf[place.slug] && !!place.night;
+    var showNight = showNightFor(place);
     var imgs = slot.querySelectorAll("img");
     var n, img, when;
     for (n = 0; n < imgs.length; n++) {
@@ -188,13 +201,8 @@
       whenEl.textContent = " · " + place.dateLabel;
       caption.appendChild(whenEl);
     }
-    if (hasPair(place)) {
-      phaseEl.hidden = false;
-      phaseEl.textContent = nightOf[place.slug] ? "night" : "day";
-    } else {
-      phaseEl.hidden = true;
-      phaseEl.textContent = "";
-    }
+    phaseEl.hidden = true;
+    phaseEl.textContent = "";
   }
 
   function clampIndex(i) {
@@ -240,13 +248,6 @@
     syncMeta();
   }
 
-  function flip() {
-    var place = current();
-    if (!hasPair(place)) return;
-    nightOf[place.slug] = !nightOf[place.slug];
-    paintSlot(index);
-    syncMeta();
-  }
 
   function onDown(e) {
     if (e.button != null && e.button !== 0) return;
@@ -294,7 +295,6 @@
     if (!moved) {
       drag = null;
       apply(true);
-      flip();
       return;
     }
     var next = index;
@@ -314,11 +314,12 @@
   window.addEventListener("keydown", function (e) {
     if (e.key === "ArrowRight") go(index + 1, true);
     else if (e.key === "ArrowLeft") go(index - 1, true);
-    else if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === " " || e.key === "Enter") {
-      if (e.key === " ") e.preventDefault();
-      flip();
-    }
   });
+
+  setInterval(function () {
+    var i;
+    for (i = 0; i < places.length; i++) paintSlot(i);
+  }, 60000);
 
   window.addEventListener("resize", function () { layout(false); });
 
