@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#050508">
   <meta name="color-scheme" content="dark">
   <title>Starlink Constellation · Elias Eccli</title>
-  <link rel="stylesheet" href="./starlink.css?v=tl2">
+  <link rel="stylesheet" href="./starlink.css?v=tl3">
 </head>
 <body>
   <nav class="nav" data-nav>
@@ -32,16 +32,26 @@
       <div class="stage">
         <canvas id="c" width="1400" height="1400"></canvas>
         <div class="transport" data-transport>
-          <button type="button" data-tl-play aria-label="Play">Play</button>
-          <button type="button" data-tl-stop aria-label="Stop">Stop</button>
-          <label class="fps">
-            <input type="range" data-tl-fps min="1" max="15" value="15" step="1" aria-label="Playback speed">
-            <span class="fps-label" data-tl-fps-label>15 fps</span>
-          </label>
-          <label class="scrub">
-            <input type="range" data-tl-scrub min="0" max="1" value="1" step="1" aria-label="Timeline date">
+          <div class="transport-controls">
+            <button type="button" data-tl-play aria-label="Play">Play</button>
+            <button type="button" data-tl-stop aria-label="Stop">Stop</button>
+            <label class="fps">
+              <input type="range" data-tl-fps min="1" max="15" value="15" step="1" aria-label="Playback speed">
+              <span class="fps-label" data-tl-fps-label>15 fps</span>
+            </label>
+          </div>
+          <div class="scrub">
+            <div class="scrub-track" data-tl-scrub role="slider" tabindex="0"
+                 aria-label="Timeline date" aria-valuemin="0" aria-valuemax="1"
+                 aria-valuenow="1" aria-valuetext="Today">
+              <input type="range" class="scrub-native" data-tl-scrub-input
+                     min="0" max="1" value="1" step="1" tabindex="-1"
+                     aria-hidden="true">
+              <div class="scrub-fill" data-tl-fill></div>
+              <div class="scrub-thumb" data-tl-thumb></div>
+            </div>
             <span class="playhead" data-tl-date>Today</span>
-          </label>
+          </div>
         </div>
       </div>
       <div class="side">
@@ -59,7 +69,7 @@
     </div>
     </div>
   </main>
-  <script src="./timeline.js?v=2"></script>
+  <script src="./timeline.js?v=3"></script>
   <script>
     (function () {
       var nav = document.querySelector("[data-nav]");
@@ -611,6 +621,11 @@
           buildFilters();
           fitPlot();
           draw();
+          if (tl && tl.alignToday) {
+            tl.alignToday(data.sats).then(function (changed) {
+              if (changed) draw();
+            });
+          }
         })
         .catch(function () {
           document.querySelector("[data-meta]").textContent = "Sat list missing.";

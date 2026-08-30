@@ -51,6 +51,32 @@
     return Math.round((toUTC(b) - toUTC(a)) / 86400000) + 1;
   }
 
+  var SCRUB_FINE_RANGE_PX = 140;
+  var SCRUB_DAY_STEP_PX = 10;
+
+  function clampNum(v, lo, hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  }
+
+  function scrubDaysPerPx(absDy, trackWidth, nSteps) {
+    if (!(trackWidth > 0) || !(nSteps > 0)) return 0;
+    var coarse = nSteps / trackWidth;
+    var fine = 1 / SCRUB_DAY_STEP_PX;
+    var t = clampNum(Math.abs(absDy) / SCRUB_FINE_RANGE_PX, 0, 1);
+    t = t * t;
+    return coarse + (fine - coarse) * t;
+  }
+
+  function scrubKeyDelta(key, keyCode) {
+    if (key === "ArrowLeft" || key === "Left" || key === "ArrowDown" || keyCode === 37 || keyCode === 40) return -1;
+    if (key === "ArrowRight" || key === "Right" || key === "ArrowUp" || keyCode === 39 || keyCode === 38) return 1;
+    if (key === "Home" || keyCode === 36) return "start";
+    if (key === "End" || keyCode === 35) return "end";
+    return 0;
+  }
+
   function hexToRgba(hex, a) {
     var h = hex.replace("#", "");
     var r = parseInt(h.slice(0, 2), 16);
@@ -137,6 +163,7 @@
     var playBtn = document.querySelector("[data-tl-play]");
     var stopBtn = document.querySelector("[data-tl-stop]");
     var scrub = document.querySelector("[data-tl-scrub]");
+    var scrubInput = document.querySelector("[data-tl-scrub-input]");
     var dateEl = document.querySelector("[data-tl-date]");
     var fpsEl = document.querySelector("[data-tl-fps]");
     var fpsLabel = document.querySelector("[data-tl-fps-label]");
@@ -185,10 +212,41 @@
       return addDays(start, i);
     }
 
-    function syncScrub() {
+    function scrubIndex() {
+      return mode === "today" ? todayIndex : index;
+    }
+
+    function renderScrub() {
       if (!scrub) return;
-      scrub.max = String(todayIndex);
-      scrub.value = String(mode === "today" ? todayIndex : index);
+      var max = todayIndex > 0 ? todayIndex : 1;
+      var v = scrubIndex();
+      if (v < 0) v = 0;
+      if (v > max) v = max;
+      scrub.setAttribute("data-value", String(v));
+      if (scrub.max !== undefined && scrub.tagName === "INPUT") {
+        scrub.max = String(max);
+        scrub.value = String(v);
+      }
+      scrub.setAttribute("aria-valuemin", "0");
+      scrub.setAttribute("aria-valuemax", String(max));
+      scrub.setAttribute("aria-valuenow", String(v));
+      var label = mode === "today" ? "Today" : (start ? formatPlayhead(dateAt(index)) : "Today");
+      scrub.setAttribute("aria-valuetext", label);
+      if (scrubInput) {
+        scrubInput.max = String(max);
+        scrubInput.min = "0";
+        scrubInput.step = "1";
+        scrubInput.value = String(v);
+      }
+      var pct = (100 * v / max);
+      var fill = scrub.querySelector("[data-tl-fill]");
+      var thumb = scrub.querySelector("[data-tl-thumb]");
+      if (fill) fill.style.width = pct + "%";
+      if (thumb) thumb.style.left = pct + "%";
+    }
+
+    function syncScrub() {
+      renderScrub();
     }
 
     function syncDate() {
@@ -276,6 +334,7 @@
           index = todayIndex;
           syncUi();
           prefetch(monthKey(start));
+          prefetch(monthKey(end));
           return catalog;
         });
     }
@@ -342,6 +401,7 @@
 
     function prefetch(ym) {
       if (!ym || months[ym]) return;
+      if (end && ym > monthKey(end)) return;
       loadMonth(ym);
     }
 
@@ -597,14 +657,19 @@
       });
     }
 
-    function onScrub() {
-      if (!catalog || !scrub) return;
-      var v = parseInt(scrub.value, 10);
+    function applyScrubIndex(v) {
+      v = Math.round(v);
+      if (!isFinite(v)) return;
+      if (v < 0) v = 0;
       if (v >= todayIndex) {
         finishToToday();
         return;
       }
-      if (playing) pause();
+      if (playing) {
+        playing = false;
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        syncButtons();
+      }
       enterTimeline(v);
       ensureFrame(index).then(function () {
         emitPick(null, "Tap a satellite");
@@ -612,12 +677,139 @@
       });
     }
 
+    function onScrub() {
+      if (!catalog || !scrub) return;
+      var raw = scrubInput ? scrubInput.value
+        : (scrub.tagName === "INPUT" ? scrub.value : scrub.getAttribute("data-value"));
+      applyScrubIndex(parseInt(raw, 10));
+    }
+
+    function setScrubbing(on) {
+      if (scrub) scrub.classList.toggle("is-scrubbing", on);
+      document.documentElement.classList.toggle("is-scrubbing", on);
+      document.body.classList.toggle("is-scrubbing", on);
+    }
+
+    function bindFineScrub() {
+      if (!scrub) return;
+      if (scrub.tagName === "INPUT") {
+        scrub.addEventListener("input", onScrub);
+        scrub.addEventListener("change", onScrub);
+        return;
+      }
+      var drag = null;
+
+      function trackBox() {
+        return scrub.getBoundingClientRect();
+      }
+
+      function valueAtClientX(clientX) {
+        var r = trackBox();
+        var w = r.width || 1;
+        var x = clampNum(clientX - r.left, 0, w);
+        return (x / w) * todayIndex;
+      }
+
+      function moveTo(v) {
+        if (!catalog) return;
+        applyScrubIndex(v);
+      }
+
+      function keyStep(e) {
+        var delta = scrubKeyDelta(e.key, e.keyCode || e.which);
+        if (!delta) return false;
+        e.preventDefault();
+        if (delta === "start") moveTo(0);
+        else if (delta === "end") moveTo(todayIndex);
+        else moveTo(scrubIndex() + delta);
+        return true;
+      }
+
+      function onWindowTouchMove(e) {
+        if (drag) e.preventDefault();
+      }
+
+      function onPointerDown(e) {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        e.preventDefault();
+        try { scrub.focus({ preventScroll: true }); } catch (err) {}
+        if (scrub.setPointerCapture) {
+          try { scrub.setPointerCapture(e.pointerId); } catch (err) {}
+        }
+        setScrubbing(true);
+        drag = { id: e.pointerId, lastX: e.clientX, value: valueAtClientX(e.clientX) };
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerUp);
+        window.addEventListener("touchmove", onWindowTouchMove, { passive: false });
+        moveTo(drag.value);
+      }
+
+      function onPointerMove(e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        e.preventDefault();
+        var r = trackBox();
+        var dpp = scrubDaysPerPx(e.clientY - (r.top + r.height / 2), r.width, todayIndex);
+        drag.value = clampNum(drag.value + (e.clientX - drag.lastX) * dpp, 0, todayIndex);
+        drag.lastX = e.clientX;
+        moveTo(drag.value);
+      }
+
+      function onPointerUp(e) {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag = null;
+        setScrubbing(false);
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+        window.removeEventListener("touchmove", onWindowTouchMove);
+      }
+
+      scrub.addEventListener("pointerdown", onPointerDown);
+      scrub.addEventListener("touchstart", function (e) { e.preventDefault(); }, { passive: false });
+      scrub.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
+      scrub.addEventListener("keydown", keyStep);
+      if (scrubInput) {
+        scrubInput.addEventListener("keydown", keyStep);
+        scrubInput.addEventListener("input", onScrub);
+        scrubInput.addEventListener("change", onScrub);
+      }
+      document.addEventListener("keydown", function (e) {
+        var active = document.activeElement;
+        if (active !== scrub && active !== scrubInput) return;
+        keyStep(e);
+      });
+    }
+
+    function alignToday(sats) {
+      if (!sats || !sats.length) return Promise.resolve(false);
+      var ready = catalog ? Promise.resolve(catalog) : catalogReady;
+      return ready.then(function () {
+        if (!catalog || nDays < 1) return false;
+        return ensureFrame(nDays - 1).then(function (frame) {
+          if (!frame) return false;
+          var byId = {};
+          var i, sat, rec, xy;
+          for (i = 0; i < frame.n; i++) {
+            sat = catalog.sats ? catalog.sats[frame.slot[i]] : null;
+            if (sat) byId[sat.id] = [frame.x[i], frame.y[i]];
+          }
+          var changed = false;
+          for (i = 0; i < sats.length; i++) {
+            rec = sats[i];
+            xy = byId[rec.id];
+            if (!xy) continue;
+            if (rec.x !== xy[0] || rec.y !== xy[1]) changed = true;
+            rec.x = xy[0];
+            rec.y = xy[1];
+          }
+          return changed;
+        });
+      }).catch(function () { return false; });
+    }
     if (playBtn) playBtn.addEventListener("click", togglePlay);
     if (stopBtn) stopBtn.addEventListener("click", finishToToday);
-    if (scrub) {
-      scrub.addEventListener("input", onScrub);
-      scrub.addEventListener("change", onScrub);
-    }
+    bindFineScrub();
     if (fpsEl) {
       fpsEl.addEventListener("input", onFps);
       fpsEl.addEventListener("change", onFps);
@@ -634,7 +826,8 @@
       playing: function () { return playing; },
       draw: draw,
       pickAt: pickAt,
-      goToday: finishToToday
+      goToday: finishToToday,
+      alignToday: alignToday
     };
   }
 
@@ -643,6 +836,10 @@
     angleDeg: angleDeg,
     INC_COLOR: INC_COLOR,
     INC_OTHER: INC_OTHER,
-    mount: mount
+    mount: mount,
+    scrubDaysPerPx: scrubDaysPerPx,
+    scrubKeyDelta: scrubKeyDelta,
+    SCRUB_FINE_RANGE_PX: SCRUB_FINE_RANGE_PX,
+    SCRUB_DAY_STEP_PX: SCRUB_DAY_STEP_PX
   };
 });
