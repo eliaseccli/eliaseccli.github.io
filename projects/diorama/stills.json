@@ -1,5 +1,12 @@
 [
   {
+    "slug": "model-3",
+    "title": "Tesla Model 3",
+    "date": "2025-06-14",
+    "day": "stills/diorama-model-3-day.png",
+    "night": "stills/diorama-model-3-night.png"
+  },
+  {
     "slug": "tesla-store",
     "title": "Tesla",
     "date": "2025-06-11",
