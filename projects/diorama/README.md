@@ -1,6 +1,6 @@
 # Diorama stills
 
-PNG stills are the product. 1:1 day/night clay pairs. No UI chrome on the images.
+PNG/WebP stills are the product. 1:1 day/night clay pairs. No UI chrome on the images.
 
 Drop files in `stills/` using this name scheme:
 
@@ -13,10 +13,15 @@ Then list them in `stills.json` (array of places; one carousel slot per slug):
       {
         "slug": "ushi",
         "title": "Place name",
+        "date": "",
         "day": "stills/diorama-ushi-day.png",
         "night": "stills/diorama-ushi-night.png"
       }
     ]
+
+`date` is the source photo capture date (EXIF DateTimeOriginal), not the upload day.
+Use `YYYY-MM-DD` or EXIF `YYYY:MM:DD HH:MM:SS`. Leave `""` if unknown — do not invent.
+It shows next to the place name when present.
 
 If `day` / `night` are omitted, paths are inferred from `slug` with the same PNG pattern.
 `.webp` (and jpeg already in a path) are accepted; Lens may list `diorama-<slug>-day.webp`.

@@ -41,6 +41,21 @@
   var width = 0;
   var drag = null;
 
+
+  function captureDate(raw) {
+    var v = raw && (raw.date || raw.taken || raw.captured || raw.datetimeOriginal || raw.DateTimeOriginal);
+    if (v == null) return { raw: "", label: "" };
+    v = String(v).trim();
+    if (!v) return { raw: "", label: "" };
+    var m = v.match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})/);
+    if (!m) return { raw: v, label: "" };
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var month = +m[2];
+    var day = +m[3];
+    if (month < 1 || month > 12 || day < 1 || day > 31) return { raw: v, label: "" };
+    return { raw: v, label: day + " " + months[month - 1] + " " + m[1] };
+  }
+
   function fileName(slug, when) {
     return "stills/diorama-" + slug + "-" + when + ".png";
   }
@@ -65,9 +80,12 @@
     var night = raw.night || raw.nightPng || fileName(slug, "night");
     if (raw.day === false) day = "";
     if (raw.night === false) night = "";
+    var when = captureDate(raw);
     return {
       slug: slug,
       title: String(raw.title || slug),
+      date: when.raw,
+      dateLabel: when.label,
       day: day,
       night: night
     };
@@ -150,7 +168,16 @@
       return;
     }
     caption.hidden = false;
-    caption.textContent = place.title;
+    caption.textContent = "";
+    var name = document.createElement("span");
+    name.textContent = place.title;
+    caption.appendChild(name);
+    if (place.dateLabel) {
+      var whenEl = document.createElement("span");
+      whenEl.className = "when";
+      whenEl.textContent = " · " + place.dateLabel;
+      caption.appendChild(whenEl);
+    }
     if (hasPair(place)) {
       phaseEl.hidden = false;
       phaseEl.textContent = nightOf[place.slug] ? "night" : "day";

@@ -235,6 +235,12 @@ body {
   color: rgba(255, 255, 255, 0.34);
 }
 
+.caption .when {
+  font-weight: 400;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.42);
+}
+
 .caption[hidden],
 .phase[hidden] { display: none; }
 
