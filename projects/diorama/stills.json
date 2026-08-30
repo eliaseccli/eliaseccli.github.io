@@ -1,5 +1,12 @@
 [
   {
+    "slug": "forest",
+    "title": "Forest",
+    "date": "2025-07-24",
+    "day": "stills/diorama-forest-day.png",
+    "night": "stills/diorama-forest-night.png"
+  },
+  {
     "slug": "sas-window",
     "title": "SAS",
     "date": "2025-07-16",
