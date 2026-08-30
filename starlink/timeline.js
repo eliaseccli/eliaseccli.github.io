@@ -7,6 +7,16 @@
   var INC_OTHER = "#64748b";
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var MAGIC = "STLK";
+  var PACK_ID = "6efd2c9";
+  var LOAD_ATTEMPTS = 3;
+  var LOAD_RETRY_MS = 1000;
+  var PREFETCH_MONTHS = 2;
+
+  function withPack(url) {
+    if (!url) return url;
+    if (url.indexOf("v=" + PACK_ID) !== -1) return url;
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + PACK_ID;
+  }
 
   function angleDeg(u16) {
     return (u16 * 360.0) / 65536.0;
@@ -41,6 +51,14 @@
   function nextMonthKey(p) {
     if (p.m === 12) return (p.y + 1) + "-01";
     return p.y + "-" + pad2(p.m + 1);
+  }
+
+  function addMonthsKey(p, n) {
+    var m = p.m + n;
+    var y = p.y;
+    while (m > 12) { m -= 12; y += 1; }
+    while (m < 1) { m += 12; y -= 1; }
+    return y + "-" + pad2(m);
   }
 
   function formatPlayhead(p) {
@@ -156,10 +174,14 @@
     var toPix = opts.toPix;
     var fromCanvas = opts.fromCanvas;
     var cssToCanvas = opts.cssToCanvas;
-    var catalogUrl = opts.catalogUrl || "/starlink/timeline/catalog.json";
+    var catalogUrl = withPack(opts.catalogUrl || "/starlink/timeline/catalog.json");
     var binUrl = opts.binUrl || function (ym) {
       return "/starlink/timeline/v1/" + ym + ".bin";
     };
+    function binUrlFor(ym) {
+      var url = typeof binUrl === "function" ? binUrl(ym) : binUrl;
+      return withPack(url);
+    }
     var playBtn = document.querySelector("[data-tl-play]");
     var stopBtn = document.querySelector("[data-tl-stop]");
     var scrub = document.querySelector("[data-tl-scrub]");
@@ -333,7 +355,7 @@
           todayIndex = nDays;
           index = todayIndex;
           syncUi();
-          prefetch(monthKey(start));
+          prefetchAhead(start, PREFETCH_MONTHS);
           prefetch(monthKey(end));
           return catalog;
         });
@@ -344,26 +366,31 @@
       return rec;
     }
 
+    function attemptFetch(ym, left) {
+      return fetch(binUrlFor(ym))
+        .then(function (r) {
+          if (!r.ok) throw new Error("bin " + r.status);
+          return r.arrayBuffer();
+        })
+        .then(function (buf) {
+          return storeMonth(ym, { status: "ok", data: decodeMonth(buf) });
+        })
+        .catch(function () {
+          if (left > 1) return attemptFetch(ym, left - 1);
+          return storeMonth(ym, { status: "failed", retryAt: Date.now() + LOAD_RETRY_MS });
+        });
+    }
+
     function loadMonth(ym) {
       var rec = months[ym];
       if (rec) {
         if (rec.status === "pending") return rec.promise;
-        return Promise.resolve(rec);
+        if (rec.status === "ok") return Promise.resolve(rec);
+        if (rec.status === "failed" && rec.retryAt && Date.now() < rec.retryAt) {
+          return Promise.resolve(rec);
+        }
       }
-      var p = fetch(typeof binUrl === "function" ? binUrl(ym) : binUrl, { cache: "force-cache" })
-        .then(function (r) {
-          if (r.status === 404 || !r.ok) return storeMonth(ym, { status: "missing" });
-          return r.arrayBuffer().then(function (buf) {
-            try {
-              return storeMonth(ym, { status: "ok", data: decodeMonth(buf) });
-            } catch (err) {
-              return storeMonth(ym, { status: "missing" });
-            }
-          });
-        })
-        .catch(function () {
-          return storeMonth(ym, { status: "missing" });
-        })
+      var p = attemptFetch(ym, LOAD_ATTEMPTS)
         .then(function (done) {
           if (mode === "timeline") redraw();
           return done;
@@ -400,9 +427,24 @@
     }
 
     function prefetch(ym) {
-      if (!ym || months[ym]) return;
+      if (!ym) return;
       if (end && ym > monthKey(end)) return;
+      var rec = months[ym];
+      if (rec && rec.status !== "failed") return;
       loadMonth(ym);
+    }
+
+    function prefetchAhead(p, extra) {
+      if (!p) return;
+      extra = extra == null ? PREFETCH_MONTHS : extra;
+      prefetch(monthKey(p));
+      var i;
+      for (i = 1; i <= extra; i++) prefetch(addMonthsKey(p, i));
+    }
+
+    function monthRec(i) {
+      if (!start || i < 0 || i >= nDays) return null;
+      return months[monthKey(dateAt(i))] || null;
     }
 
     function resolveFrame(i) {
@@ -411,10 +453,11 @@
       var ym = monthKey(p);
       var rec = months[ym];
       if (!rec) loadMonth(ym);
-      prefetch(nextMonthKey(p));
+      prefetchAhead(p, PREFETCH_MONTHS);
       rec = months[ym];
-      if (!rec || rec.status === "pending") return lastFrame;
-      if (rec.status === "missing") return holdFrame(ymdInt(p));
+      if (!rec || rec.status === "pending" || rec.status === "failed") {
+        return null;
+      }
       var found = frameFromMonth(rec, ymdInt(p));
       if (found) {
         lastFrame = found;
@@ -426,9 +469,8 @@
     function ensureFrame(i) {
       if (!start || i < 0 || i >= nDays) return Promise.resolve(lastFrame);
       var p = dateAt(i);
-      var ym = monthKey(p);
-      prefetch(nextMonthKey(p));
-      return loadMonth(ym).then(function () {
+      prefetchAhead(p, PREFETCH_MONTHS);
+      return loadMonth(monthKey(p)).then(function () {
         return resolveFrame(i);
       });
     }
@@ -621,10 +663,23 @@
       var frameMs = 1000 / fps;
       var moved = false;
       while (acc >= frameMs) {
+        var next = index + 1;
+        if (next >= nDays) {
+          finishToToday();
+          return;
+        }
+        var rec = monthRec(next);
+        if (!rec || rec.status !== "ok") {
+          prefetchAhead(dateAt(next), PREFETCH_MONTHS);
+          loadMonth(monthKey(dateAt(next)));
+          if (acc > frameMs) acc = frameMs;
+          break;
+        }
         acc -= frameMs;
         if (!step()) return;
         moved = true;
         resolveFrame(index);
+        prefetchAhead(dateAt(index), PREFETCH_MONTHS);
       }
       if (moved) redraw();
       raf = requestAnimationFrame(tick);
@@ -639,6 +694,7 @@
       syncButtons();
       emitMode();
       emitPick(null, "Playing");
+      prefetchAhead(dateAt(index), PREFETCH_MONTHS);
       ensureFrame(index).then(function () {
         if (!playing) return;
         redraw();
@@ -833,6 +889,8 @@
 
   return {
     decodeMonth: decodeMonth,
+    PACK_ID: PACK_ID,
+    withPack: withPack,
     angleDeg: angleDeg,
     INC_COLOR: INC_COLOR,
     INC_OTHER: INC_OTHER,
