@@ -29,3 +29,5 @@ If `day` / `night` are omitted, paths are inferred from `slug` with the same PNG
 Empty array ships as the v1 void. Do not invent a first scene.
 
 First view follows the viewer's local clock (night 19:00–06:59). Tap the still to flip day/night; swipe still swipes. Clock does not lock after that.
+
+Stills are PNG cutouts with real alpha: keep the object (pod, lamps, signs, trees). Street, cobbles, sky, and distant buildings are transparent. Not a rectangle photo.
