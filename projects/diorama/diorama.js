@@ -169,22 +169,9 @@
       slot.setAttribute("data-slot", String(i));
       var hold = document.createElement("div");
       hold.className = "float";
-      if (place.day) {
-        var day = document.createElement("img");
-        day.src = place.day;
-        day.alt = "";
-        day.draggable = false;
-        day.setAttribute("data-when", "day");
-        hold.appendChild(day);
-      }
-      if (place.night) {
-        var night = document.createElement("img");
-        night.src = place.night;
-        night.alt = "";
-        night.draggable = false;
-        night.setAttribute("data-when", "night");
-        hold.appendChild(night);
-      }
+      if (place.day) hold.appendChild(makeStill(place.day, "day"));
+      if (place.night) hold.appendChild(makeStill(place.night, "night"));
+      warmSlot(hold);
       slot.appendChild(hold);
       track.appendChild(slot);
       paintSlot(i);
@@ -208,11 +195,51 @@
     return !!place.night;
   }
 
+  function makeStill(src, when) {
+    var img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+    img.draggable = false;
+    img.decoding = "async";
+    img.loading = "eager";
+    img.setAttribute("data-when", when);
+    return img;
+  }
+
+  function warmImg(img) {
+    if (!img) return;
+    if (typeof img.decode === "function") img.decode().catch(function () {});
+  }
+
+  function warmSlot(root) {
+    if (!root) return;
+    var imgs = root.querySelectorAll ? root.querySelectorAll("img") : [];
+    var n;
+    for (n = 0; n < imgs.length; n++) warmImg(imgs[n]);
+  }
+
+  function incomingStill(slot, showNight) {
+    if (!slot) return null;
+    return slot.querySelector(showNight ? 'img[data-when="night"]' : 'img[data-when="day"]');
+  }
+
   function flip() {
     var place = current();
     if (!place || !place.day || !place.night) return;
+    var i = index;
     nightOf[place.slug] = !showNightFor(place);
-    paintSlot(index);
+    var showNight = showNightFor(place);
+    var slot = track.children[i];
+    var incoming = incomingStill(slot, showNight);
+    function paint() {
+      if (index !== i) return;
+      paintSlot(i);
+    }
+    if (incoming && typeof incoming.decode === "function") {
+      incoming.decode().then(paint).catch(paint);
+    } else {
+      paint();
+    }
   }
 
   function paintSlot(i) {
@@ -383,6 +410,10 @@
   }).then(function (raw) {
     places = asList(raw).map(normalize).filter(Boolean).sort(newestFirst);
     places.reverse();
+    places.forEach(function (place) {
+      if (place.day) { var d = new Image(); d.src = place.day; }
+      if (place.night) { var n = new Image(); n.src = place.night; }
+    });
     render();
   }).catch(function () {
     places = [];
