@@ -235,4 +235,9 @@ body {
   width: 1.12rem;
   height: 1.12rem;
   display: block;
+  overflow: visible;
+}
+.socials svg.icon-mail {
+  width: 1.232rem;
+  height: 1.232rem;
 }
