@@ -332,10 +332,13 @@ def _clock_detected(inc: int, group: list[Sat]) -> list[tuple[Shell, list[Sat]]]
 
 
 def _closest_pile(sat: Sat, frozen: list[PileRef]) -> PileRef | None:
-    """Closest pile by |Δn|. No match-radius check."""
+    """Closest pile by |Δn| within PILE_MATCH_N. None if every pile is farther."""
     if not frozen:
         return None
-    return min(frozen, key=lambda p: abs(sat.mean_motion - p.n))
+    closest = min(frozen, key=lambda p: abs(sat.mean_motion - p.n))
+    if abs(sat.mean_motion - closest.n) > PILE_MATCH_N:
+        return None
+    return closest
 
 
 def _clump_clock(unmatched: list[Sat]) -> Clock:
@@ -356,14 +359,14 @@ def assign_clocks(
 ) -> dict[int, Clock]:
     """Assign a clock to each sat. Stable tight piles freeze into refs.
 
-    A frozen pile is an active shell today only if it has at least
-    CLOCK_MIN_COUNT members in today's sat_pile. Those members use the
-    pile's frozen n/i/e (kind=pile). Members of a sub-50 pile are leftovers,
-    same as unmatched. If at least one active 50+ shell exists at that
-    inclination, each leftover drafts to the closest active shell by n
-    (any Δn, kind=draft). If there is no 50+ shell yet, leftovers share
-    one kind=clump clock (daily median n, i, e). Odd-inclination loners
-    stay kind=own. Pending streaks persist on refs for the daily Action.
+    CLOCK_MIN_COUNT gates creating a new freeze only. Once a pile exists it
+    stays a valid clock; today's occupancy does not revoke it. A sat uses a
+    frozen pile's n/i/e only when |n_sat − n_pile| ≤ PILE_MATCH_N (kind=pile
+    if in today's matched members, else kind=draft). Never assign a pile
+    clock when |Δn| > PILE_MATCH_N, and never draft leftovers onto a far
+    shell. Unmatched sats at one inclination share one kind=clump clock
+    (daily median n, i, e). Odd-inclination loners stay kind=own. Pending
+    streaks persist on refs for the daily Action.
     """
     by_inc: dict[int, list[Sat]] = {k: [] for k in INC_WINDOWS}
     other: list[Sat] = []
@@ -394,32 +397,26 @@ def assign_clocks(
                 if d_new < d_old:
                     sat_pile[s.norad_id] = pile
 
-        pile_count: dict[str, int] = {}
-        for pile in sat_pile.values():
-            pile_count[pile.id] = pile_count.get(pile.id, 0) + 1
-        active = [p for p in frozen_here if pile_count.get(p.id, 0) >= CLOCK_MIN_COUNT]
-        active_ids = {p.id for p in active}
-
         leftovers: list[Sat] = []
         for s in group:
             pile = sat_pile.get(s.norad_id)
-            if pile is not None and pile.id in active_ids:
+            if pile is not None and abs(s.mean_motion - pile.n) <= PILE_MATCH_N:
                 clocks[s.norad_id] = Clock(pile.n, pile.i, pile.e, pile.id, "pile")
             else:
                 leftovers.append(s)
-        if leftovers:
-            if active:
-                for s in leftovers:
-                    closest = _closest_pile(s, active)
-                    if closest is None:
-                        continue
-                    clocks[s.norad_id] = Clock(
-                        closest.n, closest.i, closest.e, closest.id, "draft"
-                    )
+        unmatched: list[Sat] = []
+        for s in leftovers:
+            closest = _closest_pile(s, frozen_here)
+            if closest is not None:
+                clocks[s.norad_id] = Clock(
+                    closest.n, closest.i, closest.e, closest.id, "draft"
+                )
             else:
-                clump = _clump_clock(leftovers)
-                for s in leftovers:
-                    clocks[s.norad_id] = clump
+                unmatched.append(s)
+        if unmatched:
+            clump = _clump_clock(unmatched)
+            for s in unmatched:
+                clocks[s.norad_id] = clump
 
     today = _day(day)
     refs.pending = [

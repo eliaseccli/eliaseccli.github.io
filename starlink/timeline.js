@@ -138,12 +138,16 @@
     var stopBtn = document.querySelector("[data-tl-stop]");
     var scrub = document.querySelector("[data-tl-scrub]");
     var dateEl = document.querySelector("[data-tl-date]");
+    var fpsEl = document.querySelector("[data-tl-fps]");
+    var fpsLabel = document.querySelector("[data-tl-fps-label]");
 
     var catalog = null;
     var start = null;
     var end = null;
     var nDays = 0;
     var PLAYBACK_FPS = 15;
+    var FPS_MIN = 1;
+    var FPS_MAX = 15;
     var fps = PLAYBACK_FPS;
     var index = 0;
     var todayIndex = 0;
@@ -199,10 +203,32 @@
       }
     }
 
+    function clampFps(v) {
+      v = parseInt(v, 10);
+      if (!isFinite(v)) v = PLAYBACK_FPS;
+      if (v < FPS_MIN) v = FPS_MIN;
+      if (v > FPS_MAX) v = FPS_MAX;
+      return v;
+    }
+
+    function syncFps() {
+      if (fpsLabel) fpsLabel.textContent = fps + " fps";
+      if (fpsEl) fpsEl.value = String(fps);
+    }
+
+    function onFps() {
+      if (!fpsEl) return;
+      fps = clampFps(fpsEl.value);
+      var frameMs = 1000 / fps;
+      if (acc > frameMs) acc = frameMs;
+      syncFps();
+    }
+
     function syncUi() {
       syncScrub();
       syncDate();
       syncButtons();
+      syncFps();
     }
 
     function setToday() {
@@ -245,7 +271,6 @@
           catalog = j;
           start = parseISO(j.start);
           end = parseISO(j.end);
-          fps = PLAYBACK_FPS;
           nDays = daysInclusive(start, end);
           todayIndex = nDays;
           index = todayIndex;
@@ -406,7 +431,7 @@
       ctx.rect(p, p, s, s);
       ctx.clip();
       var frame = resolveFrame(index);
-      var rMin = 4.8;
+      var rMin = 3.36;
       var rMax = rMin * 8;
       var r = rMin * Math.pow(view.k, Math.log(rMax / rMin) / Math.log(KMAX));
       if (r > rMax) r = rMax;
@@ -593,6 +618,11 @@
       scrub.addEventListener("input", onScrub);
       scrub.addEventListener("change", onScrub);
     }
+    if (fpsEl) {
+      fpsEl.addEventListener("input", onFps);
+      fpsEl.addEventListener("change", onFps);
+    }
+    syncFps();
 
     var catalogReady = loadCatalog().catch(function () {
       if (dateEl) dateEl.textContent = "Today";

@@ -31,8 +31,13 @@ assert.strictEqual(tl.angleDeg(0), 0);
 assert.ok(Math.abs(tl.angleDeg(32768) - 180) < 1e-12);
 
 var src = fs.readFileSync(path.join(__dirname, "timeline.js"), "utf8");
-assert.ok(/PLAYBACK_FPS = 15/.test(src), "player must hardcode 15 fps");
+var html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+assert.ok(/PLAYBACK_FPS = 15/.test(src), "default playback is 15 fps");
+assert.ok(/FPS_MIN = 1/.test(src) && /FPS_MAX = 15/.test(src), "player can vary 1–15 fps");
 assert.ok(!/fps = j\.fps \|\| 30/.test(src), "player must not fall back to catalog 30 fps");
+assert.ok(/data-tl-fps/.test(html) && /min="1"/.test(html) && /max="15"/.test(html), "speed control is 1–15");
+assert.ok(/rMin = 3\.36/.test(src), "timeline 0-zoom radius is 3.36");
+assert.ok(/rMin = 3\.36/.test(html), "today 0-zoom radius is 3.36");
 
 console.log("timeline fixture decode: ok");
 console.log("  magic=" + m.magic + " n_days=" + m.nDays + " catalog_len=" + m.catalogLen);
