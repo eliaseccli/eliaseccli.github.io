@@ -56,6 +56,16 @@
     return { raw: v, label: day + " " + months[month - 1] + " " + m[1] };
   }
 
+  function dateKey(place) {
+    var m = String(place && place.date || "").match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})/);
+    if (!m) return 0;
+    return (+m[1]) * 10000 + (+m[2]) * 100 + (+m[3]);
+  }
+
+  function newestFirst(a, b) {
+    return dateKey(b) - dateKey(a);
+  }
+
   function fileName(slug, when) {
     return "stills/diorama-" + slug + "-" + when + ".png";
   }
@@ -315,7 +325,7 @@
   fetch("./stills.json", { cache: "no-store" }).then(function (res) {
     return res.ok ? res.json() : [];
   }).then(function (raw) {
-    places = asList(raw).map(normalize).filter(Boolean);
+    places = asList(raw).map(normalize).filter(Boolean).sort(newestFirst);
     render();
   }).catch(function () {
     places = [];

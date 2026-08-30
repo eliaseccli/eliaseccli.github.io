@@ -22,6 +22,7 @@ Then list them in `stills.json` (array of places; one carousel slot per slug):
 `date` is the source photo capture date (EXIF DateTimeOriginal), not the upload day.
 Use `YYYY-MM-DD` or EXIF `YYYY:MM:DD HH:MM:SS`. Leave `""` if unknown — do not invent.
 It shows next to the place name when present.
+Swipe order is newest capture date first; stills with no date sit at the back. Do not invent dates to change order.
 
 If `day` / `night` are omitted, paths are inferred from `slug` with the same PNG pattern.
 `.webp` (and jpeg already in a path) are accepted; Lens may list `diorama-<slug>-day.webp`.
