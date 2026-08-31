@@ -1,5 +1,13 @@
 [
   {
+    "slug": "berlin",
+    "title": "Berlin",
+    "date": "2025-09-03",
+    "captured": "2025:09:03 08:26:46",
+    "day": "stills/diorama-berlin-day.png",
+    "night": "stills/diorama-berlin-night.png"
+  },
+  {
     "slug": "pizza",
     "title": "Pizza in Südtirol",
     "date": "2025-08-09",
