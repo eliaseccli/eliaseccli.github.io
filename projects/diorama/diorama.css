@@ -216,7 +216,16 @@ body {
   pointer-events: none;
 }
 
-.halo { z-index: 0; }
+.halo {
+  z-index: 0;
+  filter:
+    drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
+    drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))
+    drop-shadow(0 0 28px rgba(255, 255, 255, 0.16))
+    drop-shadow(0 0 72px rgba(200, 220, 255, 0.10))
+    drop-shadow(0 0 120px rgba(180, 210, 255, 0.06))
+    drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
+}
 .photos { z-index: 1; }
 
 .halo img {
@@ -227,13 +236,7 @@ body {
   object-fit: contain;
   pointer-events: none;
   visibility: hidden;
-  filter:
-    drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
-    drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))
-    drop-shadow(0 0 28px rgba(255, 255, 255, 0.16))
-    drop-shadow(0 0 72px rgba(200, 220, 255, 0.10))
-    drop-shadow(0 0 120px rgba(180, 210, 255, 0.06))
-    drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
+  background: transparent;
 }
 
 .halo img.is-on { visibility: visible; }
