@@ -1,5 +1,12 @@
 [
   {
+    "slug": "messepark",
+    "title": "Messepark",
+    "date": "2025-11-06",
+    "day": "stills/diorama-messepark-day.png",
+    "night": "stills/diorama-messepark-night.png"
+  },
+  {
     "slug": "berlin",
     "title": "Berlin",
     "date": "2025-09-03",
