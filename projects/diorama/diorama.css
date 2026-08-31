@@ -207,6 +207,26 @@ body {
   position: relative;
   width: min(72vmin, 34rem);
   aspect-ratio: 1;
+}
+
+.halo,
+.photos {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.halo { z-index: 0; }
+.photos { z-index: 1; }
+
+.halo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  visibility: hidden;
   filter:
     drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
     drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))
@@ -215,6 +235,8 @@ body {
     drop-shadow(0 0 120px rgba(180, 210, 255, 0.06))
     drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
 }
+
+.halo img.is-on { visibility: visible; }
 
 .still {
   position: absolute;

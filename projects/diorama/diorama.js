@@ -170,8 +170,20 @@
       slot.setAttribute("data-slot", String(i));
       var hold = document.createElement("div");
       hold.className = "float";
-      if (place.day) hold.appendChild(makeStill(place.day, "day"));
-      if (place.night) hold.appendChild(makeStill(place.night, "night"));
+      var halo = document.createElement("div");
+      halo.className = "halo";
+      var photos = document.createElement("div");
+      photos.className = "photos";
+      if (place.day) {
+        halo.appendChild(makeHalo(place.day, "day"));
+        photos.appendChild(makeStill(place.day, "day"));
+      }
+      if (place.night) {
+        halo.appendChild(makeHalo(place.night, "night"));
+        photos.appendChild(makeStill(place.night, "night"));
+      }
+      hold.appendChild(halo);
+      hold.appendChild(photos);
       warmSlot(hold);
       slot.appendChild(hold);
       track.appendChild(slot);
@@ -196,17 +208,27 @@
     return !!place.night;
   }
 
-  function makeStill(src, when) {
-    var wrap = document.createElement("div");
-    wrap.className = "still";
-    wrap.setAttribute("data-when", when);
+  function stillImg(src) {
     var img = document.createElement("img");
     img.src = src;
     img.alt = "";
     img.draggable = false;
     img.decoding = "async";
     img.loading = "eager";
-    wrap.appendChild(img);
+    return img;
+  }
+
+  function makeHalo(src, when) {
+    var img = stillImg(src);
+    img.setAttribute("data-when", when);
+    return img;
+  }
+
+  function makeStill(src, when) {
+    var wrap = document.createElement("div");
+    wrap.className = "still";
+    wrap.setAttribute("data-when", when);
+    wrap.appendChild(stillImg(src));
     return wrap;
   }
 
@@ -254,7 +276,15 @@
     var slot = track.children[i];
     if (!slot) return;
     var showNight = showNightFor(place);
-    var stills = slot.querySelectorAll(".still");
+    var halos = slot.querySelectorAll(".halo img");
+    var h;
+    for (h = 0; h < halos.length; h++) {
+      var hw = halos[h].getAttribute("data-when");
+      var hon = showNight ? hw === "night" : hw === "day";
+      if (!place.day && place.night && hw === "night") hon = true;
+      halos[h].classList.toggle("is-on", hon);
+    }
+    var stills = slot.querySelectorAll(".photos .still");
     var n, wrap, when, on;
     for (n = 0; n < stills.length; n++) {
       wrap = stills[n];
