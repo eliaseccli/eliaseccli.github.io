@@ -1,5 +1,12 @@
 [
   {
+    "slug": "neujahr",
+    "title": "Neujahr in Südtirol",
+    "date": "2026-01-01",
+    "day": "stills/diorama-neujahr-day.png",
+    "night": "stills/diorama-neujahr-night.png"
+  },
+  {
     "slug": "messepark",
     "title": "Messepark",
     "date": "2025-11-06",
