@@ -216,6 +216,7 @@ body {
   pointer-events: none;
 }
 
+/* Halo on the WRAPPER only. Filter on the 1:1 PNG paints a black square on iOS. */
 .halo {
   z-index: 0;
   filter:
