@@ -1,5 +1,12 @@
 [
   {
+    "slug": "reschensee",
+    "title": "Reschensee",
+    "date": "2026-02-02",
+    "day": "stills/diorama-reschensee-day.png",
+    "night": "stills/diorama-reschensee-night.png"
+  },
+  {
     "slug": "goodbye-monstera",
     "title": "Goodbye, Monstera",
     "date": "2026-01-18",
