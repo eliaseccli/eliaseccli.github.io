@@ -23,11 +23,14 @@ jobs:
           STARLINK_CACHE: ${{ runner.temp }}/starlink
         run: |
           export TZ=Europe/Vienna
-          hour=$(date +%H)
-          echo "Vienna hour=$hour event=${{ github.event_name }}"
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$hour" != "08" ]; then
-            echo "Skip: not 08:00 Vienna"
-            exit 0
+          today=$(date +%Y-%m-%d)
+          echo "Vienna today=$today event=${{ github.event_name }}"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            end=$(python3 -c "import json; print(json.load(open('starlink/timeline/manifest.json'))['end'])")
+            if [ "$end" = "$today" ]; then
+              echo "Skip: already dumped today ($today)"
+              exit 0
+            fi
           fi
           # Append today's J2-locked frame (and lock_state) before dump so Today
           # matches the last play day. Append fetches GP if the cache is empty.
