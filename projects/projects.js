@@ -136,10 +136,34 @@
     });
   }
 
+  function ensureLookupCard(root) {
+    if (!root) return;
+    if (root.querySelector('a[href="./lookup/"], a[href="/projects/lookup/"], a[href*="lookup"]')) return;
+    var shelf = root.querySelector(".shelf") || root;
+    var card = document.createElement("a");
+    card.className = "card";
+    card.href = "./lookup/";
+    var strong = document.createElement("strong");
+    strong.textContent = "Look up";
+    var span = document.createElement("span");
+    span.textContent = "Starlink in your sky, right now.";
+    card.appendChild(strong);
+    card.appendChild(span);
+    var dio = shelf.querySelector('a[href*="diorama"]');
+    if (dio && dio.parentNode === shelf) {
+      if (dio.nextSibling) shelf.insertBefore(card, dio.nextSibling);
+      else shelf.appendChild(card);
+    } else {
+      shelf.appendChild(card);
+    }
+    try { sessionStorage.setItem(KEY, root.innerHTML); } catch (err) {}
+  }
+
   function unlock(html) {
     var gate = document.querySelector("[data-gate]");
     var panel = document.querySelector("[data-panel]");
     panel.innerHTML = html;
+    ensureLookupCard(panel);
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");
