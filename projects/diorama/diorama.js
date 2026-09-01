@@ -194,9 +194,68 @@
   }
 
 
+  var FALLBACK_LAT = 47.3644;
+  var FALLBACK_LON = 9.6916;
+  var PHASE_LAG_MS = 30 * 60 * 1000;
+  var geo = { lat: FALLBACK_LAT, lon: FALLBACK_LON };
+  try {
+    var savedGeo = JSON.parse(localStorage.getItem("diorama.geo") || "null");
+    if (savedGeo && typeof savedGeo.lat === "number" && typeof savedGeo.lon === "number") {
+      geo.lat = savedGeo.lat;
+      geo.lon = savedGeo.lon;
+    }
+  } catch (err) {}
+
+  function sunEvent(date, lat, lon, rising) {
+    var rad = Math.PI / 180;
+    var start = new Date(date.getFullYear(), 0, 0);
+    var n = Math.floor((date - start) / 86400000);
+    var lngHour = lon / 15;
+    var t = n + ((rising ? 6 : 18) - lngHour) / 24;
+    var M = (0.9856 * t - 3.289) % 360;
+    var L = (M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634) % 360;
+    if (L < 0) L += 360;
+    var RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+    RA = (RA + 360) % 360;
+    RA = RA + (Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90);
+    RA = RA / 15;
+    var sinDec = 0.39782 * Math.sin(L * rad);
+    var cosDec = Math.cos(Math.asin(sinDec));
+    var cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null;
+    var H = Math.acos(cosH) / rad;
+    if (rising) H = 360 - H;
+    H = H / 15;
+    var T = H + RA - 0.06571 * t - 6.622;
+    var UT = T - lngHour;
+    UT = ((UT % 24) + 24) % 24;
+    return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) + UT * 3600000);
+  }
+
   function isNightNow() {
-    var h = new Date().getHours();
-    return h >= 19 || h < 7;
+    var now = new Date();
+    var rise = sunEvent(now, geo.lat, geo.lon, true);
+    var set = sunEvent(now, geo.lat, geo.lon, false);
+    if (!rise || !set) {
+      var h = now.getHours();
+      return h >= 19 || h < 7;
+    }
+    var t = now.getTime();
+    var dayStart = rise.getTime() + PHASE_LAG_MS;
+    var nightStart = set.getTime() + PHASE_LAG_MS;
+    return t < dayStart || t >= nightStart;
+  }
+
+  function watchGeo() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      geo.lat = pos.coords.latitude;
+      geo.lon = pos.coords.longitude;
+      try {
+        localStorage.setItem("diorama.geo", JSON.stringify({ lat: geo.lat, lon: geo.lon }));
+      } catch (err) {}
+      if (places.length) paintSlot(index);
+    }, function () {}, { maximumAge: 24 * 3600 * 1000, timeout: 4000 });
   }
 
   function showNightFor(place) {
@@ -493,6 +552,7 @@
       if (place.night) { var n = new Image(); n.src = place.night; }
     });
     render();
+    watchGeo();
   }).catch(function () {
     places = [];
     render();
