@@ -1,4 +1,4 @@
-"""20%+ catalog wipeouts: drop as real dumps, interpolate, then 3-day smooth.
+"""20%+ catalog wipeouts: drop as real dumps, interpolate, then 10-day smooth.
 
 A day is a wipeout when its sat count (set bits in that day's catalog bitmask)
 is ≥20% below the median of a 7-day centered window of *neighboring* days.
@@ -12,9 +12,9 @@ are 360°). One-sided sats are omitted (packed bins have no alpha). Do not
 invent slots. A 1-day membership dropout (sat on both neighbors, missing
 today, day not a wipeout) is held by shortest-arc lerp.
 
-After hole-fill, Play positions are a 3-day centered shortest-arc mean for
-slots present on day-1, day, and day+1. First and last day stay unsmoothed.
-Clocks stay on real unsmoothed dumps.
+After hole-fill, Play positions are a 10-day centered shortest-arc mean
+(frames [i-4 .. i+5]) for slots present on all 10 days. The first 4 and last
+5 packed days stay unsmoothed. Clocks stay on real unsmoothed dumps.
 """
 
 from __future__ import annotations
@@ -32,6 +32,10 @@ from refresh.lock import shortest_delta, wrap360
 FLAG_SYNTHETIC = 0x01
 WINDOW_HALF = 3  # 7-day centered window: 3 neighbors each side + self
 DROP_FRAC = 0.20
+# Even 10-day play smooth: 4 before, today, 5 after.
+SMOOTH_BEFORE = 4
+SMOOTH_AFTER = 5
+SMOOTH_WINDOW = SMOOTH_BEFORE + 1 + SMOOTH_AFTER
 
 
 def is_synthetic(flags: int) -> bool:
@@ -215,43 +219,41 @@ def hold_one_day_dropouts(frames: list[DayFrame]) -> list[DayFrame]:
     return out
 
 
-def smooth_3day(frames: list[DayFrame]) -> list[DayFrame]:
-    """Replace day with the shortest-arc mean of day-1, day, day+1.
+def smooth_nday(frames: list[DayFrame]) -> list[DayFrame]:
+    """Replace day i with the shortest-arc mean of frames [i-4 .. i+5].
 
-    Only slots present on all three days. First and last frame stay as-is.
-    Does not invent a third sample.
+    A slot is smoothed only if it is present on all 10 days. First 4 and
+    last 5 frames stay unsmoothed. Does not invent samples.
     """
-    if len(frames) < 3:
+    n = len(frames)
+    if n < SMOOTH_WINDOW:
         return frames
-    out: list[DayFrame] = [frames[0]]
-    for i in range(1, len(frames) - 1):
-        prev, cur, nxt = frames[i - 1], frames[i], frames[i + 1]
-        pos_p, pos_c, pos_n = _pos_map(prev), _pos_map(cur), _pos_map(nxt)
+    maps = [_pos_map(f) for f in frames]
+    out: list[DayFrame] = []
+    for i, cur in enumerate(frames):
+        lo = i - SMOOTH_BEFORE
+        hi = i + SMOOTH_AFTER + 1
+        if lo < 0 or hi > n:
+            out.append(cur)
+            continue
+        window = maps[lo:hi]
         slots: list[int] = []
         xs: list[int] = []
         ys: list[int] = []
         for slot in cur.slots:
-            if slot not in pos_p or slot not in pos_n:
+            if any(slot not in m for m in window):
                 slots.append(slot)
-                xs.append(pos_c[slot][0])
-                ys.append(pos_c[slot][1])
+                xs.append(maps[i][slot][0])
+                ys.append(maps[i][slot][1])
                 continue
-            xb, yb = pos_p[slot]
-            xc, yc = pos_c[slot]
-            xa, ya = pos_n[slot]
             slots.append(slot)
             xs.append(
-                pack_u16(
-                    circular_mean([unpack_u16(xb), unpack_u16(xc), unpack_u16(xa)])
-                )
+                pack_u16(circular_mean([unpack_u16(m[slot][0]) for m in window]))
             )
             ys.append(
-                pack_u16(
-                    circular_mean([unpack_u16(yb), unpack_u16(yc), unpack_u16(ya)])
-                )
+                pack_u16(circular_mean([unpack_u16(m[slot][1]) for m in window]))
             )
         out.append(DayFrame(date=cur.date, flags=cur.flags, slots=slots, xs=xs, ys=ys))
-    out.append(frames[-1])
     return out
 
 
@@ -260,11 +262,11 @@ def _frame_sig(frame: DayFrame) -> tuple:
 
 
 def smooth_changed(held: list[DayFrame], orig: list[DayFrame]) -> list[DayFrame]:
-    """3-day mean only for days next to a frame that differed from orig.
+    """10-day mean only for days whose window includes a changed frame.
 
     Daily append uses this so already-smoothed history is not blurred again.
     """
-    if len(held) < 3:
+    if len(held) < SMOOTH_WINDOW:
         return held
     by_old = {f.date: f for f in orig}
     changed = set()
@@ -274,12 +276,14 @@ def smooth_changed(held: list[DayFrame], orig: list[DayFrame]) -> list[DayFrame]
             changed.add(frame.date)
     if not changed:
         return held
-    full = smooth_3day(held)
+    full = smooth_nday(held)
     out: list[DayFrame] = []
     for i, (h, s) in enumerate(zip(held, full)):
+        lo = i - SMOOTH_BEFORE
+        hi = i + SMOOTH_AFTER + 1
         near = any(
             0 <= j < len(held) and held[j].date in changed
-            for j in (i - 1, i, i + 1)
+            for j in range(lo, hi)
         )
         out.append(s if near else h)
     return out
@@ -323,11 +327,11 @@ def fill_v1_holes(
     extra_holes: Iterable[date] | None = None,
     smooth: str = "all",
 ) -> dict:
-    """Replace/insert synthetic frames, hold 1-day dropouts, then 3-day smooth.
+    """Replace/insert synthetic frames, hold 1-day dropouts, then 10-day smooth.
 
     Detection uses each real day's sat count (set bits). Existing
     FLAG_SYNTHETIC days are always re-filled. Then: interpolate/hold holes,
-    membership-hold 1-day dropouts on real days, 3-day shortest-arc mean.
+    membership-hold 1-day dropouts on real days, 10-day shortest-arc mean.
     Does not invent calendar days that were never a dump unless listed in
     extra_holes.
     """
@@ -373,12 +377,12 @@ def fill_v1_holes(
         else:
             filled[ymd] = empty_synthetic(ymd)
 
-    # Interpolate/hold holes (done) → membership hold → 3-day smooth.
+    # Interpolate/hold holes (done) → membership hold → 10-day smooth.
     series = hold_one_day_dropouts([filled[y] for y in all_ymds])
     if smooth == "changed":
         series = smooth_changed(series, ordered)
     else:
-        series = smooth_3day(series)
+        series = smooth_nday(series)
     filled = {f.date: f for f in series}
 
     rewritten: list[str] = []

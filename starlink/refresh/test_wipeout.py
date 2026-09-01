@@ -1,4 +1,4 @@
-"""20% wipeout detector, packed lerp, and 3-day shortest-arc mean."""
+"""20% wipeout detector, packed lerp, and 10-day shortest-arc mean."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from refresh.wipeout import (
     is_synthetic,
     lerp_angle,
     neighbor_median,
-    smooth_3day,
+    smooth_nday,
     today_is_wipeout,
     wipeout_mask,
 )
@@ -109,42 +109,72 @@ class TestMembershipHold(unittest.TestCase):
         self.assertEqual(held[2].slots, [0, 1, 2, 3])
 
 
-class TestSmooth3Day(unittest.TestCase):
-    def test_centered_mean_and_wrap(self):
-        days = [
-            DayFrame(date=20200320, slots=[0, 1], xs=[pack_u16(359.0), pack_u16(10.0)], ys=[pack_u16(10.0), pack_u16(0.0)]),
-            DayFrame(date=20200321, slots=[0, 1], xs=[pack_u16(0.0), pack_u16(20.0)], ys=[pack_u16(20.0), pack_u16(0.0)]),
-            DayFrame(date=20200322, slots=[0, 1], xs=[pack_u16(1.0), pack_u16(30.0)], ys=[pack_u16(30.0), pack_u16(0.0)]),
-        ]
-        out = smooth_3day(days)
+def _deg_days(xs: list[float], ys: list[float] | None = None) -> list[DayFrame]:
+    days = []
+    for i, x in enumerate(xs):
+        y = 0.0 if ys is None else ys[i]
+        days.append(
+            DayFrame(
+                date=20200320 + i,
+                slots=[0],
+                xs=[pack_u16(x)],
+                ys=[pack_u16(y)],
+            )
+        )
+    return days
+
+
+class TestSmooth10Day(unittest.TestCase):
+    def test_edges_unsmoothed_and_window_mean(self):
+        # 12 days: first 4 and last 5 unsmoothed; indices 4,5,6 get [i-4 .. i+5].
+        xs = [10.0 + i for i in range(12)]
+        days = _deg_days(xs)
+        out = smooth_nday(days)
+        for i in list(range(4)) + list(range(7, 12)):
+            self.assertEqual(out[i].xs, days[i].xs, f"edge {i} must stay unsmoothed")
+        # day 4 uses xs[0:10] = 10..19, mean 14.5
+        self.assertAlmostEqual(unpack_u16(out[4].xs[0]), 14.5, places=2)
+        self.assertAlmostEqual(unpack_u16(out[5].xs[0]), 15.5, places=2)
+        self.assertAlmostEqual(unpack_u16(out[6].xs[0]), 16.5, places=2)
+
+    def test_wrap_359_1(self):
+        # 12 days of 359/0/1 so the 10-day window at i=4 is all near 0°.
+        xs = [359.0, 0.0, 1.0] * 4
+        days = _deg_days(xs)
+        out = smooth_nday(days)
         self.assertEqual(out[0].xs, days[0].xs)
-        self.assertEqual(out[2].xs, days[2].xs)
-        self.assertAlmostEqual(unpack_u16(out[1].xs[0]), 0.0, places=2)
-        self.assertAlmostEqual(unpack_u16(out[1].xs[1]), 20.0, places=2)
-        self.assertAlmostEqual(unpack_u16(out[1].ys[0]), 20.0, places=2)
+        self.assertEqual(out[-1].xs, days[-1].xs)
+        window = xs[0:10]
+        want = circular_mean(window)
+        self.assertAlmostEqual(unpack_u16(out[4].xs[0]), want, places=2)
+        self.assertLess(min(want, 360.0 - want), 2.0)
+
+    def test_short_series_stays_unsmoothed(self):
+        days = _deg_days([10.0, 20.0, 30.0])
+        self.assertIs(smooth_nday(days), days)
 
     def test_changed_smooth_is_noop_when_frames_match(self):
         from refresh.wipeout import smooth_changed
 
-        days = [
-            DayFrame(date=1, slots=[0], xs=[pack_u16(10.0)], ys=[pack_u16(0.0)]),
-            DayFrame(date=2, slots=[0], xs=[pack_u16(20.0)], ys=[pack_u16(0.0)]),
-            DayFrame(date=3, slots=[0], xs=[pack_u16(30.0)], ys=[pack_u16(0.0)]),
-        ]
-        already = smooth_3day(days)
+        days = _deg_days([10.0 + i for i in range(12)])
+        already = smooth_nday(days)
         again = smooth_changed(already, already)
-        self.assertEqual(again[1].xs, already[1].xs)
+        self.assertEqual(again[4].xs, already[4].xs)
 
-    def test_skips_slot_missing_a_neighbor(self):
-        days = [
-            DayFrame(date=1, slots=[0], xs=[pack_u16(10.0)], ys=[pack_u16(0.0)]),
-            DayFrame(date=2, slots=[0, 1], xs=[pack_u16(20.0), pack_u16(90.0)], ys=[pack_u16(0.0), pack_u16(1.0)]),
-            DayFrame(date=3, slots=[0], xs=[pack_u16(30.0)], ys=[pack_u16(0.0)]),
-        ]
-        out = smooth_3day(days)
-        self.assertEqual(out[1].slots, [0, 1])
-        self.assertAlmostEqual(unpack_u16(out[1].xs[0]), 20.0, places=2)
-        self.assertAlmostEqual(unpack_u16(out[1].xs[1]), 90.0, places=2)
+    def test_skips_slot_missing_any_window_day(self):
+        days = []
+        for i in range(12):
+            slots = [0] if i != 2 else [0, 1]
+            xs = [pack_u16(10.0 + i)] if i != 2 else [pack_u16(12.0), pack_u16(90.0)]
+            ys = [pack_u16(0.0)] * len(slots)
+            days.append(DayFrame(date=20200320 + i, slots=slots, xs=xs, ys=ys))
+        # slot 1 only on day 2 — never a full 10-day member.
+        # slot 0 missing from no days; day 4 window includes day 2 which has slot 0.
+        out = smooth_nday(days)
+        self.assertEqual(out[2].slots, [0, 1])
+        self.assertAlmostEqual(unpack_u16(out[2].xs[1]), 90.0, places=2)
+        # day 2 is an edge (index 2 < 4) so unsmoothed including slot 0
+        self.assertAlmostEqual(unpack_u16(out[2].xs[0]), 12.0, places=2)
 
 
 class TestFillBins(unittest.TestCase):

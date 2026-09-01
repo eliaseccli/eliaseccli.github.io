@@ -69,7 +69,7 @@
     </div>
     </div>
   </main>
-  <script src="./timeline.js?v=6"></script>
+  <script src="./timeline.js?v=7"></script>
   <script>
     (function () {
       var nav = document.querySelector("[data-nav]");
@@ -589,8 +589,8 @@
           toPix: toPix,
           fromCanvas: fromCanvas,
           cssToCanvas: cssToCanvas,
-          catalogUrl: "/starlink/timeline/catalog.json?v=w20sm3",
-          binUrl: function (ym) { return "/starlink/timeline/v1/" + ym + ".bin?v=w20sm3"; },
+          catalogUrl: "/starlink/timeline/catalog.json?v=w10sm",
+          binUrl: function (ym) { return "/starlink/timeline/v1/" + ym + ".bin?v=w10sm"; },
           incOn: incOn,
           onRedraw: function () { draw(); },
           onMode: function (timeline) {

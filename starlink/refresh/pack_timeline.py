@@ -16,7 +16,7 @@ one day per frame.
 20%+ catalog wipeouts (sat count ≥20% below the 7-day neighbor median)
 are dropped as real dumps: they do not assign clocks or advance `end`.
 Play frames on those dates are shortest-arc interpolations of packed (x, y)
-from the bounding real days, then a 3-day centered shortest-arc mean.
+from the bounding real days, then a 10-day centered shortest-arc mean.
 Does not fetch Space-Track. Does not write into the git tree unless --out
 points there.
 """
