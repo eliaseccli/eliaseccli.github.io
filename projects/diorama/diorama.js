@@ -194,17 +194,50 @@
   }
 
 
-  var FALLBACK_LAT = 47.3644;
-  var FALLBACK_LON = 9.6916;
   var PHASE_LAG_MS = 30 * 60 * 1000;
-  var geo = { lat: FALLBACK_LAT, lon: FALLBACK_LON };
-  try {
-    var savedGeo = JSON.parse(localStorage.getItem("diorama.geo") || "null");
-    if (savedGeo && typeof savedGeo.lat === "number" && typeof savedGeo.lon === "number") {
-      geo.lat = savedGeo.lat;
-      geo.lon = savedGeo.lon;
-    }
-  } catch (err) {}
+  var TZ_COORDS = {
+    "Europe/Vienna": [47.3644, 9.6916],
+    "Europe/Zurich": [47.37, 8.54],
+    "Europe/Berlin": [52.52, 13.41],
+    "Europe/Paris": [48.86, 2.35],
+    "Europe/Rome": [41.90, 12.50],
+    "Europe/Amsterdam": [52.37, 4.90],
+    "Europe/London": [51.51, -0.13],
+    "Europe/Madrid": [40.42, -3.70],
+    "Europe/Prague": [50.08, 14.44],
+    "Europe/Budapest": [47.50, 19.04],
+    "America/New_York": [40.71, -74.01],
+    "America/Chicago": [41.88, -87.63],
+    "America/Denver": [39.74, -104.99],
+    "America/Los_Angeles": [34.05, -118.24],
+    "America/Toronto": [43.65, -79.38],
+    "America/Sao_Paulo": [-23.55, -46.63],
+    "Asia/Tokyo": [35.68, 139.69],
+    "Asia/Shanghai": [31.23, 121.47],
+    "Asia/Singapore": [1.35, 103.82],
+    "Australia/Sydney": [-33.87, 151.21],
+    "Pacific/Auckland": [-36.85, 174.76]
+  };
+
+  function coordsFromBrowser() {
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (err) {}
+    var hit = TZ_COORDS[tz];
+    if (hit) return { lat: hit[0], lon: hit[1] };
+    var lon = -new Date().getTimezoneOffset() / 4;
+    var lat = 45;
+    if (/^Europe\//.test(tz)) lat = 48;
+    else if (/^America\/(Sao_Paulo|Argentina|Santiago)/.test(tz)) lat = -34;
+    else if (/^America\//.test(tz)) lat = 40;
+    else if (/^Australia\//.test(tz) || tz === "Pacific/Auckland") lat = -35;
+    else if (/^Asia\//.test(tz)) lat = 30;
+    else if (/^Africa\/Johannesburg/.test(tz)) lat = -26;
+    else if (/^Africa\//.test(tz)) lat = 5;
+    else if (/^Pacific\//.test(tz)) lat = -15;
+    return { lat: lat, lon: lon };
+  }
+
+  var geo = coordsFromBrowser();
 
   function sunEvent(date, lat, lon, rising) {
     var rad = Math.PI / 180;
@@ -244,18 +277,6 @@
     var dayStart = rise.getTime() + PHASE_LAG_MS;
     var nightStart = set.getTime() + PHASE_LAG_MS;
     return t < dayStart || t >= nightStart;
-  }
-
-  function watchGeo() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      geo.lat = pos.coords.latitude;
-      geo.lon = pos.coords.longitude;
-      try {
-        localStorage.setItem("diorama.geo", JSON.stringify({ lat: geo.lat, lon: geo.lon }));
-      } catch (err) {}
-      if (places.length) paintSlot(index);
-    }, function () {}, { maximumAge: 24 * 3600 * 1000, timeout: 4000 });
   }
 
   function showNightFor(place) {
@@ -552,7 +573,6 @@
       if (place.night) { var n = new Image(); n.src = place.night; }
     });
     render();
-    watchGeo();
   }).catch(function () {
     places = [];
     render();
