@@ -1,4 +1,26 @@
 (function () {
+  var nav = document.querySelector("[data-nav]");
+  var btn = document.querySelector("[data-nav-btn]");
+  var list = document.getElementById("nav-list");
+  if (!nav || !btn || !list) return;
+  function setNav(open) {
+    nav.classList.toggle("is-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    list.hidden = !open;
+  }
+  btn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    setNav(!nav.classList.contains("is-open"));
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") setNav(false);
+  });
+  document.addEventListener("click", function (e) {
+    if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
+  });
+})();
+
+(function () {
   var VAULT = {"v":1,"iters":210000,"salt":"KTO4IQeL8nDExMoPWHbMBQ==","iv":"nm2XQd5M0JbwpnXL","ct":"QxhC6o3UUohQz7IPZnOtMLqYCDvN3KLi77Jjt+idwp4oOYBw8O/Tu18r+fxtpd1BJ34/aRWIn+HyFYJHF4kYKLUnAwFL0CX8pku97rTMyFR5Qv485tuwIKbn7WN/Gsi318fES4xxvvW/GjKApphER3PTWcxhyoeaiGS6bTZ7GjPA87ADqrUxAQSrFBApD0tnHUdKhJcxhdBWhyvrdnDdzYu6wup8fs82klER+qNyNU7Yt7Jg55HsvvLV9zezVO5bhluzXA/AqqIqsIAFpfg/5AgJRecDy8iGFm8FdZVH2kx5hGeFzP534q4gtlbW1bm03yp7vGIoC0Fy3RNqmDzxi8XM7L2OUBEAbleXNZwTBymZ/yTlt8h47ehI4SBWJmjqtz7la+m5ArdscZbhc5/81+5TM6deKfehPYAeXCHWB4SqFxrZoIWMpgtR7+TzHkDFv3gKDh8KJboVykj+0YF7Jh+0WuPXYKWGQ77N0EjQKowHbfFdHeOZ8I2OgNCqqoyR+ecstIEKkfIfZISQlO6GUoIPUg9cgNosSa5s8Ahz+ZOoXM+B/ksiT4xt0Q1H69wul2pVAl4bdVw0PvGVtqrEq9IjPJ3bRdCv85igdJX5CDTYk5GuAXnZbzCb2JS+NQxgBjyzK5EHOT6YuXQYOj3qNcc9Gkv63f1cS+CAyocEhOYGbuElX92UotYasRSsR3Xx7JgIl3VYDVJCQUMpGfWmzev6yhskpRIQQln+3jfaApnpSlycWA=="};
   var KEY = "projects.ok";
   var ATE = "projectsAte";
