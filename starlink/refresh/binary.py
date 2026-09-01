@@ -15,7 +15,7 @@ HEADER_SIZE = 32
 @dataclass
 class DayFrame:
     date: int  # YYYYMMDD
-    flags: int = 0
+    flags: int = 0  # bit 0 = FLAG_SYNTHETIC (interpolated wipeout fill)
     slots: list[int] = field(default_factory=list)
     xs: list[int] = field(default_factory=list)  # u16
     ys: list[int] = field(default_factory=list)  # u16

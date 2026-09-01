@@ -26,6 +26,7 @@ jobs:
           today=$(date +%Y-%m-%d)
           echo "Vienna today=$today event=${{ github.event_name }}"
           if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            # manifest.end is the last *real* packed day (synthetic fills do not count).
             end=$(python3 -c "import json; print(json.load(open('starlink/timeline/manifest.json'))['end'])")
             if [ "$end" = "$today" ]; then
               echo "Skip: already dumped today ($today)"

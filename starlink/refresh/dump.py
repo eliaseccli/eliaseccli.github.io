@@ -6,14 +6,13 @@ import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from refresh.binary import read_month
 from refresh.catalog import TimelineCatalog
 from refresh.clocks import ShellRefs, assign_clocks
 from refresh.fetch import GP_CACHE, load_catalog
-from refresh.j2 import unpack_u16
 from refresh.lock import LockState, apply_locks
 from refresh.parse import Sat, parse_omm_records, parse_tle_file
 from refresh.shells import filter_inclination, in_shell, listed_shells
+from refresh.wipeout import flatten_frames, last_real_packed_xy, load_months
 
 # Stable colors per (inc, peak). New auto-detected shells cycle the extras.
 COLORS = {
@@ -60,11 +59,12 @@ def _load_sats(sats: list[Sat] | None) -> tuple[list[Sat], str]:
 
 
 def last_packed_xy(timeline_dir: Path) -> dict[int, tuple[float, float]]:
-    """Play last-frame (x, y) from the newest STLK day, keyed by NORAD.
+    """Play last-frame (x, y) from the newest *real* STLK day, keyed by NORAD.
 
     Today must sit on the same clock as Stop / last Play. Celestrak dump
     lock can diverge (different t, n refine, missing x0/y0). Overlapping
     NORADs reuse the packed u16 coords; new sats keep dump lock.
+    Synthetic (interpolated) frames are skipped.
     """
     td = Path(timeline_dir)
     catalog_path = td / "catalog.json"
@@ -76,22 +76,10 @@ def last_packed_xy(timeline_dir: Path) -> dict[int, tuple[float, float]]:
         end = date.fromisoformat(catalog.end)
     except (OSError, ValueError, KeyError, TypeError):
         return {}
-    month_path = v1 / f"{end.year:04d}-{end.month:02d}.bin"
-    if not month_path.exists():
+    frames = flatten_frames(load_months(v1))
+    if not frames:
         return {}
-    try:
-        month = read_month(month_path)
-    except ValueError:
-        return {}
-    if not month.days:
-        return {}
-    last = month.days[-1]
-    out: dict[int, tuple[float, float]] = {}
-    for slot, xu, yu in zip(last.slots, last.xs, last.ys):
-        if slot < 0 or slot >= len(catalog.sats):
-            continue
-        out[catalog.sats[slot].id] = (unpack_u16(xu), unpack_u16(yu))
-    return out
+    return last_real_packed_xy(frames, catalog, on_or_before=end)
 
 
 def overlay_packed_xy(

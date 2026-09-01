@@ -7,12 +7,13 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from refresh.binary import DayFrame, MonthBin, read_month, upsert_day, write_month, ymd_int
-from refresh.catalog import TimelineCatalog, write_manifest
+from refresh.catalog import TimelineCatalog
 from refresh.clocks import ShellRefs, assign_clocks
 from refresh.fetch import GP_CACHE, load_catalog
 from refresh.j2 import pack_u16
 from refresh.lock import LockState, apply_locks
 from refresh.parse import Sat, parse_omm_records, parse_tle_file
+from refresh.wipeout import apply_hole_fill, today_is_wipeout
 
 
 class TimelineSkip(Exception):
@@ -61,15 +62,16 @@ def append_today(
     tight-pile streaks persist in shell_refs.json so a freeze can finish
     across daily Action runs. Matched piles refine n/i/e and absorb the
     wrap into x0/y0; clump phase persists. Last plot x,y persist in
-    lock_state.json for same-day reuse and pile EMA; ox/oy stay 0. Does
-    not fetch Space-Track. Raises TimelineSkip if the catalog or v1
-    directory is missing.
+    lock_state.json for same-day reuse and pile EMA; ox/oy stay 0. A day
+    whose sat count is ≥50% below the 7-day neighbor median is a wipeout:
+    clocks are not assigned, catalog.end does not advance, and a synthetic
+    frame is interpolated (or held) instead. Does not fetch Space-Track.
+    Raises TimelineSkip if the catalog or v1 directory is missing.
     """
     timeline_dir = Path(timeline_dir)
     catalog_path = timeline_dir / "catalog.json"
     refs_path = timeline_dir / "shell_refs.json"
     lock_path = timeline_dir / "lock_state.json"
-    manifest_path = timeline_dir / "manifest.json"
     v1_dir = timeline_dir / "v1"
     if not catalog_path.exists() or not v1_dir.exists():
         raise TimelineSkip("timeline catalog or v1/ missing")
@@ -80,6 +82,23 @@ def append_today(
     catalog = TimelineCatalog.load(catalog_path)
     refs = ShellRefs.load(refs_path)
     lock_state = LockState.load(lock_path)
+
+    if today_is_wipeout(v1_dir, day, len(sats)):
+        # Broken dump: do not clock-match, do not add NORADs, do not
+        # advance catalog/manifest end. Insert a synthetic hold so the
+        # next real day can lerp across the hole.
+        filled = apply_hole_fill(timeline_dir, extra_holes=[day])
+        return {
+            "date": day_s,
+            "n": 0,
+            "catalog": len(catalog.sats),
+            "piles": len(refs.piles),
+            "pending": len(refs.pending),
+            "month": str(v1_dir / f"{day.year:04d}-{day.month:02d}.bin"),
+            "wipeout": True,
+            "synthetic": filled["synthetic"],
+            "end": filled["last_real"] or catalog.end,
+        }
 
     for s in sats:
         catalog.append_sat(s)
@@ -128,24 +147,9 @@ def append_today(
     refs.save(refs_path)
     lock_state.save(lock_path)
 
-    months = sorted({p.stem for p in v1_dir.glob("*.bin")})
-    days_n = 0
-    bytes_total = 0
-    for p in v1_dir.glob("*.bin"):
-        bytes_total += p.stat().st_size
-        try:
-            days_n += len(read_month(p).days)
-        except ValueError:
-            continue
-    write_manifest(
-        manifest_path,
-        start=catalog.start,
-        end=catalog.end,
-        months=months,
-        catalog=len(catalog.sats),
-        days=days_n,
-        bytes_total=bytes_total,
-    )
+    # Re-lerp any synthetic holes now that today is a new real bound.
+    filled = apply_hole_fill(timeline_dir)
+    catalog = TimelineCatalog.load(catalog_path)
     return {
         "date": day_s,
         "n": len(slots),
@@ -153,4 +157,7 @@ def append_today(
         "piles": len(refs.piles),
         "pending": len(refs.pending),
         "month": str(month_path),
+        "wipeout": False,
+        "synthetic": filled["synthetic"],
+        "end": catalog.end,
     }

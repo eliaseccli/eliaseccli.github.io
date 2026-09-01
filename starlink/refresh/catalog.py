@@ -87,6 +87,7 @@ def write_manifest(
     catalog: int,
     days: int,
     bytes_total: int,
+    synthetic: list[str] | None = None,
 ) -> None:
     payload = {
         "start": start,
@@ -95,5 +96,6 @@ def write_manifest(
         "catalog": catalog,
         "days": days,
         "bytes": bytes_total,
+        "synthetic": list(synthetic or []),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

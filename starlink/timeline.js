@@ -7,7 +7,7 @@
   var INC_OTHER = "#64748b";
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var MAGIC = "STLK";
-  var PACK_ID = "6efd2c9";
+  var PACK_ID = "w50fill";
   var LOAD_ATTEMPTS = 3;
   var LOAD_RETRY_MS = 1000;
   var PREFETCH_MONTHS = 2;

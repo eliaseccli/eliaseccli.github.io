@@ -13,8 +13,11 @@ lock_state.json for same-day reuse and pile EMA; ox/oy stay 0.
 Playback packing is 15 fps metadata;
 one day per frame.
 
-Does not fetch Space-Track. Does not write into the git tree unless --out
-points there.
+50%+ catalog wipeouts (sat count ≥50% below the 7-day neighbor median)
+are dropped as real dumps: they do not assign clocks or advance `end`.
+Play frames on those dates are shortest-arc interpolations of packed (x, y)
+from the bounding real days. Does not fetch Space-Track. Does not write
+into the git tree unless --out points there.
 """
 
 from __future__ import annotations
@@ -26,12 +29,15 @@ from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
+from collections import deque
+
 from refresh.binary import DayFrame, MonthBin, write_month, ymd_int
 from refresh.catalog import PLAYBACK_FPS, TimelineCatalog, write_manifest
 from refresh.clocks import ShellRefs, assign_clocks
 from refresh.lock import LockState, apply_locks
 from refresh.j2 import T0, pack_u16
 from refresh.parse import Sat, iter_tle_file
+from refresh.wipeout import WipeoutGate, fill_v1_holes
 
 DEFAULT_TLE_DIR = Path(os.environ.get("TLE_DIR", "/workspace/spacetrack-tles"))
 START = date(2019, 5, 24)
@@ -99,6 +105,9 @@ def pack_timeline(
     days_written = 0
     last_day: date | None = None
     pending_month: MonthBin | None = None
+    pending_sats: deque[tuple[date, list[Sat]]] = deque()
+    gate = WipeoutGate()
+    wipeout_dates: list[date] = []
 
     def flush_month() -> None:
         nonlocal pending_month
@@ -116,6 +125,7 @@ def pack_timeline(
             return
         for s in day_sats:
             catalog.append_sat(s)
+        # Real dumps only: wipeout days never enter clock matching.
         clocks = assign_clocks(day_sats, refs, d.isoformat())
         t = datetime(d.year, d.month, d.day, 12, 0, 0)
         xy = apply_locks(day_sats, clocks, t, lock_state, d.isoformat())
@@ -154,6 +164,21 @@ def pack_timeline(
         last_day = d
         catalog.end = d.isoformat()
 
+    def feed_day(d: date, day_sats: list[Sat]) -> None:
+        pending_sats.append((d, day_sats))
+        gate.push(d, len(day_sats))
+        _drain_gate(final=False)
+
+    def _drain_gate(*, final: bool) -> None:
+        for day, wiped in gate.drain(final=final):
+            ds, ss = pending_sats.popleft()
+            if ds != day:
+                raise RuntimeError(f"wipeout gate desync: {ds} != {day}")
+            if wiped:
+                wipeout_dates.append(day)
+                continue
+            process_day(ds, ss)
+
     with status_path.open("w", encoding="utf-8") as status:
         status.write(f"t0={T0.isoformat()} start={start.isoformat()} tle_dir={tle_dir}\n")
         status.flush()
@@ -174,8 +199,7 @@ def pack_timeline(
             piles_before = len(refs.piles)
             cat_before = len(catalog.sats)
             for d in this_year:
-                process_day(d, list(by_day[d].values()))
-            flush_month()
+                feed_day(d, list(by_day[d].values()))
             status.write(
                 f"{year}: days={days_written - n_before} "
                 f"catalog {cat_before}->{len(catalog.sats)} "
@@ -184,15 +208,21 @@ def pack_timeline(
             status.flush()
         extra = sorted(d for d in leftover if (end is None or d <= end) and d >= start)
         for d in extra:
-            process_day(d, list(leftover[d].values()))
+            feed_day(d, list(leftover[d].values()))
+        _drain_gate(final=True)
         flush_month()
-        if last_day is None:
+        if last_day is None and not wipeout_dates:
             status.write("no TLE days in range\n")
             raise SystemExit("no TLE days in range")
+        filled = fill_v1_holes(v1, extra_holes=wipeout_dates)
+        if filled["last_real"]:
+            catalog.end = filled["last_real"]
+        days_written = filled["days"]
+        months_written = filled["months"]
         catalog.save(out_dir / "catalog.json")
         refs.save(out_dir / "shell_refs.json")
         lock_state.save(out_dir / "lock_state.json")
-        bytes_total = sum(p.stat().st_size for p in v1.glob("*.bin"))
+        bytes_total = filled["bytes"]
         write_manifest(
             out_dir / "manifest.json",
             start=catalog.start,
@@ -201,6 +231,10 @@ def pack_timeline(
             catalog=len(catalog.sats),
             days=days_written,
             bytes_total=bytes_total,
+            synthetic=filled["synthetic"],
+        )
+        status.write(
+            f"wipeouts={len(wipeout_dates)} synthetic={len(filled['synthetic'])}\n"
         )
         status.write(
             f"done end={catalog.end} days={days_written} "
@@ -215,6 +249,7 @@ def pack_timeline(
         "catalog": len(catalog.sats),
         "piles": len(refs.piles),
         "months": months_written,
+        "synthetic": filled["synthetic"],
     }
 
 

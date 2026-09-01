@@ -7,6 +7,7 @@ from pathlib import Path
 
 from refresh.append_day import TimelineSkip, append_today
 from refresh.dump import dump_sats
+from refresh.wipeout import apply_hole_fill
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,6 +21,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeline", default="starlink/timeline")
     ap.add_argument("--gp", default="", help="GP JSON path (default: STARLINK_CACHE/starlink_gp.json)")
     ap.add_argument("--date", default="", help="Frame date YYYY-MM-DD (default: UTC today)")
+    fill = sub.add_parser(
+        "fill-holes",
+        help="Replace 50%+ catalog wipeouts with interpolated packed frames",
+    )
+    fill.add_argument("--timeline", default="starlink/timeline")
     args = parser.parse_args(argv)
     if args.cmd == "dump":
         payload = dump_sats(
@@ -42,10 +48,21 @@ def main(argv: list[str] | None = None) -> int:
         except TimelineSkip as exc:
             print(f"timeline append skipped: {exc}")
             return 2
+        wiped = " wipeout" if info.get("wipeout") else ""
         print(
             f"timeline {info['date']}: {info['n']} sats, catalog {info['catalog']}, "
-            f"piles {info['piles']} pending {info['pending']} -> {info['month']}"
+            f"piles {info['piles']} pending {info['pending']}{wiped} "
+            f"end {info.get('end', info['date'])} -> {info['month']}"
         )
+        return 0
+    if args.cmd == "fill-holes":
+        info = apply_hole_fill(Path(args.timeline))
+        print(
+            f"filled {len(info['synthetic'])} synthetic days, "
+            f"end {info['last_real']}, days {info['days']}"
+        )
+        if info["synthetic"]:
+            print("synthetic: " + ", ".join(info["synthetic"]))
         return 0
     return 2
 

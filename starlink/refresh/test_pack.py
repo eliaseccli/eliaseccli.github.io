@@ -16,6 +16,7 @@ from refresh.lock import LockState
 from refresh.j2 import T0, j2_rates, lock_xy, unpack_u16
 from refresh.orbit import deg_per_sec
 from refresh.pack_timeline import pack_timeline
+from refresh.wipeout import FLAG_SYNTHETIC, is_synthetic
 
 N_SK = 15.301912
 I_SK = 53.1604
@@ -254,6 +255,123 @@ class TestPackAndAppend(unittest.TestCase):
             self.assertEqual(len(refs.piles), 1)
             self.assertEqual(refs.pending, [])
             self.assertAlmostEqual(refs.piles[0].n, n, places=6)
+
+    def test_pack_skips_clocks_on_wipeout_and_interpolates(self):
+        """A 1-sat day among 10-sat neighbors is filled; clocks see only real days."""
+        start = datetime(2019, 5, 24, 12, 0, 0)
+        lines = []
+        for day in range(8):
+            t = start + timedelta(days=day)
+            n_sats = 1 if day == 4 else 10
+            for i in range(n_sats):
+                lines.append(
+                    _tle_pair(
+                        44235 + i,
+                        f"STARLINK-{31 + i}",
+                        t,
+                        I_SK,
+                        15.0 + i,
+                        0.0001,
+                        25.0,
+                        35.0,
+                        N_SK,
+                    )
+                )
+        with tempfile.TemporaryDirectory() as td:
+            tle_dir = Path(td) / "tles"
+            out = Path(td) / "out"
+            tle_dir.mkdir()
+            (tle_dir / "starlink_2019.tle").write_text("".join(lines), encoding="utf-8")
+            info = pack_timeline(tle_dir, out)
+            self.assertIn("2019-05-28", info["synthetic"])
+            self.assertEqual(info["end"], "2019-05-31")
+            man = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(man["end"], "2019-05-31")
+            self.assertEqual(man["synthetic"], ["2019-05-28"])
+            month = decode_month((out / "v1" / "2019-05.bin").read_bytes())
+            hole = next(d for d in month.days if d.date == 20190528)
+            self.assertEqual(hole.flags, FLAG_SYNTHETIC)
+            # Bounding real days both have 10 sats; do not keep the 1-sat dump.
+            self.assertEqual(len(hole.slots), 10)
+            self.assertEqual(hole.slots, list(range(10)))
+            locks = LockState.load(out / "lock_state.json")
+            self.assertEqual(locks.day, "2019-05-31")
+
+    def test_append_wipeout_does_not_advance_end(self):
+        from datetime import date as date_cls
+
+        from refresh.parse import Sat
+        from refresh.orbit import altitude_km
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            timeline = root / "timeline"
+            v1 = timeline / "v1"
+            v1.mkdir(parents=True)
+            cat = TimelineCatalog(start="2026-08-26", end="2026-08-31")
+            sats = []
+            for i in range(20):
+                s = Sat(
+                    name=f"STARLINK-{58000 + i}",
+                    norad_id=58000 + i,
+                    epoch=datetime(2026, 8, 31, 12, 0, 0),
+                    inclination=53.16,
+                    raan=10.0 + i,
+                    argp=20.0,
+                    mean_anomaly=30.0,
+                    ecc=0.0001,
+                    mean_motion=N_SK,
+                    altitude_km=altitude_km(N_SK, 0.0001),
+                )
+                cat.append_sat(s)
+                sats.append(s)
+            cat.save(timeline / "catalog.json")
+            ShellRefs().save(timeline / "shell_refs.json")
+            from refresh.binary import DayFrame, MonthBin, write_month
+            from refresh.j2 import pack_u16
+
+            days = []
+            for i in range(6):
+                d = date_cls(2026, 8, 26) + timedelta(days=i)
+                days.append(
+                    DayFrame(
+                        date=d.year * 10000 + d.month * 100 + d.day,
+                        slots=list(range(20)),
+                        xs=[pack_u16(10.0 + j) for j in range(20)],
+                        ys=[pack_u16(20.0 + j) for j in range(20)],
+                    )
+                )
+            write_month(
+                v1 / "2026-08.bin",
+                MonthBin(year=2026, month=8, catalog_len=20, first_date=20260826, days=days),
+            )
+            LockState().save(timeline / "lock_state.json")
+            gp = [
+                {
+                    "OBJECT_NAME": "STARLINK-58000",
+                    "NORAD_CAT_ID": 58000,
+                    "EPOCH": "2026-09-01T12:00:00",
+                    "INCLINATION": 53.16,
+                    "RA_OF_ASC_NODE": 10.0,
+                    "ARG_OF_PERICENTER": 20.0,
+                    "MEAN_ANOMALY": 30.0,
+                    "ECCENTRICITY": 0.0001,
+                    "MEAN_MOTION": N_SK,
+                }
+            ]
+            gp_path = root / "starlink_gp.json"
+            gp_path.write_text(json.dumps(gp), encoding="utf-8")
+            info = append_today(timeline, gp_path=gp_path, frame_date=date_cls(2026, 9, 1))
+            self.assertTrue(info["wipeout"])
+            self.assertEqual(info["end"], "2026-08-31")
+            cat2 = TimelineCatalog.load(timeline / "catalog.json")
+            self.assertEqual(cat2.end, "2026-08-31")
+            self.assertEqual(len(cat2.sats), 20)
+            locks = LockState.load(timeline / "lock_state.json")
+            self.assertNotEqual(locks.day, "2026-09-01")
+            month = decode_month((v1 / "2026-09.bin").read_bytes())
+            self.assertEqual(len(month.days), 1)
+            self.assertTrue(is_synthetic(month.days[0].flags))
 
 
 if __name__ == "__main__":
