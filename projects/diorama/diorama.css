@@ -216,9 +216,16 @@ body {
   pointer-events: none;
 }
 
-/* Halo on the WRAPPER only. Filter on the 1:1 PNG paints a black square on iOS. */
+/* Halo on the WRAPPER only. Filter on the 1:1 PNG paints a black square on iOS.
+   Also: do not run the filter until the cutout has decoded — Safari paints an
+   undecoded img as an opaque 1:1, and the wrapper glow turns that into a rectangle. */
 .halo {
   z-index: 0;
+  visibility: hidden;
+  filter: none;
+}
+.halo.is-ready {
+  visibility: visible;
   filter:
     drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
     drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))

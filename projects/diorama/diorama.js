@@ -244,6 +244,27 @@
     for (n = 0; n < imgs.length; n++) warmImg(imgs[n]);
   }
 
+
+  function armHalo(img, on, haloBox) {
+    if (!on) {
+      img.classList.remove("is-on");
+      return;
+    }
+    function show() {
+      img.classList.add("is-on");
+      if (haloBox) haloBox.classList.add("is-ready");
+    }
+    if (img.complete && img.naturalWidth) {
+      show();
+      return;
+    }
+    if (typeof img.decode === "function") {
+      img.decode().then(show).catch(show);
+      return;
+    }
+    img.addEventListener("load", show, { once: true });
+  }
+
   function incomingStill(slot, showNight) {
     if (!slot) return null;
     var wrap = slot.querySelector(showNight ? '.still[data-when="night"]' : '.still[data-when="day"]');
@@ -276,13 +297,14 @@
     var slot = track.children[i];
     if (!slot) return;
     var showNight = showNightFor(place);
+    var haloBox = slot.querySelector(".halo");
     var halos = slot.querySelectorAll(".halo img");
     var h;
     for (h = 0; h < halos.length; h++) {
       var hw = halos[h].getAttribute("data-when");
       var hon = showNight ? hw === "night" : hw === "day";
       if (!place.day && place.night && hw === "night") hon = true;
-      halos[h].classList.toggle("is-on", hon);
+      armHalo(halos[h], hon, haloBox);
     }
     var stills = slot.querySelectorAll(".photos .still");
     var n, wrap, when, on;
