@@ -12,7 +12,8 @@
       var ok = false;
       try { ok = !!sessionStorage.getItem("projects.ok"); } catch (e) {}
       if (!ok) {
-        location.replace("../");
+        try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
+        location.replace("../?next=" + encodeURIComponent(location.pathname));
       } else {
         document.documentElement.classList.add("is-open");
       }

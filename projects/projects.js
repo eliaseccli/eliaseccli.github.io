@@ -24,6 +24,43 @@
   var VAULT = {"v":1,"iters":210000,"salt":"KTO4IQeL8nDExMoPWHbMBQ==","iv":"nm2XQd5M0JbwpnXL","ct":"QxhC6o3UUohQz7IPZnOtMLqYCDvN3KLi77Jjt+idwp4oOYBw8O/Tu18r+fxtpd1BJ34/aRWIn+HyFYJHF4kYKLUnAwFL0CX8pku97rTMyFR5Qv485tuwIKbn7WN/Gsi318fES4xxvvW/GjKApphER3PTWcxhyoeaiGS6bTZ7GjPA87ADqrUxAQSrFBApD0tnHUdKhJcxhdBWhyvrdnDdzYu6wup8fs82klER+qNyNU7Yt7Jg55HsvvLV9zezVO5bhluzXA/AqqIqsIAFpfg/5AgJRecDy8iGFm8FdZVH2kx5hGeFzP534q4gtlbW1bm03yp7vGIoC0Fy3RNqmDzxi8XM7L2OUBEAbleXNZwTBymZ/yTlt8h47ehI4SBWJmjqtz7la+m5ArdscZbhc5/81+5TM6deKfehPYAeXCHWB4SqFxrZoIWMpgtR7+TzHkDFv3gKDh8KJboVykj+0YF7Jh+0WuPXYKWGQ77N0EjQKowHbfFdHeOZ8I2OgNCqqoyR+ecstIEKkfIfZISQlO6GUoIPUg9cgNosSa5s8Ahz+ZOoXM+B/ksiT4xt0Q1H69wul2pVAl4bdVw0PvGVtqrEq9IjPJ3bRdCv85igdJX5CDTYk5GuAXnZbzCb2JS+NQxgBjyzK5EHOT6YuXQYOj3qNcc9Gkv63f1cS+CAyocEhOYGbuElX92UotYasRSsR3Xx7JgIl3VYDVJCQUMpGfWmzev6yhskpRIQQln+3jfaApnpSlycWA=="};
   var KEY = "projects.ok";
   var ATE = "projectsAte";
+
+  var NEXT = "projects.next";
+
+  function safeNext(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    var path = raw;
+    try {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.slice(0, 2) === "//") {
+        var u = new URL(raw, location.href);
+        if (u.origin !== location.origin) return "";
+        path = u.pathname;
+      }
+    } catch (err) {
+      return "";
+    }
+    if (path.charAt(0) !== "/") {
+      if (path.indexOf("..") !== -1) return "";
+      path = "/projects/" + path.replace(/^\.\//, "");
+    }
+    if (path.indexOf("/projects/") !== 0) return "";
+    if (path.indexOf("..") !== -1) return "";
+    if (path === "/projects/" || path === "/projects") return "";
+    return path;
+  }
+
+  function consumeNext() {
+    var raw = "";
+    try {
+      raw = sessionStorage.getItem(NEXT) || "";
+      sessionStorage.removeItem(NEXT);
+    } catch (err) {}
+    if (!raw) {
+      try { raw = new URL(location.href).searchParams.get("next") || ""; } catch (err) {}
+    }
+    return safeNext(raw);
+  }
+
   var strikes = 0;
   var locked = false;
   var pending = false;
@@ -136,6 +173,11 @@
     }).then(function (buf) {
       var html = new TextDecoder().decode(buf);
       try { sessionStorage.setItem(KEY, html); } catch (err) {}
+      var next = consumeNext();
+      if (next) {
+        location.replace(next);
+        return;
+      }
       unlock(html);
     }).catch(fail).then(function () {
       pending = false;
@@ -400,6 +442,11 @@
   try {
     var cached = sessionStorage.getItem(KEY);
     if (cached) {
+      var next = consumeNext();
+      if (next) {
+        location.replace(next);
+        return;
+      }
       unlock(cached);
       return;
     }
