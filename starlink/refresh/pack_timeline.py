@@ -13,11 +13,12 @@ lock_state.json for same-day reuse and pile EMA; ox/oy stay 0.
 Playback packing is 15 fps metadata;
 one day per frame.
 
-50%+ catalog wipeouts (sat count ≥50% below the 7-day neighbor median)
+20%+ catalog wipeouts (sat count ≥20% below the 7-day neighbor median)
 are dropped as real dumps: they do not assign clocks or advance `end`.
 Play frames on those dates are shortest-arc interpolations of packed (x, y)
-from the bounding real days. Does not fetch Space-Track. Does not write
-into the git tree unless --out points there.
+from the bounding real days, then a 3-day centered shortest-arc mean.
+Does not fetch Space-Track. Does not write into the git tree unless --out
+points there.
 """
 
 from __future__ import annotations

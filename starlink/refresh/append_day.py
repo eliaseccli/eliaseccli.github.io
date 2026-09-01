@@ -63,7 +63,7 @@ def append_today(
     across daily Action runs. Matched piles refine n/i/e and absorb the
     wrap into x0/y0; clump phase persists. Last plot x,y persist in
     lock_state.json for same-day reuse and pile EMA; ox/oy stay 0. A day
-    whose sat count is ≥50% below the 7-day neighbor median is a wipeout:
+    whose sat count is ≥20% below the 7-day neighbor median is a wipeout:
     clocks are not assigned, catalog.end does not advance, and a synthetic
     frame is interpolated (or held) instead. Does not fetch Space-Track.
     Raises TimelineSkip if the catalog or v1 directory is missing.
@@ -87,7 +87,7 @@ def append_today(
         # Broken dump: do not clock-match, do not add NORADs, do not
         # advance catalog/manifest end. Insert a synthetic hold so the
         # next real day can lerp across the hole.
-        filled = apply_hole_fill(timeline_dir, extra_holes=[day])
+        filled = apply_hole_fill(timeline_dir, extra_holes=[day], smooth="changed")
         return {
             "date": day_s,
             "n": 0,
@@ -148,7 +148,7 @@ def append_today(
     lock_state.save(lock_path)
 
     # Re-lerp any synthetic holes now that today is a new real bound.
-    filled = apply_hole_fill(timeline_dir)
+    filled = apply_hole_fill(timeline_dir, smooth="changed")
     catalog = TimelineCatalog.load(catalog_path)
     return {
         "date": day_s,
