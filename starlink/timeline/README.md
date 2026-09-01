@@ -13,13 +13,21 @@ are listed on `manifest.json` `synthetic`. `catalog.json` / `manifest.json`
 a synthetic fill.
 
 A day is a wipeout when its sat count (set bits in that day's catalog
-bitmask) is ≥50% below the median of a 7-day centered window of neighboring
+bitmask) is ≥20% below the median of a 7-day centered window of neighboring
 days. The window does not wrap, and the day itself is not in the baseline.
-Wipeout days are dropped as real catalogs: they do not run shell-clock
-matching and do not add NORAD IDs. Play still has a frame — slots that exist
-on both bounding real days are shortest-arc lerped (x and y wrap at 360°).
-One-sided sats are omitted (no alpha in the packed format). Do not invent
+Detection uses real-dump counts only. Wipeout days are dropped as real
+catalogs: they do not run shell-clock matching and do not add NORAD IDs.
+Play still has a frame — slots that exist on both bounding real days are
+shortest-arc lerped (x and y wrap at 360°). One-sided sats are omitted (no
+alpha in the packed format). A sat present on both neighbors but missing
+today is held (lerp) even when the day is not a wipeout. Do not invent
 slots.
+
+After hole-fill, Play (x, y) is a **3-day centered shortest-arc mean** for
+slots present on day−1, day, and day+1. The first and last packed day stay
+unsmoothed. Clocks stay on real unsmoothed dumps. `fill-holes` / `pack_timeline`
+smooth the whole series; daily `append-day` only re-smooths days next to a
+new or changed frame so history is not blurred again.
 
 To refill packed bins without Space-Track TLEs (detector + interpolator only;
 does not rebuild `shell_refs.json` / `lock_state.json`):

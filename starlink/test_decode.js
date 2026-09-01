@@ -61,19 +61,19 @@ assert.strictEqual(tl.scrubKeyDelta("Home"), "start");
 assert.strictEqual(tl.scrubKeyDelta("End"), "end");
 assert.strictEqual(tl.scrubKeyDelta("a"), 0);
 
-assert.strictEqual(tl.PACK_ID, "w50fill", "pack pin is w50fill");
-assert.strictEqual(tl.withPack("/starlink/timeline/catalog.json"), "/starlink/timeline/catalog.json?v=w50fill");
-assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin"), "/starlink/timeline/v1/2020-01.bin?v=w50fill");
-assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin?v=w50fill"), "/starlink/timeline/v1/2020-01.bin?v=w50fill");
+assert.strictEqual(tl.PACK_ID, "w20sm3", "pack pin is w20sm3");
+assert.strictEqual(tl.withPack("/starlink/timeline/catalog.json"), "/starlink/timeline/catalog.json?v=w20sm3");
+assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin"), "/starlink/timeline/v1/2020-01.bin?v=w20sm3");
+assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin?v=w20sm3"), "/starlink/timeline/v1/2020-01.bin?v=w20sm3");
 assert.ok(src.indexOf("force-cache") === -1, "bins must not force-cache");
 assert.ok(/LOAD_ATTEMPTS = 3/.test(src), "retry failed month fetches 3 times");
 assert.ok(/status === "failed"/.test(src), "file-load failure is failed, not missing");
 assert.ok(!/status: "missing"/.test(src), "do not permanently mark a month missing");
 assert.ok(/PREFETCH_MONTHS = 2/.test(src), "prefetch current + next 2 months");
 assert.ok(/rec.status !== "ok"/.test(src), "play waits until the next month bin is ok");
-assert.ok(/timeline\.js\?v=5/.test(html), "player script is timeline.js?v=5");
-assert.ok(html.indexOf("catalog.json?v=w50fill") !== -1, "catalog url is pack-busted");
-assert.ok(html.indexOf(".bin?v=w50fill") !== -1, "bin url is pack-busted");
+assert.ok(/timeline\.js\?v=6/.test(html), "player script is timeline.js?v=6");
+assert.ok(html.indexOf("catalog.json?v=w20sm3") !== -1, "catalog url is pack-busted");
+assert.ok(html.indexOf(".bin?v=w20sm3") !== -1, "bin url is pack-busted");
 assert.ok(/alignToday\(data\.sats\)\.then\(function \(\) \{ draw\(\); \}/.test(html), "Today waits for last packed frame before first draw");
 
 console.log("timeline fixture decode: ok");

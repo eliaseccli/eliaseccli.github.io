@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--date", default="", help="Frame date YYYY-MM-DD (default: UTC today)")
     fill = sub.add_parser(
         "fill-holes",
-        help="Replace 50%+ catalog wipeouts with interpolated packed frames",
+        help="Replace 20%+ catalog wipeouts, hold 1-day dropouts, 3-day smooth",
     )
     fill.add_argument("--timeline", default="starlink/timeline")
     args = parser.parse_args(argv)
