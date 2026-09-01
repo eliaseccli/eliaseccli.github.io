@@ -40,11 +40,15 @@ jobs:
             || echo "timeline append skipped (exit $?)"
           PYTHONPATH=starlink python3 -m refresh dump --out starlink/sats.json \
             --timeline starlink/timeline
+          # Slim GP elements for /projects/lookup/ (SGP4 sky, not the 2D bins).
+          PYTHONPATH=starlink python3 -m refresh dump-gp --out starlink/gp.json \
+            || echo "gp dump skipped (exit $?)"
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add starlink/sats.json \
+            starlink/gp.json \
             starlink/timeline/catalog.json \
             starlink/timeline/shell_refs.json \
             starlink/timeline/lock_state.json \

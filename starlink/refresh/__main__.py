@@ -7,6 +7,7 @@ from pathlib import Path
 
 from refresh.append_day import TimelineSkip, append_today
 from refresh.dump import dump_sats
+from refresh.dump_gp import dump_gp
 from refresh.wipeout import apply_hole_fill
 
 
@@ -26,6 +27,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Replace 20%+ catalog wipeouts, hold 1-day dropouts, 10-day smooth",
     )
     fill.add_argument("--timeline", default="starlink/timeline")
+    gp = sub.add_parser("dump-gp", help="Slim Celestrak GP JSON for /projects/lookup/")
+    gp.add_argument("--out", required=True)
+    gp.add_argument("--starlink", default="", help="Starlink GP JSON (default: STARLINK_CACHE)")
+    gp.add_argument("--stations", default="", help="Stations GP JSON (ISS)")
+    gp.add_argument("--no-fetch", action="store_true", help="Do not hit Celestrak if files are missing")
     args = parser.parse_args(argv)
     if args.cmd == "dump":
         payload = dump_sats(
@@ -54,6 +60,15 @@ def main(argv: list[str] | None = None) -> int:
             f"piles {info['piles']} pending {info['pending']}{wiped} "
             f"end {info.get('end', info['date'])} -> {info['month']}"
         )
+        return 0
+    if args.cmd == "dump-gp":
+        payload = dump_gp(
+            Path(args.out),
+            starlink_path=Path(args.starlink) if args.starlink else None,
+            stations_path=Path(args.stations) if args.stations else None,
+            fetch_missing=not args.no_fetch,
+        )
+        print(f"wrote {args.out}: {payload['n']} sats, epoch {payload['epoch']}")
         return 0
     if args.cmd == "fill-holes":
         info = apply_hole_fill(Path(args.timeline))
