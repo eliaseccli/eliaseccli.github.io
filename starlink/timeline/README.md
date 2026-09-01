@@ -23,11 +23,13 @@ alpha in the packed format). A sat present on both neighbors but missing
 today is held (lerp) even when the day is not a wipeout. Do not invent
 slots.
 
-After hole-fill, Play (x, y) is a **3-day centered shortest-arc mean** for
-slots present on day−1, day, and day+1. The first and last packed day stay
-unsmoothed. Clocks stay on real unsmoothed dumps. `fill-holes` / `pack_timeline`
-smooth the whole series; daily `append-day` only re-smooths days next to a
-new or changed frame so history is not blurred again.
+After hole-fill, Play (x, y) is a **10-day centered shortest-arc mean**
+(frames `[i-4 .. i+5]`) for slots present on all 10 days. The first 4 and
+last 5 packed days stay unsmoothed. Clocks stay on real unsmoothed dumps.
+`fill-holes` / `pack_timeline` smooth the whole series; daily `append-day`
+only re-smooths days whose 10-day window includes a new or changed frame
+so history is not blurred again. This pin is a try vs the 3-day mean
+(`w20sm3`); revert the pack pin to go back.
 
 To refill packed bins without Space-Track TLEs (detector + interpolator only;
 does not rebuild `shell_refs.json` / `lock_state.json`):
