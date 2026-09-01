@@ -137,6 +137,48 @@ class TestDump(unittest.TestCase):
             self.assertAlmostEqual(packed[58000][1], unpack_u16(pack_u16(120.0)), places=9)
             self.assertAlmostEqual(packed[58001][0], unpack_u16(pack_u16(88.5)), places=9)
 
+    def test_last_packed_xy_skips_synthetic_day(self):
+        from refresh.wipeout import FLAG_SYNTHETIC
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            timeline = root / "timeline"
+            v1 = timeline / "v1"
+            v1.mkdir(parents=True)
+            catalog = TimelineCatalog(
+                start="2026-08-28",
+                end="2026-08-29",
+                sats=[CatalogSat(id=58000, name="STARLINK-58000", inc=53)],
+            )
+            catalog.save(timeline / "catalog.json")
+            write_month(
+                v1 / "2026-08.bin",
+                MonthBin(
+                    year=2026,
+                    month=8,
+                    catalog_len=1,
+                    first_date=20260828,
+                    days=[
+                        DayFrame(
+                            date=20260828,
+                            slots=[0],
+                            xs=[pack_u16(44.25)],
+                            ys=[pack_u16(120.0)],
+                        ),
+                        DayFrame(
+                            date=20260829,
+                            flags=FLAG_SYNTHETIC,
+                            slots=[0],
+                            xs=[pack_u16(1.0)],
+                            ys=[pack_u16(2.0)],
+                        ),
+                    ],
+                ),
+            )
+            packed = last_packed_xy(timeline)
+            self.assertEqual(set(packed), {58000})
+            self.assertAlmostEqual(packed[58000][0], unpack_u16(pack_u16(44.25)), places=9)
+
     def test_dump_overlays_packed_last_frame_over_lock_state(self):
         sat = _sat(58000, 15.301912, 53.16)
         noon = datetime(2026, 8, 30, 12, 0, 0)

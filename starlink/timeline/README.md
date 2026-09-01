@@ -6,7 +6,30 @@ may still say `"fps": 30`; the player does not read that field.
 
 `(x, y)` in each frame — and in today-view `sats.json` — is J2 pile-lock at
 noon UTC of the frame date. Binary layout is unchanged: 32-byte header, per-day
-date + flags + catalog bitmask + `u16` x/y pairs.
+date + flags + catalog bitmask + `u16` x/y pairs. Flag bit 0
+(`FLAG_SYNTHETIC = 0x01`) marks an interpolated wipeout fill. Those dates
+are listed on `manifest.json` `synthetic`. `catalog.json` / `manifest.json`
+`end` is the last *real* dump; Today and the daily skip check use that, not
+a synthetic fill.
+
+A day is a wipeout when its sat count (set bits in that day's catalog
+bitmask) is ≥50% below the median of a 7-day centered window of neighboring
+days. The window does not wrap, and the day itself is not in the baseline.
+Wipeout days are dropped as real catalogs: they do not run shell-clock
+matching and do not add NORAD IDs. Play still has a frame — slots that exist
+on both bounding real days are shortest-arc lerped (x and y wrap at 360°).
+One-sided sats are omitted (no alpha in the packed format). Do not invent
+slots.
+
+To refill packed bins without Space-Track TLEs (detector + interpolator only;
+does not rebuild `shell_refs.json` / `lock_state.json`):
+
+```
+PYTHONPATH=starlink python3 -m refresh fill-holes --timeline starlink/timeline
+```
+
+A full TLE rebuild (`pack_timeline` below) applies the same rule while
+assigning clocks, so historical piles are computed from real dumps only.
 
 `shell_refs.json` creates a pile after **5 tight-pile sightings** at the
 same inclination whose mean motion stays within `|n − n0| ≤ 0.005` of the

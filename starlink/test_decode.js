@@ -19,7 +19,8 @@ assert.strictEqual(m.days[0].date, 20190524);
 assert.strictEqual(m.days[7].date, 20190531);
 
 m.days.forEach(function (day) {
-  assert.ok(day.n >= 1);
+  assert.ok(day.n >= 0);
+  if (!(day.flags & 1)) assert.ok(day.n >= 1, "real dump must have sats " + day.date);
   for (var i = 0; i < day.n; i++) {
     assert.ok(day.x[i] >= 0 && day.x[i] < 360, "x out of range " + day.x[i]);
     assert.ok(day.y[i] >= 0 && day.y[i] < 360, "y out of range " + day.y[i]);
@@ -60,21 +61,23 @@ assert.strictEqual(tl.scrubKeyDelta("Home"), "start");
 assert.strictEqual(tl.scrubKeyDelta("End"), "end");
 assert.strictEqual(tl.scrubKeyDelta("a"), 0);
 
-assert.strictEqual(tl.PACK_ID, "6efd2c9", "pack pin is 6efd2c9");
-assert.strictEqual(tl.withPack("/starlink/timeline/catalog.json"), "/starlink/timeline/catalog.json?v=6efd2c9");
-assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin"), "/starlink/timeline/v1/2020-01.bin?v=6efd2c9");
-assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin?v=6efd2c9"), "/starlink/timeline/v1/2020-01.bin?v=6efd2c9");
+assert.strictEqual(tl.PACK_ID, "w50fill", "pack pin is w50fill");
+assert.strictEqual(tl.withPack("/starlink/timeline/catalog.json"), "/starlink/timeline/catalog.json?v=w50fill");
+assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin"), "/starlink/timeline/v1/2020-01.bin?v=w50fill");
+assert.strictEqual(tl.withPack("/starlink/timeline/v1/2020-01.bin?v=w50fill"), "/starlink/timeline/v1/2020-01.bin?v=w50fill");
 assert.ok(src.indexOf("force-cache") === -1, "bins must not force-cache");
 assert.ok(/LOAD_ATTEMPTS = 3/.test(src), "retry failed month fetches 3 times");
 assert.ok(/status === "failed"/.test(src), "file-load failure is failed, not missing");
 assert.ok(!/status: "missing"/.test(src), "do not permanently mark a month missing");
 assert.ok(/PREFETCH_MONTHS = 2/.test(src), "prefetch current + next 2 months");
 assert.ok(/rec.status !== "ok"/.test(src), "play waits until the next month bin is ok");
-assert.ok(/timeline\.js\?v=4/.test(html), "player script is timeline.js?v=4");
-assert.ok(html.indexOf("catalog.json?v=6efd2c9") !== -1, "catalog url is pack-busted");
-assert.ok(html.indexOf(".bin?v=6efd2c9") !== -1, "bin url is pack-busted");
+assert.ok(/timeline\.js\?v=5/.test(html), "player script is timeline.js?v=5");
+assert.ok(html.indexOf("catalog.json?v=w50fill") !== -1, "catalog url is pack-busted");
+assert.ok(html.indexOf(".bin?v=w50fill") !== -1, "bin url is pack-busted");
 assert.ok(/alignToday\(data\.sats\)\.then\(function \(\) \{ draw\(\); \}/.test(html), "Today waits for last packed frame before first draw");
 
 console.log("timeline fixture decode: ok");
 console.log("  magic=" + m.magic + " n_days=" + m.nDays + " catalog_len=" + m.catalogLen);
-console.log("  day0 dots=" + m.days[0].n + " x=" + m.days[0].x[0].toFixed(4) + " y=" + m.days[0].y[0].toFixed(4));
+var d0 = m.days[0];
+var xy0 = d0.n ? " x=" + d0.x[0].toFixed(4) + " y=" + d0.y[0].toFixed(4) : "";
+console.log("  day0 dots=" + d0.n + " flags=" + d0.flags + xy0);
