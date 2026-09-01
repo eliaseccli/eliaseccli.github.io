@@ -1,0 +1,14 @@
+{
+  "name": "eliaseccli.com",
+  "install": "pip install --quiet numpy",
+  "terminals": [
+    {
+      "name": "site",
+      "command": "python3 -m http.server 8000",
+      "description": "Static site dev server for eliaseccli.com. Open http://localhost:8000/ for the home page; subpages are /starlink/ (constellation plotter), /teslastores/ (Austria Tesla Voronoi map), /projects/, and /about/."
+    }
+  ],
+  "ports": [
+    { "name": "site", "port": 8000 }
+  ]
+}
