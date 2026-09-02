@@ -226,23 +226,48 @@
     return { az: az, el: el, roll: roll };
   }
 
-  function alphaFromEvent(ev) {
-    if (ev.webkitCompassHeading != null && isFinite(ev.webkitCompassHeading)) {
-      hasCompass = true;
-      return wrap360(360 - ev.webkitCompassHeading - screenAngle());
-    }
-    if (ev.alpha == null || !isFinite(ev.alpha)) return null;
-    if (ev.absolute) hasCompass = true;
-    return ev.alpha;
+  function shortestDelta(from, to) {
+    var d = (to - from) % 360;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    return d;
   }
+
+  var yawBias = 0;
+  var smoothLook = { az: null, el: null, roll: null };
+  var wantAbsolute = false;
 
   function onOrient(ev) {
     if (!gyroOn) return;
-    var look = lookFromDevice(alphaFromEvent(ev), ev.beta, ev.gamma);
+    if (wantAbsolute && ev.type === "deviceorientation") return;
+    if (ev.alpha == null || ev.beta == null || ev.gamma == null) return;
+    if (!isFinite(ev.alpha) || !isFinite(ev.beta) || !isFinite(ev.gamma)) return;
+    var look = lookFromDevice(ev.alpha, ev.beta, ev.gamma);
     if (!look) return;
-    view.az = look.az;
-    view.el = look.el;
-    view.roll = look.roll;
+    look.az = wrap360(look.az - screenAngle());
+    var heading = ev.webkitCompassHeading;
+    if (heading != null && isFinite(heading)) {
+      hasCompass = true;
+      if (look.el < 48) {
+        yawBias += shortestDelta(wrap360(look.az + yawBias), heading) * 0.18;
+      }
+    } else if (ev.absolute) {
+      hasCompass = true;
+    }
+    look.az = wrap360(look.az + yawBias);
+    var k = 0.12 + 0.28 * Math.max(0, Math.cos(look.el * DEG));
+    if (smoothLook.az == null) {
+      smoothLook.az = look.az;
+      smoothLook.el = look.el;
+      smoothLook.roll = look.roll;
+    } else {
+      smoothLook.az = wrap360(smoothLook.az + shortestDelta(smoothLook.az, look.az) * k);
+      smoothLook.el = smoothLook.el + (look.el - smoothLook.el) * Math.min(0.4, k + 0.08);
+      smoothLook.roll = smoothLook.roll + (look.roll - smoothLook.roll) * k;
+    }
+    view.az = smoothLook.az;
+    view.el = smoothLook.el;
+    view.roll = smoothLook.roll;
     needsDraw = true;
   }
 
@@ -254,9 +279,15 @@
     function arm() {
       gyroOn = true;
       hasCompass = false;
-      window.addEventListener("deviceorientation", onOrient, true);
-      if ("ondeviceorientationabsolute" in window) {
+      yawBias = 0;
+      smoothLook.az = null;
+      window.removeEventListener("deviceorientation", onOrient, true);
+      window.removeEventListener("deviceorientationabsolute", onOrient, true);
+      wantAbsolute = "ondeviceorientationabsolute" in window;
+      if (wantAbsolute) {
         window.addEventListener("deviceorientationabsolute", onOrient, true);
+      } else {
+        window.addEventListener("deviceorientation", onOrient, true);
       }
       if (compassBtn) compassBtn.hidden = true;
     }
