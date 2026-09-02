@@ -425,7 +425,7 @@
       r = clamp(1800 / Math.max(sat.range, 280), 1.15, 2.7);
       a = clamp(0.42 + (sat.el / 90) * 0.45, 0.38, 0.92);
       sctx.beginPath();
-      sctx.fillStyle = "rgba(168, 214, 255," + a.toFixed(3) + ")";
+      sctx.fillStyle = "rgba(196, 72, 64," + a.toFixed(3) + ")";
       sctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       sctx.fill();
     }
@@ -434,11 +434,11 @@
       p = project(skyIss.az, skyIss.el, basis, w, h);
       if (p) {
         sctx.beginPath();
-        sctx.fillStyle = "rgba(255, 186, 110, 0.22)";
+        sctx.fillStyle = "rgba(196, 72, 64, 0.22)";
         sctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
         sctx.fill();
         sctx.beginPath();
-        sctx.fillStyle = "rgba(255, 204, 140, 0.95)";
+        sctx.fillStyle = "rgba(220, 86, 74, 0.9)";
         sctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2);
         sctx.fill();
       }
