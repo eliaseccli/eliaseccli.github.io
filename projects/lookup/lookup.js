@@ -91,28 +91,40 @@
     return vec(ce * Math.sin(az), ce * Math.cos(az), Math.sin(el));
   }
 
+  function vlerp(a, b, t) {
+    return vec(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+  }
+  function nlerp(a, b, t) {
+    if (vdot(a, b) < 0) b = vec(-b.x, -b.y, -b.z);
+    return vnorm(vlerp(a, b, t));
+  }
+  function yawVec(v, biasDeg) {
+    var a = biasDeg * DEG;
+    var c = Math.cos(a);
+    var s = Math.sin(a);
+    return vec(v.x * c + v.y * s, v.y * c - v.x * s, v.z);
+  }
+  function orthonormal(f, upHint) {
+    f = vnorm(f);
+    var right = vcross(f, upHint);
+    if (vlen(right) < 1e-5) right = vcross(f, vec(0, 1, 0));
+    right = vnorm(right);
+    return { f: f, right: right, up: vnorm(vcross(right, f)) };
+  }
+
   function viewBasis(az, el, roll) {
     var f = azElToVec(az, el);
-    var worldUp = vec(0, 0, 1);
-    var right, up;
-    if (Math.abs(el) > 82) {
-      var head = azElToVec(az, 0);
-      up = vnorm(vec(head.x - f.x * vdot(head, f), head.y - f.y * vdot(head, f), head.z - f.z * vdot(head, f)));
-      right = vnorm(vcross(f, up));
-      up = vnorm(vcross(right, f));
-    } else {
-      right = vnorm(vcross(f, worldUp));
-      up = vnorm(vcross(right, f));
-    }
+    var hint = Math.abs(f.z) < 0.94 ? vec(0, 0, 1) : vec(Math.sin(az * DEG), Math.cos(az * DEG), 0);
+    var b = orthonormal(f, hint);
     if (roll) {
       var c = Math.cos(roll);
       var s = Math.sin(roll);
-      var ru = vec(right.x * c + up.x * s, right.y * c + up.y * s, right.z * c + up.z * s);
-      var uu = vec(up.x * c - right.x * s, up.y * c - right.y * s, up.z * c - right.z * s);
-      right = ru;
-      up = uu;
+      var ru = vec(b.right.x * c + b.up.x * s, b.right.y * c + b.up.y * s, b.right.z * c + b.up.z * s);
+      var uu = vec(b.up.x * c - b.right.x * s, b.up.y * c - b.right.y * s, b.up.z * c - b.right.z * s);
+      b.right = ru;
+      b.up = uu;
     }
-    return { f: f, right: right, up: up };
+    return b;
   }
 
   function projectDome(az, el, basis, cx, cy, half) {
@@ -177,30 +189,6 @@
     ];
   }
 
-  function lookFromDevice(alpha, beta, gamma) {
-    if (beta == null || gamma == null || !isFinite(beta) || !isFinite(gamma)) return null;
-    if (alpha == null || !isFinite(alpha)) alpha = 180;
-    var R = deviceMatrix(alpha, beta, gamma);
-    var e = -R[2], n = -R[5], u = -R[8];
-    var az = Math.atan2(e, n) / DEG;
-    if (az < 0) az += 360;
-    var el = Math.atan2(u, Math.hypot(e, n)) / DEG;
-    var te = R[1], tn = R[4], tu = R[7];
-    var f = vnorm(vec(e, n, u));
-    var top = vec(te, tn, tu);
-    var camUp = vec(top.x - f.x * vdot(top, f), top.y - f.y * vdot(top, f), top.z - f.z * vdot(top, f));
-    var worldUp = vec(-f.x * f.z, -f.y * f.z, 1 - f.z * f.z);
-    var roll = 0;
-    if (vlen(camUp) > 1e-6 && vlen(worldUp) > 1e-6) {
-      camUp = vnorm(camUp);
-      worldUp = vnorm(worldUp);
-      var cr = vcross(worldUp, camUp);
-      var sign = vdot(cr, f) < 0 ? -1 : 1;
-      roll = sign * Math.acos(clamp(vdot(worldUp, camUp), -1, 1));
-    }
-    return { az: az, el: el, roll: roll };
-  }
-
   function shortestDelta(from, to) {
     var d = (to - from) % 360;
     if (d > 180) d -= 360;
@@ -209,40 +197,55 @@
   }
 
   var yawBias = 0;
-  var smoothLook = { az: null, el: null, roll: null };
   var wantAbsolute = false;
+  var gyroBasis = null;
+  var smoothF = null;
+  var smoothUp = null;
+
+  function basisFromDevice(alpha, beta, gamma, orientDeg) {
+    var R = deviceMatrix(alpha, beta, gamma);
+    var f = vec(-R[2], -R[5], -R[8]);
+    var up = vec(R[1], R[4], R[7]);
+    if (orientDeg) {
+      var o = -orientDeg * DEG;
+      var c = Math.cos(o);
+      var s = Math.sin(o);
+      var right0 = vec(R[0], R[3], R[6]);
+      up = vec(up.x * c - right0.x * s, up.y * c - right0.y * s, up.z * c - right0.z * s);
+    }
+    f = yawVec(f, yawBias);
+    up = yawVec(up, yawBias);
+    return orthonormal(f, up);
+  }
 
   function onOrient(ev) {
     if (!gyroOn) return;
     if (wantAbsolute && ev.type === "deviceorientation") return;
     if (ev.alpha == null || ev.beta == null || ev.gamma == null) return;
     if (!isFinite(ev.alpha) || !isFinite(ev.beta) || !isFinite(ev.gamma)) return;
-    var look = lookFromDevice(ev.alpha, ev.beta, ev.gamma);
-    if (!look) return;
-    look.az = wrap360(look.az - screenAngle());
+    var raw = basisFromDevice(ev.alpha, ev.beta, ev.gamma, screenAngle());
+    var az = wrap360(Math.atan2(raw.f.x, raw.f.y) / DEG);
     var heading = ev.webkitCompassHeading;
     if (heading != null && isFinite(heading)) {
       hasCompass = true;
-      if (look.el < 48) {
-        yawBias += shortestDelta(wrap360(look.az + yawBias), heading) * 0.18;
+      if (Math.abs(raw.f.z) < 0.72) {
+        yawBias += shortestDelta(az, heading) * 0.12;
+        raw = basisFromDevice(ev.alpha, ev.beta, ev.gamma, screenAngle());
       }
     } else if (ev.absolute) {
       hasCompass = true;
     }
-    look.az = wrap360(look.az + yawBias);
-    var k = 0.12 + 0.28 * Math.max(0, Math.cos(look.el * DEG));
-    if (smoothLook.az == null) {
-      smoothLook.az = look.az;
-      smoothLook.el = look.el;
-      smoothLook.roll = look.roll;
+    if (!smoothF) {
+      smoothF = raw.f;
+      smoothUp = raw.up;
     } else {
-      smoothLook.az = wrap360(smoothLook.az + shortestDelta(smoothLook.az, look.az) * k);
-      smoothLook.el = smoothLook.el + (look.el - smoothLook.el) * Math.min(0.4, k + 0.08);
-      smoothLook.roll = smoothLook.roll + (look.roll - smoothLook.roll) * k;
+      var k = 0.38;
+      smoothF = nlerp(smoothF, raw.f, k);
+      smoothUp = nlerp(smoothUp, raw.up, k);
     }
-    view.az = smoothLook.az;
-    view.el = smoothLook.el;
-    view.roll = smoothLook.roll;
+    gyroBasis = orthonormal(smoothF, smoothUp);
+    view.az = wrap360(Math.atan2(gyroBasis.f.x, gyroBasis.f.y) / DEG);
+    view.el = Math.asin(clamp(gyroBasis.f.z, -1, 1)) / DEG;
     needsDraw = true;
   }
 
@@ -255,7 +258,9 @@
       gyroOn = true;
       hasCompass = false;
       yawBias = 0;
-      smoothLook.az = null;
+      gyroBasis = null;
+      smoothF = null;
+      smoothUp = null;
       window.removeEventListener("deviceorientation", onOrient, true);
       window.removeEventListener("deviceorientationabsolute", onOrient, true);
       wantAbsolute = "ondeviceorientationabsolute" in window;
@@ -379,7 +384,7 @@
     var w = window.innerWidth;
     var h = window.innerHeight;
     sctx.clearRect(0, 0, w, h);
-    var basis = viewBasis(view.az, view.el, view.roll);
+    var basis = (gyroOn && gyroBasis) ? gyroBasis : viewBasis(view.az, view.el, view.roll);
     var i, p, sat, r, a;
 
     sctx.strokeStyle = "rgba(255,255,255,0.16)";
