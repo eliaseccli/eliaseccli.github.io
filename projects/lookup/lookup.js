@@ -15,54 +15,6 @@
   var FALLBACK = { lat: 47.3644, lon: 9.6916, altKm: 0.408, name: "Hohenems" };
   var DEG = Math.PI / 180;
 
-  var canvas = document.querySelector(".stars");
-  var ctx = canvas && canvas.getContext("2d");
-  var field = [];
-  function seedStars() {
-    var s = 0xE11A5C;
-    function rnd() {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    }
-    field = [];
-    var i, roll, col;
-    for (i = 0; i < 360; i++) {
-      roll = rnd();
-      col = roll < 0.08 ? [170, 205, 255] : roll < 0.2 ? [255, 228, 190] : [255, 255, 255];
-      field.push({
-        nx: rnd(),
-        ny: rnd(),
-        r: 0.4 + rnd() * 1.15,
-        a: 0.32 + rnd() * 0.55,
-        col: col
-      });
-    }
-  }
-  function paintStars() {
-    if (!ctx) return;
-    var w = window.innerWidth;
-    var h = window.innerHeight;
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    canvas.style.width = w + "px";
-    canvas.style.height = h + "px";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    var i, p, col;
-    for (i = 0; i < field.length; i++) {
-      p = field[i];
-      col = p.col || [255, 255, 255];
-      ctx.beginPath();
-      ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + p.a + ")";
-      ctx.arc(p.nx * w, p.ny * h, p.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  seedStars();
-  paintStars();
-  window.addEventListener("resize", paintStars);
-
   var nav = document.querySelector("[data-nav]");
   var btn = document.querySelector("[data-nav-btn]");
   var list = document.getElementById("nav-list");
@@ -90,6 +42,11 @@
   var headEl = document.querySelector("[data-heading]");
   var locBtn = document.querySelector("[data-loc]");
   var compassBtn = document.querySelector("[data-compass]");
+  var camBtn = document.querySelector("[data-cam-btn]");
+  var camVideo = document.querySelector("[data-cam]");
+  var camOn = false;
+  var camStream = null;
+  var VFOV = 58 * DEG;
 
   var observer = {
     lat: FALLBACK.lat,
@@ -158,7 +115,7 @@
     return { f: f, right: right, up: up };
   }
 
-  function project(az, el, basis, cx, cy, half) {
+  function projectDome(az, el, basis, cx, cy, half) {
     var s = azElToVec(az, el);
     var z = vdot(s, basis.f);
     var ang = Math.acos(clamp(z, -1, 1));
@@ -169,6 +126,24 @@
     var r = (ang / (Math.PI / 2)) * half;
     if (len < 1e-9) return { x: cx, y: cy, z: z };
     return { x: cx + (x / len) * r, y: cy - (y / len) * r, z: z };
+  }
+
+  function projectPinhole(az, el, basis, w, h) {
+    var s = azElToVec(az, el);
+    var z = vdot(s, basis.f);
+    if (z < 0.05) return null;
+    var x = vdot(s, basis.right);
+    var y = vdot(s, basis.up);
+    var f = (h * 0.5) / Math.tan(VFOV / 2);
+    var px = w * 0.5 + f * (x / z);
+    var py = h * 0.5 - f * (y / z);
+    if (px < -80 || px > w + 80 || py < -80 || py > h + 80) return null;
+    return { x: px, y: py, z: z };
+  }
+
+  function project(az, el, basis, w, h) {
+    if (camOn) return projectPinhole(az, el, basis, w, h);
+    return projectDome(az, el, basis, w * 0.5, h * 0.5, Math.min(w, h) * 0.46);
   }
 
   function cardinal(az) {
@@ -311,6 +286,49 @@
     if (canOrient() && compassBtn) compassBtn.hidden = false;
   }
 
+  function canCamera() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  }
+
+  function startCamera() {
+    if (!canCamera() || !camVideo) return;
+    if (camOn) {
+      stopCamera();
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    }).then(function (stream) {
+      camStream = stream;
+      camOn = true;
+      camVideo.srcObject = stream;
+      camVideo.setAttribute("playsinline", "");
+      camVideo.muted = true;
+      var play = camVideo.play();
+      if (play && play.catch) play.catch(function () {});
+      document.body.classList.add("is-cam");
+      if (camBtn) camBtn.textContent = "Camera off";
+      needsDraw = true;
+    }).catch(function () {
+      camOn = false;
+      document.body.classList.remove("is-cam");
+      if (camBtn) camBtn.textContent = "Camera";
+    });
+  }
+
+  function stopCamera() {
+    camOn = false;
+    document.body.classList.remove("is-cam");
+    if (camStream) {
+      camStream.getTracks().forEach(function (t) { t.stop(); });
+      camStream = null;
+    }
+    if (camVideo) camVideo.srcObject = null;
+    if (camBtn) camBtn.textContent = "Camera";
+    needsDraw = true;
+  }
+
   function applyGeo(pos) {
     if (!pos || !pos.coords) return;
     observer.lat = pos.coords.latitude;
@@ -361,9 +379,6 @@
     var w = window.innerWidth;
     var h = window.innerHeight;
     sctx.clearRect(0, 0, w, h);
-    var cx = w * 0.5;
-    var cy = h * 0.5;
-    var half = Math.min(w, h) * 0.46;
     var basis = viewBasis(view.az, view.el, view.roll);
     var i, p, sat, r, a;
 
@@ -373,7 +388,7 @@
     sctx.beginPath();
     var first = true;
     for (i = 0; i <= 72; i++) {
-      p = project(i * 5, 0, basis, cx, cy, half);
+      p = project(i * 5, 0, basis, w, h);
       if (!p) {
         first = true;
         continue;
@@ -391,7 +406,7 @@
     sctx.textBaseline = "middle";
     var labels = [["N", 0], ["E", 90], ["S", 180], ["W", 270]];
     for (i = 0; i < labels.length; i++) {
-      p = project(labels[i][1], 1.2, basis, cx, cy, half);
+      p = project(labels[i][1], 1.2, basis, w, h);
       if (!p) continue;
       sctx.fillStyle = "rgba(255,255,255,0.28)";
       sctx.fillText(labels[i][0], p.x, p.y);
@@ -400,7 +415,7 @@
     for (i = 0; i < skySats.length; i++) {
       sat = skySats[i];
       if (sat.kind === "iss") continue;
-      p = project(sat.az, sat.el, basis, cx, cy, half);
+      p = project(sat.az, sat.el, basis, w, h);
       if (!p) continue;
       r = clamp(1800 / Math.max(sat.range, 280), 1.15, 2.7);
       a = clamp(0.42 + (sat.el / 90) * 0.45, 0.38, 0.92);
@@ -411,7 +426,7 @@
     }
 
     if (skyIss && skyIss.el >= -2.5) {
-      p = project(skyIss.az, skyIss.el, basis, cx, cy, half);
+      p = project(skyIss.az, skyIss.el, basis, w, h);
       if (p) {
         sctx.beginPath();
         sctx.fillStyle = "rgba(255, 186, 110, 0.22)";
@@ -507,6 +522,13 @@
     });
     if (canOrient()) compassBtn.hidden = false;
   }
+  if (camBtn && canCamera()) {
+    camBtn.hidden = false;
+    camBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      startCamera();
+    });
+  }
 
   var worker = null;
   var tickTimer = 0;
@@ -565,7 +587,6 @@
   sizeSky();
   window.addEventListener("resize", function () {
     sizeSky();
-    paintStars();
     needsDraw = true;
   });
 
