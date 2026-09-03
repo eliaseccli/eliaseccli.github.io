@@ -1,5 +1,13 @@
 [
   {
+    "slug": "hochzeit",
+    "title": "Hochzeit",
+    "date": "2026-05-02",
+    "captured": "2026:05:02 15:02:12",
+    "day": "stills/diorama-hochzeit-day.png",
+    "night": "stills/diorama-hochzeit-night.png"
+  },
+  {
     "slug": "ostereiersuche",
     "title": "Ostereiersuche",
     "date": "2026-04-05",
