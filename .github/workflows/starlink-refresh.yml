@@ -2,7 +2,9 @@ name: Starlink daily refresh
 
 on:
   schedule:
-    - cron: "0 6,7 * * *"
+    # UTC: 06:00 / 07:00 / 10:00 / 16:00. Approx Vienna 08:00 / 09:00 / 12:00 / 18:00
+    # in summer (CEST); one hour earlier in winter (CET). Skip gate exits if today is already dumped.
+    - cron: "0 6,7,10,16 * * *"
   workflow_dispatch:
 
 permissions:
