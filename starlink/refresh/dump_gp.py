@@ -8,13 +8,10 @@ Space-Track.
 from __future__ import annotations
 
 import json
-import ssl
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from refresh.fetch import GP_CACHE
+from refresh.fetch import GP_CACHE, fetch_json_list
 
 STATIONS_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=json"
 ISS_NORAD = 25544
@@ -25,37 +22,8 @@ KIND_STARLINK = "sl"
 KIND_ISS = "iss"
 
 
-def _ssl_context() -> ssl.SSLContext:
-    try:
-        import certifi
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        return ssl.create_default_context()
-
-
 def _fetch_json_list(url: str) -> list | None:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(req, timeout=45, context=_ssl_context()) as resp:
-            if getattr(resp, "status", 200) != 200:
-                print(f"GP fetch: HTTP {getattr(resp, 'status', '?')} {url}")
-                return None
-            body = resp.read()
-    except urllib.error.HTTPError as exc:
-        print(f"GP fetch: HTTP {exc.code} {url}")
-        return None
-    except Exception as exc:
-        print(f"GP fetch failed ({type(exc).__name__}: {exc}) {url}")
-        return None
-    try:
-        data = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        print("GP fetch: body is not JSON")
-        return None
-    if not isinstance(data, list):
-        print("GP fetch: JSON is not a list")
-        return None
-    return data
+    return fetch_json_list(url, user_agent=USER_AGENT)
 
 
 def _load_records(path: Path | None) -> list[dict]:
