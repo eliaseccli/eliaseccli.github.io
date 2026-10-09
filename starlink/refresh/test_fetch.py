@@ -358,6 +358,11 @@ class TestFetchCli(unittest.TestCase):
         self.assertIn('"$code" -eq 3', text)
         self.assertIn("::warning::no fresh data today, kept previous", text)
         self.assertIn("no fresh data today, kept previous", text)
+        # runner is illegal in jobs.<job_id>.env and fails the file before any job starts.
+        job_env = text.split("jobs:", 1)[1].split("steps:", 1)[0]
+        self.assertNotIn("runner.", job_env)
+        dump = text.split("- name: Dump sats.json", 1)[1]
+        self.assertIn("STARLINK_CACHE: ${{ runner.temp }}/starlink", dump)
 
 
 if __name__ == "__main__":
