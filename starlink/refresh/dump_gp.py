@@ -11,19 +11,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from refresh.fetch import GP_CACHE, fetch_json_list
+from refresh.fetch import fetch_gp_json, fetch_stations_json, gp_cache
 
-STATIONS_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=json"
 ISS_NORAD = 25544
 USER_AGENT = "eliaseccli-lookup/1.0 (https://eliaseccli.com/projects/lookup/)"
 
 # Compact row: name, norad, epoch, n, e, i, raan, argp, m, bstar, nDot, kind
 KIND_STARLINK = "sl"
 KIND_ISS = "iss"
-
-
-def _fetch_json_list(url: str) -> list | None:
-    return fetch_json_list(url, user_agent=USER_AGENT)
 
 
 def _load_records(path: Path | None) -> list[dict]:
@@ -88,6 +83,24 @@ def pick_iss(records: list[dict]) -> dict | None:
     return zarya or by_id
 
 
+def _previous_iss_row(out_path: Path) -> list | None:
+    """Slim ISS row already published in gp.json, if any."""
+    path = Path(out_path)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError):
+        return None
+    sats = payload.get("sats") if isinstance(payload, dict) else None
+    if not isinstance(sats, list):
+        return None
+    for row in sats:
+        if isinstance(row, list) and len(row) >= 3 and row[-1] == KIND_ISS:
+            return row
+    return None
+
+
 def dump_gp(
     out_path: Path,
     *,
@@ -95,17 +108,18 @@ def dump_gp(
     stations_path: Path | None = None,
     fetch_missing: bool = True,
 ) -> dict:
-    sl_path = starlink_path if starlink_path is not None else GP_CACHE
+    sl_path = starlink_path if starlink_path is not None else gp_cache()
     starlink = _load_records(sl_path)
     if not starlink and fetch_missing:
-        from refresh.fetch import GP_URL
-        fetched = _fetch_json_list(GP_URL)
+        # Same source list as `refresh fetch`. Do not start a second long
+        # retry loop against only the HTTPS URL.
+        fetched = fetch_gp_json()
         if fetched:
             starlink = [r for r in fetched if isinstance(r, dict)]
 
     stations = _load_records(stations_path)
     if not stations and fetch_missing:
-        fetched = _fetch_json_list(STATIONS_URL)
+        fetched = fetch_stations_json(user_agent=USER_AGENT)
         if fetched:
             stations = [r for r in fetched if isinstance(r, dict)]
 
@@ -118,13 +132,18 @@ def dump_gp(
         seen.add(row[1])
         rows.append(row)
 
+    iss_row = None
     iss_rec = pick_iss(stations)
     if iss_rec is not None:
-        row = slim_record(iss_rec, KIND_ISS)
-        if row is not None:
-            # Prefer the stations ISS row over a Starlink collision (none).
-            rows = [r for r in rows if r[1] != row[1]]
-            rows.append(row)
+        iss_row = slim_record(iss_rec, KIND_ISS)
+    if iss_row is None and fetch_missing and not stations:
+        # Stations host timed out. Keep the ISS row already in gp.json.
+        iss_row = _previous_iss_row(out_path)
+        if iss_row is not None:
+            print("stations GP unavailable, kept previous ISS", flush=True)
+    if iss_row is not None:
+        rows = [r for r in rows if r[1] != iss_row[1]]
+        rows.append(iss_row)
 
     if not rows:
         raise SystemExit("no GP records to dump")

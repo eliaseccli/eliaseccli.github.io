@@ -8,7 +8,7 @@ from pathlib import Path
 
 from refresh.catalog import TimelineCatalog
 from refresh.clocks import ShellRefs, assign_clocks
-from refresh.fetch import GP_CACHE, load_catalog
+from refresh.fetch import load_catalog, read_gp_cache
 from refresh.lock import LockState, apply_locks
 from refresh.parse import Sat, parse_omm_records, parse_tle_file
 from refresh.shells import filter_inclination, in_shell, listed_shells
@@ -44,10 +44,11 @@ def _utc_today() -> date:
 def _load_sats(sats: list[Sat] | None) -> tuple[list[Sat], str]:
     if sats is not None:
         return sats, "injected"
-    if GP_CACHE.exists():
-        rec = json.loads(GP_CACHE.read_text(encoding="utf-8"))
-        if isinstance(rec, list):
-            return parse_omm_records(rec), "Celestrak GP JSON"
+    # Populated by `refresh fetch` (or a previous load_catalog). Reuse it;
+    # do not download the GP catalog a second time in this job.
+    cached = read_gp_cache()
+    if cached is not None:
+        return parse_omm_records(cached), "Celestrak GP JSON"
     catalog = load_catalog()
     if catalog.kind == "json":
         parsed = parse_omm_records(catalog.records or [])
