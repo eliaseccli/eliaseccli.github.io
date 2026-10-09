@@ -9,7 +9,7 @@ from pathlib import Path
 from refresh.binary import DayFrame, MonthBin, read_month, upsert_day, write_month, ymd_int
 from refresh.catalog import TimelineCatalog
 from refresh.clocks import ShellRefs, assign_clocks
-from refresh.fetch import GP_CACHE, load_catalog
+from refresh.fetch import load_catalog, read_gp_cache
 from refresh.j2 import pack_u16
 from refresh.lock import LockState, apply_locks
 from refresh.parse import Sat, parse_omm_records, parse_tle_file
@@ -25,24 +25,34 @@ def _utc_today() -> date:
 
 
 def _load_gp(gp_path: Path | None) -> list[Sat]:
-    path = gp_path or GP_CACHE
-    if not path.exists():
-        if gp_path is not None:
+    if gp_path is None:
+        # Corrupt cache is a real failure (SystemExit). A missing cache
+        # still tries the network once; the workflow only reaches this
+        # after `refresh fetch` has written the file.
+        cached = read_gp_cache()
+        if cached is None:
+            try:
+                catalog = load_catalog()
+            except SystemExit as exc:
+                raise TimelineSkip(str(exc)) from exc
+            if catalog.kind == "json":
+                sats = parse_omm_records(catalog.records or [])
+            else:
+                sats = parse_tle_file(catalog.path)
+            if not sats:
+                raise TimelineSkip("no satellites parsed")
+            return sats
+        rec = cached
+    else:
+        path = gp_path
+        if not path.exists():
             raise TimelineSkip(f"GP JSON cache missing: {path}")
         try:
-            catalog = load_catalog()
-        except SystemExit as exc:
-            raise TimelineSkip(str(exc)) from exc
-        if catalog.kind == "json":
-            sats = parse_omm_records(catalog.records or [])
-        else:
-            sats = parse_tle_file(catalog.path)
-        if not sats:
-            raise TimelineSkip("no satellites parsed")
-        return sats
-    rec = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(rec, list):
-        raise TimelineSkip("GP JSON is not a list")
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise TimelineSkip(f"GP JSON cache corrupt: {path}") from exc
+        if not isinstance(rec, list):
+            raise TimelineSkip("GP JSON is not a list")
     sats = parse_omm_records(rec)
     if not sats:
         raise TimelineSkip("no satellites parsed from GP JSON")

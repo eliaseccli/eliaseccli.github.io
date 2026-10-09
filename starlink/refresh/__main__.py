@@ -8,6 +8,7 @@ from pathlib import Path
 from refresh.append_day import TimelineSkip, append_today
 from refresh.dump import dump_sats
 from refresh.dump_gp import dump_gp
+from refresh.fetch import EXIT_NO_FRESH, fetch_and_cache
 from refresh.wipeout import apply_hole_fill
 
 
@@ -27,12 +28,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Replace 20%+ catalog wipeouts, hold 1-day dropouts, 10-day smooth",
     )
     fill.add_argument("--timeline", default="starlink/timeline")
+    fetch = sub.add_parser(
+        "fetch",
+        help="Download Starlink GP JSON once into STARLINK_CACHE",
+    )
+    fetch.add_argument(
+        "--cache-copy",
+        default="",
+        help="Also write a copy of the raw GP JSON (actions/cache path)",
+    )
     gp = sub.add_parser("dump-gp", help="Slim Celestrak GP JSON for /projects/lookup/")
     gp.add_argument("--out", required=True)
     gp.add_argument("--starlink", default="", help="Starlink GP JSON (default: STARLINK_CACHE)")
     gp.add_argument("--stations", default="", help="Stations GP JSON (ISS)")
     gp.add_argument("--no-fetch", action="store_true", help="Do not hit Celestrak if files are missing")
     args = parser.parse_args(argv)
+    if args.cmd == "fetch":
+        try:
+            return fetch_and_cache(Path(args.cache_copy) if args.cache_copy else None)
+        except SystemExit as exc:
+            # Corrupt payloads are bugs. Unreachable sources return EXIT_NO_FRESH.
+            if isinstance(exc.code, int) and exc.code != EXIT_NO_FRESH:
+                return exc.code
+            if exc.code not in (None, 0):
+                print(exc.code, file=sys.stderr, flush=True)
+            return 1
     if args.cmd == "dump":
         payload = dump_sats(
             Path(args.out),

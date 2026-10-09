@@ -3,7 +3,15 @@ name: Starlink daily refresh
 on:
   schedule:
     # UTC: 06:00 / 07:00 / 10:00 / 16:00. Approx Vienna 08:00 / 09:00 / 12:00 / 18:00
-    # in summer (CEST); one hour earlier in winter (CET). Skip gate exits if today is already dumped.
+    # in summer (CEST); one hour earlier in winter (CET).
+    #
+    # GitHub-hosted runners often cannot complete HTTPS to celestrak.org (Azure
+    # egress is idle-timed-out; HTTP on the same host still returns GP JSON).
+    # When every source fails, the job stays green and does not advance
+    # manifest.end, so a later slot retries. After a successful dump the skip
+    # gate below exits, so later slots do not download again. GitHub may delay
+    # or drop scheduled runs; 06 and 07 are a short retry, 10 and 16 sit past
+    # Celestrak's ~2h GP update. Do not add Space-Track credentials.
     - cron: "0 6,7,10,16 * * *"
   workflow_dispatch:
 
@@ -13,16 +21,28 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: "1"
+      STARLINK_CACHE: ${{ runner.temp }}/starlink
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # v5/v6 run on Node 24. v4/v5 were Node 20 (forced-runtime deprecation).
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      # Last raw GP JSON for a later step in this job (and the next run's
+      # cache hit). Not used to rebuild the site when today's download fails.
+      - uses: actions/cache@v5
+        with:
+          path: .starlink-gp-cache
+          key: starlink-gp-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            starlink-gp-${{ runner.os }}-
       - name: Install
-        run: pip install --quiet numpy
+        run: |
+          pip install --quiet numpy
+          mkdir -p .starlink-gp-cache
       - name: Dump sats.json
-        env:
-          STARLINK_CACHE: ${{ runner.temp }}/starlink
         run: |
           export TZ=Europe/Vienna
           today=$(date +%Y-%m-%d)
@@ -35,8 +55,24 @@ jobs:
               exit 0
             fi
           fi
+          # One download for append, dump, and dump-gp. Exit 3 = sources
+          # unreachable or too small: keep committed sats.json / gp.json /
+          # timeline and let a later cron try. Other exits are real failures.
+          set +e
+          PYTHONPATH=starlink python3 -m refresh fetch \
+            --cache-copy .starlink-gp-cache/starlink_gp.json
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            echo "no fresh data today, kept previous"
+            echo "::warning::no fresh data today, kept previous"
+            exit 0
+          fi
+          if [ "$code" -ne 0 ]; then
+            exit "$code"
+          fi
           # Append today's J2-locked frame (and lock_state) before dump so Today
-          # matches the last play day. Append fetches GP if the cache is empty.
+          # matches the last play day. Cache is already filled; do not fetch again.
           # Do not fetch Space-Track. Missing timeline files must not fail sats.json.
           PYTHONPATH=starlink python3 -m refresh append-day --timeline starlink/timeline \
             || echo "timeline append skipped (exit $?)"

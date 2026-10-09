@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from refresh import dump_gp as dump_gp_mod
 from refresh.dump_gp import dump_gp, pick_iss, slim_record
 
 
@@ -103,6 +104,31 @@ class TestDumpGp(unittest.TestCase):
                     stations_path=empty,
                     fetch_missing=False,
                 )
+
+    def test_keeps_previous_iss_when_stations_fetch_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sl = root / "starlink.json"
+            sl.write_text(json.dumps([STARLINK]), encoding="utf-8")
+            out = root / "gp.json"
+            previous = dump_gp(
+                out,
+                starlink_path=sl,
+                stations_path=root / "stations.json",
+                fetch_missing=False,
+            )
+            # Seed an ISS row the way a previous successful dump would have.
+            previous["sats"].append(slim_record(ZARYA, "iss"))
+            previous["n"] = len(previous["sats"])
+            out.write_text(json.dumps(previous), encoding="utf-8")
+            with unittest.mock.patch.object(
+                dump_gp_mod, "fetch_stations_json", return_value=None
+            ):
+                payload = dump_gp(out, starlink_path=sl, fetch_missing=True)
+            ids = {row[1] for row in payload["sats"]}
+            kinds = {row[-1] for row in payload["sats"]}
+            self.assertEqual(ids, {44714, 25544})
+            self.assertIn("iss", kinds)
 
 
 if __name__ == "__main__":
