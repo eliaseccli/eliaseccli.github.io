@@ -40,6 +40,7 @@
     var w = window.innerWidth;
     var h = window.innerHeight;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (w * h * dpr * dpr > 8400000) dpr = Math.max(1, Math.sqrt(8400000 / (w * h)));
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     canvas.style.width = w + "px";
@@ -58,7 +59,6 @@
   }
   seedStars();
   paintStars();
-  window.addEventListener("resize", paintStars);
 
   var nav = document.querySelector("[data-nav]");
   var btn = document.querySelector("[data-nav-btn]");
@@ -184,11 +184,10 @@
       }
       hold.appendChild(halo);
       hold.appendChild(photos);
-      warmSlot(hold);
       slot.appendChild(hold);
       track.appendChild(slot);
-      paintSlot(i);
     });
+    hydrate();
     layout(false);
     syncMeta();
   }
@@ -288,9 +287,16 @@
     return !!place.night;
   }
 
+  // Memory: every still is a 1536x1536 RGBA PNG (~9.4 MB decoded). Loading and
+  // decoding all of them up front (2 per place, plus halo copies and preloaders)
+  // pushed iOS Safari past its content-process memory limit. Only slots within
+  // NEAR of the current one get a real src; slots beyond FAR drop theirs again.
+  var NEAR = 1;
+  var FAR = 2;
+
   function stillImg(src) {
     var img = document.createElement("img");
-    img.src = src;
+    img.setAttribute("data-src", src);
     img.alt = "";
     img.draggable = false;
     img.decoding = "async";
@@ -313,7 +319,7 @@
   }
 
   function warmImg(img) {
-    if (!img) return;
+    if (!img || !img.getAttribute("src")) return;
     if (typeof img.decode === "function") img.decode().catch(function () {});
   }
 
@@ -330,7 +336,9 @@
       img.classList.remove("is-on");
       return;
     }
+    if (!img.getAttribute("src")) return;
     function show() {
+      if (!img.getAttribute("src")) return;
       img.classList.add("is-on");
       if (haloBox) haloBox.classList.add("is-ready");
     }
@@ -419,6 +427,40 @@
     }
   }
 
+  function setSlotLoaded(i, on) {
+    var slot = track.children[i];
+    if (!slot) return;
+    var loaded = slot.classList.contains("is-near");
+    if (on === loaded) return;
+    var imgs = slot.querySelectorAll("img");
+    var n;
+    if (on) {
+      slot.classList.add("is-near");
+      for (n = 0; n < imgs.length; n++) {
+        if (!imgs[n].getAttribute("src")) imgs[n].src = imgs[n].getAttribute("data-src");
+      }
+      warmSlot(slot);
+      paintSlot(i);
+    } else {
+      slot.classList.remove("is-near");
+      var haloBox = slot.querySelector(".halo");
+      if (haloBox) haloBox.classList.remove("is-ready");
+      for (n = 0; n < imgs.length; n++) {
+        imgs[n].classList.remove("is-on");
+        imgs[n].removeAttribute("src");
+      }
+    }
+  }
+
+  function hydrate() {
+    var i, d;
+    for (i = 0; i < places.length; i++) {
+      d = Math.abs(i - index);
+      if (d <= NEAR) setSlotLoaded(i, true);
+      else if (d > FAR) setSlotLoaded(i, false);
+    }
+  }
+
   function current() {
     return places[index] || null;
   }
@@ -489,6 +531,7 @@
     drag = null;
     stage.classList.remove("is-drag");
     apply(animate !== false);
+    hydrate();
     syncMeta();
   }
 
@@ -568,10 +611,6 @@
   }).then(function (raw) {
     places = asList(raw).map(normalize).filter(Boolean).sort(newestFirst);
     places.reverse();
-    places.forEach(function (place) {
-      if (place.day) { var d = new Image(); d.src = place.day; }
-      if (place.night) { var n = new Image(); n.src = place.night; }
-    });
     render();
   }).catch(function () {
     places = [];
