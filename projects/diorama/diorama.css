@@ -224,7 +224,7 @@ body {
   visibility: hidden;
   filter: none;
 }
-/* Touch / phone: the six-deep drop-shadow chain (72px and 120px blurs) needs
+/* All devices: the old six-deep drop-shadow chain (72px and 120px blurs) needs
    multi-GB offscreen filter buffers in WebKit at DPR 3 and got the iOS content
    process killed. Keep the tight glow + contact shadow as filters and fake the
    wide, faint glow with a plain gradient behind the still. */
@@ -243,19 +243,6 @@ body {
   z-index: 0;
   pointer-events: none;
   background: radial-gradient(closest-side, rgba(200, 220, 255, 0.09), rgba(180, 210, 255, 0.045) 55%, transparent 100%);
-}
-/* Desktop (mouse/trackpad): full original glow. */
-@media (hover: hover) and (pointer: fine) {
-  .halo.is-ready {
-    filter:
-      drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.7))
-      drop-shadow(0 0 8px rgba(230, 240, 255, 0.38))
-      drop-shadow(0 0 28px rgba(255, 255, 255, 0.16))
-      drop-shadow(0 0 72px rgba(200, 220, 255, 0.10))
-      drop-shadow(0 0 120px rgba(180, 210, 255, 0.06))
-      drop-shadow(0 32px 48px rgba(0, 0, 0, 0.55));
-  }
-  .slot.is-near .float::before { content: none; }
 }
 /* Only slots next to the current one carry a halo filter at all. */
 .slot:not(.is-near) .halo { visibility: hidden; filter: none; }
