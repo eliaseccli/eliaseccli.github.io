@@ -12,17 +12,21 @@ are 360°). One-sided sats are omitted (packed bins have no alpha). Do not
 invent slots. A 1-day membership dropout (sat on both neighbors, missing
 today, day not a wipeout) is held by shortest-arc lerp.
 
-After hole-fill, Play positions are a 10-day centered shortest-arc mean
-(frames [i-4 .. i+5]) for slots present on all 10 days. The first 4 and last
-5 packed days stay unsmoothed. Clocks stay on real unsmoothed dumps.
+After hole-fill, Play positions are a triangular shortest-arc mean over
+calendar days [d-9 .. d+9] (weights 10-|k|, the 10-day box mean applied
+twice). Gaps and missing slots just drop out of the window. The newest days
+use a one-sided window and are re-smoothed from raw_tail.bin as later days
+arrive. Clocks stay on real unsmoothed dumps.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from statistics import median
 from typing import Iterable
+
+import numpy as np
 
 from refresh.binary import DayFrame, MonthBin, read_month, write_month, ymd_int
 from refresh.catalog import TimelineCatalog, write_manifest
@@ -32,10 +36,11 @@ from refresh.lock import shortest_delta, wrap360
 FLAG_SYNTHETIC = 0x01
 WINDOW_HALF = 3  # 7-day centered window: 3 neighbors each side + self
 DROP_FRAC = 0.20
-# Even 10-day play smooth: 4 before, today, 5 after.
-SMOOTH_BEFORE = 4
-SMOOTH_AFTER = 5
-SMOOTH_WINDOW = SMOOTH_BEFORE + 1 + SMOOTH_AFTER
+# Play smooth: triangular weights 10-|k| over calendar days d-9 .. d+9.
+SMOOTH_HALF = 9
+# Raw (pre-smooth) frames kept so the newest SMOOTH_HALF days can be redone.
+RAW_TAIL_DAYS = 2 * SMOOTH_HALF + 3  # +2 slack for a missed run
+RAW_TAIL_NAME = "raw_tail.bin"
 
 
 def is_synthetic(flags: int) -> bool:
@@ -219,81 +224,124 @@ def hold_one_day_dropouts(frames: list[DayFrame]) -> list[DayFrame]:
     return out
 
 
-def smooth_nday(frames: list[DayFrame]) -> list[DayFrame]:
-    """Replace day i with the shortest-arc mean of frames [i-4 .. i+5].
+def _dense(frame: DayFrame, width: int) -> tuple["np.ndarray", "np.ndarray"]:
+    """Slot-indexed float x/y (degrees), NaN where the slot is absent."""
+    x = np.full(width, np.nan)
+    y = np.full(width, np.nan)
+    if frame.slots:
+        idx = np.asarray(frame.slots, dtype=np.int64)
+        x[idx] = np.asarray(frame.xs, dtype=np.float64) * (360.0 / 65536.0)
+        y[idx] = np.asarray(frame.ys, dtype=np.float64) * (360.0 / 65536.0)
+    return x, y
 
-    A slot is smoothed only if it is present on all 10 days. First 4 and
-    last 5 frames stay unsmoothed. Does not invent samples.
+
+def smooth_nday(
+    frames: list[DayFrame],
+    *,
+    only_from: int | None = None,
+) -> list[DayFrame]:
+    """Triangular shortest-arc mean over calendar days [d-9 .. d+9].
+
+    Weight of a neighbor k days away is 10-|k| (= the 10-day box mean applied
+    twice). Window is by calendar date, so a missing day just drops out; a
+    slot missing on some days is averaged over the days it has. At the newest
+    end the window is one-sided (trailing) and is recomputed as later days
+    arrive. Only slots present on day d are written (no new slots).
+    Frames dated before `only_from` (YYYYMMDD) are returned unchanged.
     """
-    n = len(frames)
-    if n < SMOOTH_WINDOW:
+    if not frames:
         return frames
-    maps = [_pos_map(f) for f in frames]
+    width = max((max(f.slots, default=-1) + 1) for f in frames)
+    if width <= 0:
+        return frames
+    ords = [ymd_to_date(f.date).toordinal() for f in frames]
+    cache: dict[int, tuple] = {}
+
+    def dense(j: int):
+        got = cache.get(j)
+        if got is None:
+            got = _dense(frames[j], width)
+            cache[j] = got
+        return got
+
     out: list[DayFrame] = []
+    lo = 0
     for i, cur in enumerate(frames):
-        lo = i - SMOOTH_BEFORE
-        hi = i + SMOOTH_AFTER + 1
-        if lo < 0 or hi > n:
+        if (only_from is not None and cur.date < only_from) or not cur.slots:
             out.append(cur)
             continue
-        window = maps[lo:hi]
-        slots: list[int] = []
-        xs: list[int] = []
-        ys: list[int] = []
-        for slot in cur.slots:
-            if any(slot not in m for m in window):
-                slots.append(slot)
-                xs.append(maps[i][slot][0])
-                ys.append(maps[i][slot][1])
-                continue
-            slots.append(slot)
-            xs.append(
-                pack_u16(circular_mean([unpack_u16(m[slot][0]) for m in window]))
-            )
-            ys.append(
-                pack_u16(circular_mean([unpack_u16(m[slot][1]) for m in window]))
-            )
-        out.append(DayFrame(date=cur.date, flags=cur.flags, slots=slots, xs=xs, ys=ys))
+        while ords[lo] < ords[i] - SMOOTH_HALF:
+            cache.pop(lo, None)
+            lo += 1
+        hi = i
+        while hi + 1 < len(frames) and ords[hi + 1] <= ords[i] + SMOOTH_HALF:
+            hi += 1
+        cx, cy = dense(i)
+        idx = np.asarray(cur.slots, dtype=np.int64)
+        c_x, c_y = cx[idx], cy[idx]
+        sx = np.zeros(len(idx))
+        sy = np.zeros(len(idx))
+        sw = np.zeros(len(idx))
+        for j in range(lo, hi + 1):
+            w = SMOOTH_HALF + 1 - abs(ords[j] - ords[i])
+            nx, ny = dense(j)
+            vx, vy = nx[idx], ny[idx]
+            ok = ~np.isnan(vx)
+            dx = (vx - c_x + 180.0) % 360.0 - 180.0
+            dy = (vy - c_y + 180.0) % 360.0 - 180.0
+            sx += np.where(ok, w * dx, 0.0)
+            sy += np.where(ok, w * dy, 0.0)
+            sw += np.where(ok, w, 0)
+        mx = (c_x + sx / sw) % 360.0
+        my = (c_y + sy / sw) % 360.0
+        xs = [pack_u16(float(v)) for v in mx]
+        ys = [pack_u16(float(v)) for v in my]
+        out.append(DayFrame(date=cur.date, flags=cur.flags, slots=list(cur.slots), xs=xs, ys=ys))
     return out
 
 
-def _frame_sig(frame: DayFrame) -> tuple:
-    return (frame.date, frame.flags, tuple(frame.slots), tuple(frame.xs), tuple(frame.ys))
+def raw_tail_path(v1_dir: Path) -> Path:
+    # Lives in v1/ so the daily workflow's `git add .../v1/*.bin` keeps it.
+    # load_months skips it (stem is not YYYY-MM); the page never fetches it.
+    return Path(v1_dir) / RAW_TAIL_NAME
 
 
-def smooth_changed(held: list[DayFrame], orig: list[DayFrame]) -> list[DayFrame]:
-    """10-day mean only for days whose window includes a changed frame.
+def read_raw_tail(v1_dir: Path) -> dict[int, DayFrame]:
+    path = raw_tail_path(v1_dir)
+    if not path.exists():
+        return {}
+    try:
+        return {f.date: f for f in read_month(path).days}
+    except ValueError:
+        return {}
 
-    Daily append uses this so already-smoothed history is not blurred again.
-    """
-    if len(held) < SMOOTH_WINDOW:
-        return held
-    by_old = {f.date: f for f in orig}
-    changed = set()
-    for frame in held:
-        old = by_old.get(frame.date)
-        if old is None or _frame_sig(old) != _frame_sig(frame):
-            changed.add(frame.date)
-    if not changed:
-        return held
-    full = smooth_nday(held)
-    out: list[DayFrame] = []
-    for i, (h, s) in enumerate(zip(held, full)):
-        lo = i - SMOOTH_BEFORE
-        hi = i + SMOOTH_AFTER + 1
-        near = any(
-            0 <= j < len(held) and held[j].date in changed
-            for j in range(lo, hi)
-        )
-        out.append(s if near else h)
-    return out
+
+def write_raw_tail(v1_dir: Path, raw: Iterable[DayFrame]) -> None:
+    """Keep the newest RAW_TAIL_DAYS real raw frames (pre-smooth) for re-smoothing."""
+    days = sorted((f for f in raw if not is_synthetic(f.flags)), key=lambda f: f.date)
+    if not days:
+        return
+    cut = ymd_to_date(days[-1].date).toordinal() - (RAW_TAIL_DAYS - 1)
+    days = [f for f in days if ymd_to_date(f.date).toordinal() >= cut]
+    d0 = ymd_to_date(days[0].date)
+    width = max((max(f.slots, default=-1) + 1) for f in days)
+    write_month(
+        raw_tail_path(v1_dir),
+        MonthBin(year=d0.year, month=d0.month, catalog_len=width, first_date=days[0].date, days=days),
+    )
+
+
+def upsert_raw_tail(v1_dir: Path, frame: DayFrame) -> None:
+    raw = read_raw_tail(v1_dir)
+    raw[frame.date] = frame
+    write_raw_tail(v1_dir, raw.values())
 
 
 def load_months(v1_dir: Path) -> dict[str, MonthBin]:
     months: dict[str, MonthBin] = {}
     if not v1_dir.exists():
         return months
-    for path in sorted(v1_dir.glob("*.bin")):
+    for path in sorted(v1_dir.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9].bin")):
         try:
             months[path.stem] = read_month(path)
         except ValueError:
@@ -325,73 +373,90 @@ def fill_v1_holes(
     v1_dir: Path,
     *,
     extra_holes: Iterable[date] | None = None,
-    smooth: str = "all",
+    smooth: str = "tail",
+    resmooth_from: date | None = None,
 ) -> dict:
-    """Replace/insert synthetic frames, hold 1-day dropouts, then 10-day smooth.
+    """Fill holes, hold 1-day dropouts, then triangular 19-day smooth.
 
-    Detection uses each real day's sat count (set bits). Existing
-    FLAG_SYNTHETIC days are always re-filled. Then: interpolate/hold holes,
-    membership-hold 1-day dropouts on real days, 10-day shortest-arc mean.
-    Does not invent calendar days that were never a dump unless listed in
-    extra_holes.
+    smooth="all": the bins hold raw frames (pack_timeline). Every hole is
+    re-filled and every day smoothed.
+
+    smooth="tail" (daily append, fill-holes): bins before the active range
+    are final and are not touched. Active range = `resmooth_from` or the
+    newest day minus SMOOTH_HALF. Raw frames come from raw_tail.bin when
+    present, else from the bins (then they must still be raw). In the
+    active range, wipeouts, FLAG_SYNTHETIC days, `extra_holes`, and missing
+    calendar days become interpolated (or held) synthetic frames; then days
+    in the range are re-smoothed with the context of up to SMOOTH_HALF older
+    days. raw_tail.bin is rewritten with the newest real raw frames.
     """
     v1_dir = Path(v1_dir)
     months = load_months(v1_dir)
     ordered = flatten_frames(months)
-    if not ordered and not extra_holes:
-        return {
-            "synthetic": [],
-            "last_real": None,
-            "days": 0,
-            "bytes": 0,
-            "months": [],
-            "rewritten": [],
-        }
+    extra = {date_to_ymd(d) for d in (extra_holes or [])}
+    if not ordered and not extra:
+        return {"synthetic": [], "last_real": None, "days": 0, "bytes": 0, "months": [], "rewritten": []}
 
-    counts: list[int | None] = [
-        None if is_synthetic(f.flags) else len(f.slots) for f in ordered
-    ]
+    raw_tail = read_raw_tail(v1_dir) if smooth == "tail" else {}
+    src = {f.date: raw_tail.get(f.date, f) for f in ordered}
+    for ymd, f in raw_tail.items():
+        src.setdefault(ymd, f)
+    all_dates = sorted(set(src) | extra)
+    newest = ymd_to_date(all_dates[-1])
+    if smooth == "all":
+        active_from = all_dates[0]
+    else:
+        start = resmooth_from or (newest - timedelta(days=SMOOTH_HALF))
+        active_from = date_to_ymd(start)
+        # Missing calendar days in the active range become synthetic fills.
+        first_real = min(src) if src else active_from
+        d = max(ymd_to_date(active_from), ymd_to_date(first_real))
+        while d <= newest:
+            if date_to_ymd(d) not in src:
+                extra.add(date_to_ymd(d))
+            d += timedelta(days=1)
+        all_dates = sorted(set(src) | extra)
+    ctx_from = date_to_ymd(ymd_to_date(active_from) - timedelta(days=SMOOTH_HALF))
+
+    series_in = [src[y] for y in sorted(src)]
+    counts: list[int | None] = [None if is_synthetic(f.flags) else len(f.slots) for f in series_in]
     mask = wipeout_mask(counts)
-    holes: set[int] = set()
-    for frame, wo in zip(ordered, mask):
-        if wo or is_synthetic(frame.flags):
+    holes: set[int] = set(extra)
+    for frame, wo in zip(series_in, mask):
+        if frame.date >= active_from and (wo or is_synthetic(frame.flags)):
             holes.add(frame.date)
-    for d in extra_holes or []:
-        holes.add(date_to_ymd(d))
+    reals = [f for f in series_in if f.date not in holes and not is_synthetic(f.flags)]
 
-    reals = [f for f in ordered if f.date not in holes]
-    all_ymds = sorted(set(f.date for f in ordered) | holes)
-
-    filled: dict[int, DayFrame] = {}
-    for ymd in all_ymds:
+    work_dates = [y for y in all_dates if y >= ctx_from]
+    work: list[DayFrame] = []
+    for ymd in work_dates:
         if ymd not in holes:
-            src = next(f for f in ordered if f.date == ymd)
-            filled[ymd] = src
+            work.append(src[ymd])
             continue
         before = next((f for f in reversed(reals) if f.date < ymd), None)
         after = next((f for f in reals if f.date > ymd), None)
         if before is not None and after is not None:
-            filled[ymd] = interpolate_frame(before, after, ymd)
+            work.append(interpolate_frame(before, after, ymd))
         elif before is not None:
-            filled[ymd] = hold_frame(before, ymd)
+            work.append(hold_frame(before, ymd))
         else:
-            filled[ymd] = empty_synthetic(ymd)
+            work.append(empty_synthetic(ymd))
 
-    # Interpolate/hold holes (done) → membership hold → 10-day smooth.
-    series = hold_one_day_dropouts([filled[y] for y in all_ymds])
-    if smooth == "changed":
-        series = smooth_changed(series, ordered)
-    else:
-        series = smooth_nday(series)
-    filled = {f.date: f for f in series}
+    held = hold_one_day_dropouts(work)
+    smoothed = smooth_nday(held, only_from=active_from)
+    filled = {f.date: f for f in ordered}
+    for f in smoothed:
+        if f.date >= active_from:
+            filled[f.date] = f
+    keep = dict(raw_tail)
+    keep.update({f.date: f for f in work if f.date not in holes})
+    write_raw_tail(v1_dir, keep.values())
 
     rewritten: list[str] = []
     by_ym: dict[str, list[DayFrame]] = {}
     for ymd, frame in filled.items():
         d = ymd_to_date(ymd)
-        ym = f"{d.year:04d}-{d.month:02d}"
-        by_ym.setdefault(ym, []).append(frame)
-
+        by_ym.setdefault(f"{d.year:04d}-{d.month:02d}", []).append(frame)
     for ym, days in by_ym.items():
         days.sort(key=lambda f: f.date)
         old = months.get(ym)
@@ -400,27 +465,20 @@ def fill_v1_holes(
         if old is not None and old.days == days and old.catalog_len == catalog_len:
             continue
         y, m = int(ym[:4]), int(ym[5:7])
-        month = MonthBin(
-            year=y,
-            month=m,
-            catalog_len=catalog_len,
-            first_date=days[0].date,
-            days=days,
-        )
+        month = MonthBin(year=y, month=m, catalog_len=catalog_len, first_date=days[0].date, days=days)
         write_month(v1_dir / f"{ym}.bin", month)
         months[ym] = month
         rewritten.append(ym)
 
     last = last_real_frame(filled.values())
-    synthetic = [ymd_to_iso(y) for y in sorted(holes)]
-    month_names = sorted(months)
-    bytes_total = sum(p.stat().st_size for p in v1_dir.glob("*.bin")) if v1_dir.exists() else 0
+    synthetic = [ymd_to_iso(y) for y in sorted(filled) if is_synthetic(filled[y].flags)]
+    bytes_total = sum(p.stat().st_size for p in v1_dir.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9].bin")) if v1_dir.exists() else 0
     return {
         "synthetic": synthetic,
         "last_real": ymd_to_iso(last.date) if last is not None else None,
         "days": sum(len(m.days) for m in months.values()),
         "bytes": bytes_total,
-        "months": month_names,
+        "months": sorted(months),
         "rewritten": rewritten,
     }
 
@@ -429,12 +487,13 @@ def apply_hole_fill(
     timeline_dir: Path,
     *,
     extra_holes: Iterable[date] | None = None,
-    smooth: str = "all",
+    smooth: str = "tail",
+    resmooth_from: date | None = None,
 ) -> dict:
     """Fill v1/ holes and point catalog/manifest `end` at the last real dump."""
     timeline_dir = Path(timeline_dir)
     v1 = timeline_dir / "v1"
-    info = fill_v1_holes(v1, extra_holes=extra_holes, smooth=smooth)
+    info = fill_v1_holes(v1, extra_holes=extra_holes, smooth=smooth, resmooth_from=resmooth_from)
     catalog_path = timeline_dir / "catalog.json"
     if catalog_path.exists() and info["last_real"]:
         catalog = TimelineCatalog.load(catalog_path)

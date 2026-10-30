@@ -215,7 +215,7 @@ def pack_timeline(
         if last_day is None and not wipeout_dates:
             status.write("no TLE days in range\n")
             raise SystemExit("no TLE days in range")
-        filled = fill_v1_holes(v1, extra_holes=wipeout_dates)
+        filled = fill_v1_holes(v1, extra_holes=wipeout_dates, smooth="all")
         if filled["last_real"]:
             catalog.end = filled["last_real"]
         days_written = filled["days"]

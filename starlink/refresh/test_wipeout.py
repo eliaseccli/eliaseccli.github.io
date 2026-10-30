@@ -15,6 +15,8 @@ from refresh.wipeout import (
     FLAG_SYNTHETIC,
     apply_hole_fill,
     circular_mean,
+    date_to_ymd,
+    upsert_raw_tail,
     fill_v1_holes,
     hold_one_day_dropouts,
     interpolate_frame,
@@ -115,7 +117,7 @@ def _deg_days(xs: list[float], ys: list[float] | None = None) -> list[DayFrame]:
         y = 0.0 if ys is None else ys[i]
         days.append(
             DayFrame(
-                date=20200320 + i,
+                date=date_to_ymd(date(2020, 3, 20) + timedelta(days=i)),
                 slots=[0],
                 xs=[pack_u16(x)],
                 ys=[pack_u16(y)],
@@ -124,57 +126,119 @@ def _deg_days(xs: list[float], ys: list[float] | None = None) -> list[DayFrame]:
     return days
 
 
-class TestSmooth10Day(unittest.TestCase):
-    def test_edges_unsmoothed_and_window_mean(self):
-        # 12 days: first 4 and last 5 unsmoothed; indices 4,5,6 get [i-4 .. i+5].
-        xs = [10.0 + i for i in range(12)]
-        days = _deg_days(xs)
-        out = smooth_nday(days)
-        for i in list(range(4)) + list(range(7, 12)):
-            self.assertEqual(out[i].xs, days[i].xs, f"edge {i} must stay unsmoothed")
-        # day 4 uses xs[0:10] = 10..19, mean 14.5
-        self.assertAlmostEqual(unpack_u16(out[4].xs[0]), 14.5, places=2)
-        self.assertAlmostEqual(unpack_u16(out[5].xs[0]), 15.5, places=2)
-        self.assertAlmostEqual(unpack_u16(out[6].xs[0]), 16.5, places=2)
+class TestSmoothTriangular(unittest.TestCase):
+    def test_linear_drift_is_kept_in_the_middle(self):
+        # Symmetric triangular weights: a straight line is unchanged mid-series.
+        xs = [10.0 + i for i in range(30)]
+        out = smooth_nday(_deg_days(xs))
+        for i in range(9, 21):
+            self.assertAlmostEqual(unpack_u16(out[i].xs[0]), xs[i], places=2)
+
+    def test_edges_are_smoothed_one_sided(self):
+        # Noise on the newest day is damped, not left raw.
+        xs = [10.0] * 20 + [14.0]
+        out = smooth_nday(_deg_days(xs))
+        got = unpack_u16(out[-1].xs[0])
+        self.assertLess(got, 11.0)
+        self.assertGreater(got, 10.0)
+
+    def test_jitter_is_damped(self):
+        xs = [10.0 + (1.0 if i % 2 else -1.0) for i in range(40)]
+        out = smooth_nday(_deg_days(xs))
+        for i in range(9, 31):
+            self.assertLess(abs(unpack_u16(out[i].xs[0]) - 10.0), 0.15)
 
     def test_wrap_359_1(self):
-        # 12 days of 359/0/1 so the 10-day window at i=4 is all near 0°.
-        xs = [359.0, 0.0, 1.0] * 4
-        days = _deg_days(xs)
-        out = smooth_nday(days)
-        self.assertEqual(out[0].xs, days[0].xs)
-        self.assertEqual(out[-1].xs, days[-1].xs)
-        window = xs[0:10]
-        want = circular_mean(window)
-        self.assertAlmostEqual(unpack_u16(out[4].xs[0]), want, places=2)
-        self.assertLess(min(want, 360.0 - want), 2.0)
+        xs = [359.0, 0.0, 1.0] * 8
+        out = smooth_nday(_deg_days(xs))
+        for f in out:
+            v = unpack_u16(f.xs[0])
+            self.assertLess(min(v, 360.0 - v), 1.01)
 
-    def test_short_series_stays_unsmoothed(self):
-        days = _deg_days([10.0, 20.0, 30.0])
-        self.assertIs(smooth_nday(days), days)
-
-    def test_changed_smooth_is_noop_when_frames_match(self):
-        from refresh.wipeout import smooth_changed
-
-        days = _deg_days([10.0 + i for i in range(12)])
-        already = smooth_nday(days)
-        again = smooth_changed(already, already)
-        self.assertEqual(again[4].xs, already[4].xs)
-
-    def test_skips_slot_missing_any_window_day(self):
+    def test_gap_and_missing_slot_still_smooth(self):
+        # Day 5 missing entirely; slot 1 missing on days 3 and 7.
         days = []
-        for i in range(12):
-            slots = [0] if i != 2 else [0, 1]
-            xs = [pack_u16(10.0 + i)] if i != 2 else [pack_u16(12.0), pack_u16(90.0)]
-            ys = [pack_u16(0.0)] * len(slots)
-            days.append(DayFrame(date=20200320 + i, slots=slots, xs=xs, ys=ys))
-        # slot 1 only on day 2 — never a full 10-day member.
-        # slot 0 missing from no days; day 4 window includes day 2 which has slot 0.
+        for i in range(20):
+            if i == 5:
+                continue
+            slots = [0, 1] if i not in (3, 7) else [0]
+            x = 10.0 + (2.0 if i == 10 else 0.0)
+            days.append(
+                DayFrame(
+                    date=date_to_ymd(date(2020, 3, 1) + timedelta(days=i)),
+                    slots=slots,
+                    xs=[pack_u16(x)] * len(slots),
+                    ys=[pack_u16(0.0)] * len(slots),
+                )
+            )
         out = smooth_nday(days)
-        self.assertEqual(out[2].slots, [0, 1])
-        self.assertAlmostEqual(unpack_u16(out[2].xs[1]), 90.0, places=2)
-        # day 2 is an edge (index 2 < 4) so unsmoothed including slot 0
-        self.assertAlmostEqual(unpack_u16(out[2].xs[0]), 12.0, places=2)
+        spike = next(f for f in out if f.date == 20200311)
+        self.assertEqual(spike.slots, [0, 1])
+        for v in spike.xs:
+            self.assertLess(unpack_u16(v), 10.5)
+
+    def test_only_from_leaves_history(self):
+        days = _deg_days([10.0 + (i % 2) for i in range(20)])
+        out = smooth_nday(days, only_from=days[10].date)
+        for i in range(10):
+            self.assertIs(out[i], days[i])
+        self.assertNotEqual(out[15].xs, days[15].xs)
+
+
+class TestDailyTail(unittest.TestCase):
+    def test_daily_append_matches_full_smooth(self):
+        import random
+
+        rnd = random.Random(1)
+        raw = []
+        for i in range(40):
+            d = date(2026, 9, 1) + timedelta(days=i)
+            raw.append(
+                DayFrame(
+                    date=date_to_ymd(d),
+                    slots=[0, 1, 2],
+                    xs=[pack_u16((350.0 + 0.3 * i + rnd.uniform(-2, 2)) % 360) for _ in range(3)],
+                    ys=[pack_u16(5.0 + rnd.uniform(-2, 2)) for _ in range(3)],
+                )
+            )
+
+        def write(v1, frames):
+            by = {}
+            for f in frames:
+                by.setdefault(f.date // 100, []).append(f)
+            for ym, days in by.items():
+                write_month(
+                    v1 / f"{ym // 100:04d}-{ym % 100:02d}.bin",
+                    MonthBin(year=ym // 100, month=ym % 100, catalog_len=3, first_date=days[0].date, days=days),
+                )
+
+        def read_all(v1):
+            out = []
+            for p in sorted(v1.glob("????-??.bin")):
+                out.extend(decode_month(p.read_bytes()).days)
+            return out
+
+        with tempfile.TemporaryDirectory() as td:
+            full = Path(td) / "full" / "v1"
+            full.mkdir(parents=True)
+            write(full, raw)
+            fill_v1_holes(full, smooth="all")
+            inc = Path(td) / "inc" / "v1"
+            inc.mkdir(parents=True)
+            write(inc, raw[:25])
+            fill_v1_holes(inc, smooth="all")
+            for f in raw[25:]:
+                ym = f.date // 100
+                path = inc / f"{ym // 100:04d}-{ym % 100:02d}.bin"
+                month = decode_month(path.read_bytes()) if path.exists() else MonthBin(
+                    year=ym // 100, month=ym % 100, catalog_len=3, first_date=f.date, days=[]
+                )
+                month.days = [d for d in month.days if d.date != f.date] + [f]
+                month.days.sort(key=lambda d: d.date)
+                write_month(path, month)
+                upsert_raw_tail(inc, f)
+                fill_v1_holes(inc)
+            self.assertEqual(read_all(inc), read_all(full))
 
 
 class TestFillBins(unittest.TestCase):

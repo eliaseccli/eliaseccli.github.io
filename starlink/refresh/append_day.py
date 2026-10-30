@@ -13,7 +13,7 @@ from refresh.fetch import load_catalog, read_gp_cache
 from refresh.j2 import pack_u16
 from refresh.lock import LockState, apply_locks
 from refresh.parse import Sat, parse_omm_records, parse_tle_file
-from refresh.wipeout import apply_hole_fill, today_is_wipeout
+from refresh.wipeout import apply_hole_fill, today_is_wipeout, upsert_raw_tail
 
 
 class TimelineSkip(Exception):
@@ -97,7 +97,7 @@ def append_today(
         # Broken dump: do not clock-match, do not add NORADs, do not
         # advance catalog/manifest end. Insert a synthetic hold so the
         # next real day can lerp across the hole.
-        filled = apply_hole_fill(timeline_dir, extra_holes=[day], smooth="changed")
+        filled = apply_hole_fill(timeline_dir, extra_holes=[day])
         return {
             "date": day_s,
             "n": 0,
@@ -157,8 +157,10 @@ def append_today(
     refs.save(refs_path)
     lock_state.save(lock_path)
 
-    # Re-lerp any synthetic holes now that today is a new real bound.
-    filled = apply_hole_fill(timeline_dir, smooth="changed")
+    # Keep today's raw frame, then re-fill and re-smooth the newest days
+    # (one-sided window at the end; redone as later days arrive).
+    upsert_raw_tail(v1_dir, frame)
+    filled = apply_hole_fill(timeline_dir)
     catalog = TimelineCatalog.load(catalog_path)
     return {
         "date": day_s,

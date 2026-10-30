@@ -25,9 +25,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--date", default="", help="Frame date YYYY-MM-DD (default: UTC today)")
     fill = sub.add_parser(
         "fill-holes",
-        help="Replace 20%+ catalog wipeouts, hold 1-day dropouts, 10-day smooth",
+        help="Fill wipeouts/missing days and re-smooth the newest days from raw",
     )
     fill.add_argument("--timeline", default="starlink/timeline")
+    fill.add_argument(
+        "--resmooth-from",
+        default="",
+        help="YYYY-MM-DD: first day to re-smooth (bins from here on must be raw "
+        "or covered by raw_tail.bin). Default: newest day minus 9.",
+    )
     fetch = sub.add_parser(
         "fetch",
         help="Download Starlink GP JSON once into STARLINK_CACHE",
@@ -91,7 +97,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {args.out}: {payload['n']} sats, epoch {payload['epoch']}")
         return 0
     if args.cmd == "fill-holes":
-        info = apply_hole_fill(Path(args.timeline))
+        info = apply_hole_fill(
+            Path(args.timeline),
+            resmooth_from=date.fromisoformat(args.resmooth_from) if args.resmooth_from else None,
+        )
         print(
             f"filled {len(info['synthetic'])} synthetic days, "
             f"end {info['last_real']}, days {info['days']}"

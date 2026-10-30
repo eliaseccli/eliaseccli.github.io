@@ -23,16 +23,29 @@ alpha in the packed format). A sat present on both neighbors but missing
 today is held (lerp) even when the day is not a wipeout. Do not invent
 slots.
 
-After hole-fill, Play (x, y) is a **10-day centered shortest-arc mean**
-(frames `[i-4 .. i+5]`) for slots present on all 10 days. The first 4 and
-last 5 packed days stay unsmoothed. Clocks stay on real unsmoothed dumps.
-`fill-holes` / `pack_timeline` smooth the whole series; daily `append-day`
-only re-smooths days whose 10-day window includes a new or changed frame
-so history is not blurred again. This pin is a try vs the 3-day mean
-(`w20sm3`); revert the pack pin to go back.
+After hole-fill, Play (x, y) is a **triangular shortest-arc mean over
+calendar days `[d-9 .. d+9]`**, weight `10 − |k|` for a day `k` days away
+(the 10-day box mean applied twice). The window is by calendar date: a
+missing day or a sat missing on some days just drops out of the window, it
+never turns smoothing off. Only slots present on day `d` are written. At the
+newest end the window is one-sided (trailing), so the last days are smoothed
+too; they are re-smoothed as later days arrive. Clocks stay on real
+unsmoothed dumps.
 
-To refill packed bins without Space-Track TLEs (detector + interpolator only;
-does not rebuild `shell_refs.json` / `lock_state.json`):
+Smoothing needs raw input, so `v1/raw_tail.bin` (same STLK v1 layout, not
+a month: not in `manifest.months`, not read by the page) keeps the newest 21 real raw frames. Daily `append-day` writes
+today's raw frame there, then re-fills holes and re-smooths only the newest
+10 days (`d ≥ newest − 9`) from raw; older days are final and are never
+smoothed twice. Missing calendar days in that range become interpolated
+`FLAG_SYNTHETIC` frames. Frames before 2026-08-19 came from the TLE pack
+with the earlier 10-day box mean; from 2026-08-19 on they use the
+triangular mean (2026-08-30/31 are synthetic: no TLE or Celestrak data).
+
+To refill and re-smooth the newest days without Space-Track TLEs (detector
+and interpolator only; does not rebuild `shell_refs.json` / `lock_state.json`).
+It is idempotent. `--resmooth-from YYYY-MM-DD` re-smooths from that day on;
+use it only when the bins from that day on are raw or covered by
+`raw_tail.bin`, or they get smoothed twice:
 
 ```
 PYTHONPATH=starlink python3 -m refresh fill-holes --timeline starlink/timeline
@@ -82,7 +95,7 @@ PYTHONPATH=starlink TLE_DIR=/workspace/spacetrack-tles \
 ```
 
 Range is 2019-05-24 through the latest TLE day. Writes `STATUS.txt` year by
-year plus `catalog.json`, `shell_refs.json`, `lock_state.json`, `manifest.json`,
+year plus `v1/raw_tail.bin`, `catalog.json`, `shell_refs.json`, `lock_state.json`, `manifest.json`,
 and `v1/*.bin`.
 
 Do not commit `.tle` files (`*.tle` is gitignored). Do not fetch Space-Track
