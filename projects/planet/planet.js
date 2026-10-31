@@ -1027,9 +1027,12 @@ const ZMIN = 0.004, ZMAX = 1.9;
 const camDirL = V();
 let vel = { x: 0, y: 0 }, last = 0, zoom = 1, zoomTarget = 1, pinch0 = 0, zoom0 = 1, down = null, idle = 0, shake = 0;
 const qx = new THREE.Quaternion(), qy = new THREE.Quaternion();
+// dragging orbits the CAMERA around a fixed planet: the sun, moon and stars stay put in space, so you can
+// fly over to the night side and back to the day side (trackball around the camera's own axes)
+const camQ = new THREE.Quaternion();
 function spin(dx, dy) {
-  qy.setFromAxisAngle(V(0, 1, 0), dx); qx.setFromAxisAngle(V(1, 0, 0), dy);
-  world.quaternion.premultiply(qy).premultiply(qx);
+  qy.setFromAxisAngle(V(0, 1, 0), -dx); qx.setFromAxisAngle(V(1, 0, 0), -dy);
+  camQ.multiply(qy).multiply(qx).normalize();
 }
 canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture?.(e.pointerId);
@@ -1139,7 +1142,7 @@ setInterval(() => save(), 8000);
 /* ---------- test / debug hooks ---------- */
 let fpsAvg = 60, frames = 0;
 window.__planet = {
-  _dbg: { world, camera, planet, sunDir, sunLocal, sunLight, sun, moon, wat, field, applyCrater, applyLake, applyLand, coolLava, waterDepth, villages, clouds, makeCloud, makeVillage, V, impact: (d, size) => impact({ d: V(...d).normalize(), size, rock: new THREE.Object3D() }), get vapor() { return vapor; }, set wildT(v) { wildT = v; }, setZoom: (v) => { zoom = zoomTarget = v; }, get zoom() { return zoom; } },
+  _dbg: { world, camera, camQ, planet, sunDir, sunLocal, sunLight, sun, moon, wat, field, applyCrater, applyLake, applyLand, coolLava, waterDepth, villages, clouds, makeCloud, makeVillage, V, impact: (d, size) => impact({ d: V(...d).normalize(), size, rock: new THREE.Object3D() }), get vapor() { return vapor; }, set wildT(v) { wildT = v; }, setZoom: (v) => { zoom = zoomTarget = v; }, get zoom() { return zoom; } },
   get speed() { return speed; }, set speed(v) { speed = clamp(+v || 1, 0.1, 200); },
   stats: () => ({ trees: standing(), allTrees: trees.length, critters: alive(), births: S.births || 0, deaths: S.deaths || 0, craters: S.craters || 0, volcanoes: volcanoes.length, eruptions: S.eruptions || 0, simT: r3(simT), fps: Math.round(fpsAvg), frames, tris: planetGeo.index.count / 3, villages: villages.filter((v) => !v.ruin).length, ruins: villages.filter((v) => v.ruin).length, houses: villages.reduce((a, v) => a + (v.ruin ? 0 : v.n), 0), clouds: clouds.length, water: Math.round(waterVolume() * 1e4) / 1e4, vapor: Math.round(vapor * 1e4) / 1e4, cloudWater: Math.round(clouds.reduce((a, c) => a + c.w, 0) * 1e4) / 1e4 }),
   spawn(kind, n = 1) {
@@ -1176,14 +1179,14 @@ function frame(now) {
   zoom = Math.exp(lerp(Math.log(zoom), Math.log(zoomTarget), 1 - Math.exp(-dt * 10)));
   shake = Math.max(0, shake - dt * 1.6);
   // never dip below the ground under the camera (terrain, sea, volcano cones + a little headroom)
-  camDirL.set(0, 0, 1).applyQuaternion(wqInv.copy(world.quaternion).invert());
+  camDirL.set(0, 0, 1).applyQuaternion(camQ).applyQuaternion(wqInv.copy(world.quaternion).invert());
   const ground = Math.max(surfaceH(camDirL), WATER) + 0.022;
   let camD = 1 + (fitDist - 1) * zoom;
   if (camD < ground) { camD = ground; zoom = zoomTarget = Math.max(zoomTarget, (ground - 1) / (fitDist - 1)); }
   const sh = shake * 0.04 * Math.min(1, (camD - 1) * 2);
-  camPos.set(rnd(-1, 1) * sh, rnd(-1, 1) * sh, camD);
+  camPos.set(rnd(-1, 1) * sh, rnd(-1, 1) * sh, camD).applyQuaternion(camQ);
   camera.position.copy(camPos);
-  camera.lookAt(0, 0, 0);
+  camera.quaternion.copy(camQ);
   // close to the ground, pitch up toward the horizon so critters and trees are seen from the side
   camera.rotateX(smooth(0.45, 0.03, camD - 1) * 1.15);
   const ang = (simT / DAY) * Math.PI * 2 + 0.8;
