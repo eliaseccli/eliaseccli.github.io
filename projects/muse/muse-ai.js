@@ -1,5 +1,7 @@
-/* Muse "describe it": turns a short English/German text into a genome change, fully on-device.
-   1) instant keyword parser (always available), 2) a small local LLM (WebLLM + Qwen2.5-0.5B, WebGPU) loaded lazily. */
+/* Muse "describe it", fully on-device:
+   1) instant keyword parser -> genome change (always available, also the fallback),
+   2) a local code model (WebLLM + Qwen2.5-Coder-1.5B, WebGPU, in a Web Worker) that writes a whole SVG artwork. */
+import { sanitize, valid } from "./muse-svg.js?v=1";
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 export const FAMS = ["flow", "bauhaus", "blobs", "voronoi", "contour", "circles", "landscape", "stripes", "waves", "truchet", "sunset", "orbits"];
 
@@ -75,60 +77,91 @@ export function apply(g0, it, mutate) {
   return g;
 }
 
-/* ---------- 2. local LLM ---------- */
+/* ---------- 2. local LLM: writes SVG art ---------- */
 const LIB = "./vendor/web-llm-0.2.87.js";
-let engine = null, loading = null, modelId = null;
-export const ai = { state: "idle", progress: 0, error: "", model: "" };
+const OLD = ["Qwen2.5-0.5B-Instruct-q4f16_1-MLC", "Qwen2.5-0.5B-Instruct-q4f32_1-MLC"]; // the previous small model: removed once the new one is in
+let engine = null, loading = null, lib = null;
+export const ai = { state: "idle", progress: 0, error: "", model: "", sizeMB: 0 };
 export const hasGPU = () => !!(navigator.gpu);
 export function load(onProgress) {
   if (loading) return loading;
   if (!hasGPU()) { ai.state = "unsupported"; return (loading = Promise.resolve(null)); }
-  ai.state = "loading";
+  ai.state = "loading"; ai.progress = 0;
   loading = (async () => {
     const adapter = await navigator.gpu.requestAdapter(); if (!adapter) { ai.state = "unsupported"; return null; }
     const f16 = adapter.features.has("shader-f16");
-    modelId = f16 ? "Qwen2.5-0.5B-Instruct-q4f16_1-MLC" : "Qwen2.5-0.5B-Instruct-q4f32_1-MLC"; ai.model = modelId;
-    const webllm = await import(LIB);
-    engine = await webllm.CreateMLCEngine(modelId, { initProgressCallback: (r) => { ai.progress = r.progress || 0; onProgress && onProgress(ai.progress, r.text || ""); } });
-    ai.state = "ready"; return engine;
-  })().catch((e) => { if (ai.state === "unsupported") return null; ai.state = "error"; ai.error = String(e && e.message || e); console.warn("Muse AI:", e); engine = null; return null; });
+    const id = f16 ? "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC" : "Qwen2.5-Coder-1.5B-Instruct-q4f32_1-MLC"; ai.model = id;
+    lib = await import(LIB);
+    const opts = { initProgressCallback: (r) => { ai.progress = r.progress || 0; onProgress && onProgress(ai.progress, r.text || ""); } };
+    try { // a worker keeps the page (swipes, the swirl) smooth while the model thinks
+      engine = await lib.CreateWebWorkerMLCEngine(new Worker(new URL("./muse-llm-worker.js?v=1", import.meta.url), { type: "module" }), id, opts);
+    } catch (e) { console.warn("Muse AI worker failed, using main thread:", e); engine = await lib.CreateMLCEngine(id, opts); }
+    ai.state = "ready";
+    for (const o of OLD) { try { if (await lib.hasModelInCache(o)) await lib.deleteModelAllInfoInCache(o); } catch (e) {} }
+    return engine;
+  })().catch((e) => { if (ai.state === "unsupported") return null; ai.state = "error"; ai.error = String(e && e.message || e); console.warn("Muse AI:", e); engine = null; loading = null; return null; });
   return loading;
 }
-const SCHEMA = { type: "object", properties: {
-  family: { type: "string", enum: ["keep", ...FAMS] }, hue: { type: "integer", minimum: -1, maximum: 360 },
-  saturation: { type: "number" }, brightness: { type: "number" }, dark_background: { type: "boolean" }, colour_variety: { type: "number" },
-  density: { type: "number" }, shape_size: { type: "number" }, texture: { type: "number" }, avoid_hue: { type: "integer", minimum: -1, maximum: 360 } },
-  required: ["family", "hue", "saturation", "brightness", "dark_background", "colour_variety", "density", "shape_size", "texture", "avoid_hue"] };
-const SYS = `You control a generative art machine. The user describes the picture they want or a change, in English or German.
-Reply with ONLY a JSON object of new settings, starting from the current settings and changing only what the user asked for.
-Fields: family = art style ("keep" or one of: flow=organic flowing hair-like lines, bauhaus=geometric tiles, blobs=soft blurred gradients, voronoi=cell mosaic, contour=topographic lines, circles=packed circles/bubbles, landscape=mountain layers, stripes, waves=wavy lines, truchet=maze tiles, sunset=retro sun, orbits=planets and rings).
-hue = main colour angle 0-360 (red 0, orange 25, yellow 55, green 125, teal 175, blue 220, purple 275, pink 325), or -1 to keep.
-saturation, brightness, colour_variety, density (amount of detail), shape_size, texture (film grain) are numbers 0..1.
-dark_background true/false. avoid_hue = a colour angle the user does NOT want, else -1.`;
-export async function ask(text, g) {
-  if (!engine) return null;
-  try { return await ask1(text, g); } catch (e) { console.warn('Muse AI:', e); if (/lost|disposed|Instance/i.test(String(e && e.message || e))) { ai.state = 'error'; engine = null; } return null; }
+export const ready = () => !!engine || !!window.__museSvgStub;
+
+const SYS = `You are a world-class generative vector artist. You write ONE complete, self-contained SVG artwork and nothing else.
+Rules:
+- Output only SVG code, starting with <svg and ending with </svg>. No markdown, no explanation.
+- Use exactly the viewBox you are given. The first element after <defs> must be a full-size background <rect> covering the whole viewBox (full-bleed, no empty margins).
+- Make real art, not clip-art or icons: a clear composition with foreground, middle ground and background, depth, light, and a harmonious palette of 4-7 colours.
+- Use <defs> with linearGradient/radialGradient (and optionally a feGaussianBlur or feTurbulence filter) and reference them with fill="url(#id)".
+- Use many shapes (30-80): layered paths with smooth curves (C, Q), circles, ellipses, polygons, varied opacity. Repeat motifs with small variations.
+- Never use <script>, <foreignObject>, <image>, <style>, event attributes or external links. No text unless asked.
+- Keep numbers short (integers or one decimal).`;
+const EX1U = `Picture: "calm moonlit lake with pine trees". viewBox="0 0 600 1000"`;
+const EX1A = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1335"/><stop offset=".6" stop-color="#3a4f8f"/><stop offset="1" stop-color="#9fb4e0"/></linearGradient><radialGradient id="moon"><stop offset="0" stop-color="#fffbe8"/><stop offset=".5" stop-color="#fff3c4" stop-opacity=".5"/><stop offset="1" stop-color="#fff3c4" stop-opacity="0"/></radialGradient><linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6c84c4"/><stop offset="1" stop-color="#0a1230"/></linearGradient><filter id="soft"><feGaussianBlur stdDeviation="6"/></filter></defs><rect width="600" height="1000" fill="url(#sky)"/><circle cx="420" cy="230" r="160" fill="url(#moon)"/><circle cx="420" cy="230" r="46" fill="#fffbe8"/><g fill="#fff" opacity=".8"><circle cx="80" cy="90" r="1.6"/><circle cx="190" cy="160" r="1.2"/><circle cx="300" cy="70" r="1.8"/><circle cx="540" cy="120" r="1.3"/><circle cx="130" cy="300" r="1"/></g><path d="M0 560 C120 470 220 520 320 480 C420 440 500 500 600 470 L600 620 L0 620Z" fill="#2b3a6e"/><path d="M0 600 C150 540 260 590 380 560 C470 540 540 580 600 560 L600 640 L0 640Z" fill="#1c2752"/><rect y="630" width="600" height="370" fill="url(#lake)"/><ellipse cx="420" cy="700" rx="30" ry="90" fill="#fffbe8" opacity=".35" filter="url(#soft)"/><g fill="#0b1430"><polygon points="40,640 70,520 100,640"/><polygon points="80,645 120,480 160,645"/><polygon points="140,640 165,550 190,640"/><polygon points="470,640 500,530 530,640"/><polygon points="520,642 555,500 590,642"/></g><g stroke="#cfdcff" stroke-width="2" opacity=".35" stroke-linecap="round"><path d="M360 720 H480"/><path d="M380 760 H460"/><path d="M340 800 H500"/><path d="M390 850 H450"/></g></svg>`;
+const EX2U = `Picture: "abstract warm geometric sunrise, bauhaus". viewBox="0 0 600 1000"`;
+const EX2A = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6e7cf"/><stop offset="1" stop-color="#eac9a0"/></linearGradient><linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#e2492f"/></linearGradient></defs><rect width="600" height="1000" fill="url(#bg)"/><circle cx="300" cy="420" r="190" fill="url(#sun)"/><g fill="#f6e7cf"><rect x="100" y="440" width="400" height="14"/><rect x="100" y="480" width="400" height="20"/><rect x="100" y="526" width="400" height="28"/></g><rect y="600" width="600" height="400" fill="#1f3a5f"/><path d="M0 600 A300 300 0 0 1 300 900 L0 900Z" fill="#2f6f73"/><path d="M600 600 A300 300 0 0 0 300 900 L600 900Z" fill="#e2492f" opacity=".9"/><rect y="900" width="600" height="100" fill="#14263f"/><g fill="#14263f"><circle cx="90" cy="160" r="40"/><rect x="460" y="110" width="80" height="80" transform="rotate(20 500 150)"/></g><g fill="none" stroke="#1f3a5f" stroke-width="6"><path d="M60 260 Q150 200 240 260"/><path d="M360 250 Q450 190 540 250"/></g><g fill="#ffb347"><polygon points="300,610 330,660 270,660"/><polygon points="300,680 330,730 270,730"/><polygon points="300,750 330,800 270,800"/></g><g fill="#f6e7cf" opacity=".7"><circle cx="150" cy="940" r="8"/><circle cx="200" cy="950" r="8"/><circle cx="250" cy="940" r="8"/><circle cx="350" cy="950" r="8"/><circle cx="400" cy="940" r="8"/><circle cx="450" cy="950" r="8"/></g></svg>`;
+
+export function viewBoxFor(W, H) { const w = 600; return [w, Math.round(w * H / Math.max(1, W))]; }
+export function messagesFor(text, vw, vh, prev) {
+  const m = [{ role: "system", content: SYS }, { role: "user", content: EX1U }, { role: "assistant", content: EX1A }, { role: "user", content: EX2U }, { role: "assistant", content: EX2A }];
+  const vb = `viewBox="0 0 ${vw} ${vh}"`;
+  if (prev && prev.length < 3600) m.push({ role: "user", content: `Here is an artwork you made for "${text}":\n${prev}\nNow paint a fresh VARIATION of it: same mood and palette family, but a new composition, moved and reshaped elements, a few new details. Full new SVG, ${vb}.` });
+  else m.push({ role: "user", content: `Picture: "${text.slice(0, 300)}"${prev ? " (a new variation, different composition)" : ""}. ${vb}` });
+  return m;
 }
-async function ask1(text, g) {
-  const cur = { family: g.fam, hue: Math.round(g.hue), saturation: +g.sat.toFixed(2), brightness: +g.lum.toFixed(2), dark_background: !!g.bgDark, colour_variety: +g.spread.toFixed(2), density: +g.p[0].toFixed(2), shape_size: +g.p[1].toFixed(2), texture: +g.grain.toFixed(2), avoid_hue: -1 };
-  const t0 = performance.now();
-  const lim = window.__museAITimeout || 20000; let timer;
-  const gen = engine.chat.completions.create({ messages: [{ role: "system", content: SYS }, { role: "user", content: `Current settings: ${JSON.stringify(cur)}\nUser: ${text.slice(0, 300)}` }],
-    temperature: 0.3, max_tokens: 160, response_format: { type: "json_object", schema: JSON.stringify(SCHEMA) } });
-  const r = await Promise.race([gen, new Promise((res) => (timer = setTimeout(() => { try { engine.interruptGenerate(); } catch (e) {} res(null); }, lim)))]); clearTimeout(timer);
-  if (!r) { ai.lastMs = lim; ai.timedOut = true; return null; }
-  ai.lastMs = Math.round(performance.now() - t0);
-  let j; try { j = JSON.parse(r.choices[0].message.content); } catch (e) { return null; }
-  return toIntent(j, cur);
+/* writes an SVG for the text (or a variation of prev). onProgress(0..1). Retries once, returns { svg, ms } or null */
+export async function drawSVG(text, { W, H, prev = null, onProgress } = {}) {
+  const [vw, vh] = viewBoxFor(W, H), t0 = performance.now();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const msgs = messagesFor(text, vw, vh, attempt ? null : prev);
+    let raw = "";
+    try { raw = await generate(msgs, attempt, onProgress); } catch (e) { console.warn("Muse AI:", e); if (/lost|disposed|Instance/i.test(String(e && e.message || e))) { ai.state = "error"; engine = null; loading = null; return null; } }
+    const r = sanitize(raw, vw, vh);
+    if (valid(r)) { ai.lastMs = Math.round(performance.now() - t0); return { svg: r.svg, ms: ai.lastMs, tries: attempt + 1 }; }
+    console.warn("Muse AI: unusable SVG, attempt", attempt + 1, raw.slice(0, 200));
+  }
+  ai.lastMs = Math.round(performance.now() - t0); return null;
 }
-function num(v, d) { v = Number(v); return Number.isFinite(v) ? clamp(v, 0, 1) : d; }
-function toIntent(j, cur) {
-  const it = { fam: null, avoidFam: [], hue: null, avoidHue: [], d: {}, chips: [] };
-  if (FAMS.includes(j.family) && j.family !== cur.family) { it.fam = j.family; it.chips.push(j.family); }
-  const h = Number(j.hue); if (Number.isFinite(h) && h >= 0 && Math.abs(((h - cur.hue + 540) % 360) - 180) > 12) { it.hue = h % 360; it.chips.push("hue " + Math.round(h)); }
-  const ah = Number(j.avoid_hue); if (Number.isFinite(ah) && ah >= 0) { it.avoidHue.push(ah % 360); it.chips.push("avoid " + Math.round(ah)); }
-  const set = (k, f, label) => { const v = num(j[k], cur[k]), dv = v - cur[k]; if (Math.abs(dv) > 0.04) { it.d[f] = dv; it.chips.push(label + (dv > 0 ? "↑" : "↓")); } };
-  set("saturation", "sat", "sat"); set("brightness", "lum", "light"); set("colour_variety", "spread", "variety"); set("density", "density", "detail"); set("shape_size", "size", "size"); set("texture", "grain", "texture");
-  if (typeof j.dark_background === "boolean" && j.dark_background !== cur.dark_background) { it.d.dark = j.dark_background ? 1 : 0; it.chips.push(j.dark_background ? "dark" : "light bg"); }
-  return it;
+const MAXTOK = 1500;
+async function generate(messages, attempt, onProgress) {
+  if (window.__museSvgStub) return await window.__museSvgStub(messages, attempt, onProgress);
+  if (!engine) return "";
+  const lim = window.__museAITimeout || 150000, t0 = performance.now();
+  const stream = await engine.chat.completions.create({ messages, temperature: attempt ? 0.9 : 0.75, top_p: 0.95, max_tokens: MAXTOK, stream: true });
+  let out = "", n = 0;
+  for await (const ch of stream) {
+    out += (ch.choices[0] && ch.choices[0].delta && ch.choices[0].delta.content) || ""; n++;
+    onProgress && onProgress(Math.min(0.99, n / 1100)); // a typical piece is ~1000 tokens
+    if (out.includes("</svg>") || performance.now() - t0 > lim) { try { engine.interruptGenerate(); } catch (e) {} break; } // a cut-off piece is repaired by the sanitizer
+  }
+  return out;
 }
+export async function unload() { const e = engine; engine = null; loading = null; ai.state = "idle"; ai.progress = 0; try { e && await e.unload(); } catch (err) {} }
+/* delete every WebLLM cache (Cache Storage + IndexedDB). Returns freed bytes, or null if the browser can't tell */
+export async function removeModel() {
+  await unload();
+  const est = async () => { try { return (await navigator.storage.estimate()).usage; } catch (e) { return null; } };
+  const before = await est(); let n = 0;
+  try { for (const k of await caches.keys()) if (/webllm|mlc|tvmjs/i.test(k)) { await caches.delete(k); n++; } } catch (e) {}
+  try { if (indexedDB.databases) for (const d of await indexedDB.databases()) if (d.name && /webllm|mlc|tvmjs/i.test(d.name)) { await new Promise((res) => { const r = indexedDB.deleteDatabase(d.name); r.onsuccess = r.onerror = r.onblocked = () => res(); }); n++; } } catch (e) {}
+  const after = await est();
+  return { freed: before != null && after != null ? Math.max(0, before - after) : null, n };
+}
+export async function cached() { try { return (await caches.keys()).some((k) => /webllm/i.test(k)); } catch (e) { return false; } }

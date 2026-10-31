@@ -59,3 +59,6 @@ body.clean .ask { opacity: 0; pointer-events: none; }
 .dream.on { opacity: 1; }
 .dreamlabel { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 92px); z-index: 5; text-align: center; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: rgba(255,255,255,.85); text-shadow: 0 1px 8px rgba(0,0,0,.6); pointer-events: none; }
 .dreamlabel b { font-variant-numeric: tabular-nums; }
+.prompt .rmai { width: auto; height: 26px; margin: 0 6px 2px auto; padding: 0 11px; border-radius: 13px; background: rgba(255,255,255,.1); color: rgba(255,255,255,.7); font: inherit; font-size: 12px; border: 1px solid rgba(255,255,255,.16); }
+.prompt .rmai[hidden] { display: none; }
+.prompt .rmai:disabled { opacity: .4; }

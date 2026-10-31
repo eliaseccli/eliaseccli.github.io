@@ -190,21 +190,46 @@ function render(cv, g, W, H, dpr) {
   if (g.p[7] > 0.4) { const v = c.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.hypot(w, h) * 0.6); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, `rgba(0,0,0,${(g.p[7] - 0.4) * 0.7})`); c.fillStyle = v; c.fillRect(0, 0, w, h); }
 }
 
+/* ---------- AI vector pieces: an entry { svg, prompt, fb } is drawn from a blob-URL Image ---------- */
+const imgs = new Map(); // svg+size -> Promise<Image>
+function svgImage(svg, pw, ph) {
+  const k = pw + "x" + ph + svg; if (imgs.has(k)) return imgs.get(k);
+  const p = new Promise((res, rej) => { const url = URL.createObjectURL(new Blob([SVGX.sized(svg, pw, ph)], { type: "image/svg+xml" })), im = new Image();
+    im.onload = () => { res(im); setTimeout(() => URL.revokeObjectURL(url), 1000); }; im.onerror = () => { URL.revokeObjectURL(url); rej(new Error("svg")); }; im.src = url; });
+  p.catch(() => imgs.delete(k)); imgs.set(k, p); if (imgs.size > 24) imgs.delete(imgs.keys().next().value); return p;
+}
+let SVGX = null; // muse-svg.js, loaded once (also by muse-ai.js)
+const svgReady = import("./muse-svg.js?v=1").then((m) => (SVGX = m));
+// draw any history entry (genome or svg) into a canvas; svg pieces finish asynchronously
+function drawEntry(cv, e, W, H, dpr) {
+  if (!e) return Promise.resolve();
+  if (!e.svg) { render(cv, e.g, W, H, dpr); return Promise.resolve(); }
+  const w = Math.round(W * dpr), h = Math.round(H * dpr); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const want = cv.__want = e.svg;
+  return svgReady.then(() => svgImage(e.svg, w, h)).then((im) => { if (cv.__want !== want) return; const c = cv.getContext("2d"); c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.filter = "none"; c.fillStyle = "#0b0b0f"; c.fillRect(0, 0, w, h); c.drawImage(im, 0, 0, w, h); })
+    .catch((err) => { console.warn("Muse: svg draw failed", err); if (cv.__want === want && e.fb) render(cv, e.fb, W, H, dpr); });
+}
+const genomeOf = (e) => (e && (e.g || e.fb)) || null; // svg pieces keep a fallback genome from their description
+
 /* ---------- state: history of shown genomes; each entry remembers which liked genome it grew from ---------- */
 // S.h = [{ g, base }], base = index of the liked entry this one was mutated from (-1 = random); S.i = current; S.liked = index of last liked
 let S = { h: [], i: -1, liked: -1, likes: 0 };
 function load() { try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && Array.isArray(s.h) && s.h.length) S = s; } catch (e) {} }
-function save() { try { if (S.h.length > 300) { const cut = S.h.length - 300; S.h = S.h.slice(cut); S.i -= cut; S.liked -= cut; } localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function trim(max) { if (S.h.length > max) { const cut = Math.min(S.h.length - max, S.i); S.h = S.h.slice(cut); S.i -= cut; S.liked = Math.max(-1, S.liked - cut); for (const e of S.h) { if (e.base != null) e.base = Math.max(-1, e.base - cut); if (e.liked != null) e.liked = Math.max(-1, e.liked - cut); } } }
+function save() { trim(300); for (const max of [300, 120, 40, 10]) { trim(max); try { localStorage.setItem(KEY, JSON.stringify(S)); return; } catch (e) {} } }
 const cur = () => S.h[S.i];
 // what comes next for each verdict (precomputed so the card underneath can show it while you drag)
 let nextLike = null, nextNope = null;
+// a "next" is either a genome, or { vary: index } = ask the model for a variation of that svg piece when chosen
+function grow(k, amt) { const e = S.h[k]; return e.svg ? { vary: k } : mutate(e.g, amt); }
 function plan() {
   const c = cur(); if (!c) return;
-  nextLike = mutate(c.g, 0.09);
-  const base = S.liked >= 0 && S.liked !== S.i ? S.h[S.liked].g : null;
-  nextNope = base ? mutate(base, 0.13) : randomGenome();
-  if (c.v === 1) nextNope = mutate(c.g, 0.13); // already liked: "nope" from here still grows from it
+  nextLike = grow(S.i, 0.09);
+  nextNope = S.liked >= 0 && S.liked !== S.i ? grow(S.liked, 0.13) : randomGenome();
+  if (c.v === 1) nextNope = grow(S.i, 0.13); // already liked: "nope" from here still grows from it
 }
+// preview for the card underneath: a genome renders, a pending variation shows its source piece
+const preview = (cv, n) => n.vary != null ? drawEntry(cv, S.h[n.vary], W, H, DPR) : drawEntry(cv, { g: n }, W, H, DPR);
 
 /* ---------- view ---------- */
 const top = $("[data-top]"), cvTop = $("[data-cv]"), cvUnder = $("[data-under]"), bar = $("[data-bar]"), intro = $("[data-intro]");
@@ -214,9 +239,9 @@ let W = innerWidth, H = innerHeight, underFor = 0;
 const offLike = document.createElement("canvas"), offNope = document.createElement("canvas");
 function paintAll() {
   W = innerWidth; H = innerHeight; const c = cur(); if (!c) return;
-  render(cvTop, c.g, W, H, DPR); plan();
+  drawEntry(cvTop, c, W, H, DPR); plan();
   // render the two candidates a frame later so the swipe stays smooth
-  setTimeout(() => { render(offLike, nextLike, W, H, DPR); render(offNope, nextNope, W, H, DPR); showUnder(underFor || 1, true); }, 30);
+  setTimeout(() => { Promise.all([preview(offLike, nextLike), preview(offNope, nextNope)]).then(() => showUnder(underFor || 1, true)); }, 30);
 }
 function showUnder(dir, force) {
   if (dir === underFor && !force) return; underFor = dir; const src = dir > 0 ? offLike : offNope; if (!src.width) return;
@@ -233,8 +258,9 @@ function start() { S = { h: [{ g: randomGenome(), base: -1, v: 0 }], i: 0, liked
 function verdict(v) {
   const c = cur(); if (!c || busy) return;
   delete c.u; c.v = v; if (v > 0) { S.liked = S.i; S.likes++; }
-  const g = v > 0 ? nextLike : nextNope, canvas = v > 0 ? offLike : offNope;
-  S.h = S.h.slice(0, S.i + 1); S.h.push({ g, base: v > 0 ? S.i : S.liked, v: 0, liked: S.liked }); S.i++; save();
+  const g = v > 0 ? nextLike : nextNope, canvas = v > 0 ? offLike : offNope, from = v > 0 ? S.i : S.liked;
+  if (g.vary != null) return varyVerdict(v, g.vary, from, canvas);
+  S.h = S.h.slice(0, S.i + 1); S.h.push({ g, base: from, v: 0, liked: S.liked }); S.i++; save();
   showUnder(v, true);
   busy = true; top.classList.remove("moving", "back"); top.classList.add("fly");
   top.style.transform = `translate(${v * W * 1.4}px, ${dragY * 0.6 + 40}px) rotate(${v * 24}deg)`;
@@ -243,6 +269,22 @@ function verdict(v) {
     top.classList.remove("fly"); top.style.transform = ""; stLike.style.opacity = stNope.style.opacity = 0;
     cvTop.width = canvas.width; cvTop.height = canvas.height; cvTop.getContext("2d").drawImage(canvas, 0, 0);
     busy = false; dragX = dragY = 0; paintAll(); ui();
+  }, 340);
+}
+// swipe onto a piece that the model still has to paint: the card flies, the swirl runs over the source piece, then the new piece lands
+function varyVerdict(v, src, from, canvas) {
+  const at = S.i, liked = S.liked; busy = true; showUnder(v, true);
+  top.classList.remove("moving", "back"); top.classList.add("fly");
+  top.style.transform = `translate(${v * W * 1.4}px, ${dragY * 0.6 + 40}px) rotate(${v * 24}deg)`;
+  try { navigator.vibrate && navigator.vibrate(v > 0 ? 12 : [6, 30, 6]); } catch (e) {}
+  setTimeout(async () => {
+    top.classList.remove("fly"); top.style.transform = ""; stLike.style.opacity = stNope.style.opacity = 0;
+    cvTop.width = canvas.width; cvTop.height = canvas.height; cvTop.getContext("2d").drawImage(canvas, 0, 0); dragX = dragY = 0;
+    const e = S.h[src], r = await paintSVG(e.prompt || "abstract art", e.svg, "Painting a variation");
+    const n = r ? { svg: r.svg, prompt: e.prompt, fb: e.fb ? mutate(e.fb, 0.09) : undefined, base: from, v: 0, liked } : { g: e.fb ? mutate(e.fb, 0.13) : randomGenome(), base: from, v: 0, liked };
+    S.h = S.h.slice(0, at + 1); S.h.push(n); S.i = at + 1; save();
+    busy = false; paintAll(); ui(); top.classList.remove("enter"); void top.offsetWidth; top.classList.add("enter");
+    if (!r) toast("AI couldn't paint that one, here's a pattern");
   }, 340);
 }
 let jumpT = 0;
@@ -289,9 +331,10 @@ $("[data-save]").addEventListener("click", async () => {
   const c = cur(); if (!c) return;
   const sw = screen.width || W, sh = screen.height || H, port = H >= W;
   const OW = port ? Math.min(sw, sh) : Math.max(sw, sh), OH = port ? Math.max(sw, sh) : Math.min(sw, sh);
-  const out = document.createElement("canvas"); render(out, c.g, OW, OH, Math.min(3, window.devicePixelRatio || 1));
+  const out = document.createElement("canvas"); await drawEntry(out, c, OW, OH, Math.min(3, window.devicePixelRatio || 1));
   const blob = await new Promise((res) => out.toBlob(res, "image/png")); if (!blob) return;
-  const name = `muse-${c.g.fam}-${c.g.seed}.png`, file = new File([blob], name, { type: "image/png" });
+  window.__museSaved = { w: out.width, h: out.height, bytes: blob.size };
+  const name = c.svg ? `muse-ai-${Date.now().toString(36)}.png` : `muse-${c.g.fam}-${c.g.seed}.png`, file = new File([blob], name, { type: "image/png" });
   try {
     if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Muse" }); return; }
   } catch (e) { if (e && e.name === "AbortError") return; }
@@ -308,30 +351,44 @@ rs.addEventListener("click", () => {
 });
 /* ---------- describe it (on-device): keyword parser instantly, local LLM when loaded ---------- */
 const askBtn = $("[data-ask]"), form = $("[data-prompt]"), q = $("[data-q]"), aiState = $("[data-aistate]"), chipsEl = $("[data-chips]");
-let AI = null; const aiMod = () => AI || (AI = import("./muse-ai.js?v=1"));
+let AI = null; const aiMod = () => AI || (AI = import("./muse-ai.js?v=2"));
+const rmBtn = $("[data-rmai]");
 for (const el of [askBtn, form]) el.addEventListener("pointerdown", (e) => e.stopPropagation());
-function aiLabel(m) { const a = m.ai; aiState.textContent = a.state === "ready" ? "On-device AI ready · " + a.model.replace(/-MLC$/, "") : a.state === "loading" ? `Downloading on-device AI… ${Math.round(a.progress * 100)}% (quick mode works meanwhile)` : a.state === "unsupported" ? "Quick mode (this browser has no WebGPU)" : a.state === "error" ? "Quick mode (AI failed to load)" : ""; }
+async function aiLabel(m) { const a = m.ai;
+  aiState.textContent = a.state === "ready" ? "On-device AI ready · " + a.model.replace(/-MLC$/, "") : a.state === "loading" ? `Downloading on-device AI… ${Math.round(a.progress * 100)}%` : a.state === "unsupported" || !m.hasGPU() ? "Quick mode (this browser has no WebGPU)" : a.state === "error" ? "Quick mode (AI failed to load)" : (await m.cached()) ? "On-device AI paints your words (cached)" : "On-device AI paints your words · ~0.9 GB download on first use";
+  rmBtn.hidden = !(a.state === "ready" || (await m.cached())); }
 askBtn.addEventListener("click", async () => {
   if (!form.hidden) { form.hidden = true; q.blur(); return; }
-  form.hidden = false; chipsEl.hidden = true; q.focus();
-  const m = await aiMod(); aiLabel(m);
-  if (m.ai.state === "idle" && m.hasGPU()) { dream.start("Waking up the on-device AI"); m.load((pr) => { dream.pct = pr; aiLabel(m); }).then(() => { aiLabel(m); dream.stop(); }); }
+  form.hidden = false; chipsEl.hidden = true; q.focus(); aiLabel(await aiMod());
 });
+rmBtn.addEventListener("click", async () => {
+  if (busy) return; const m = await aiMod(); rmBtn.disabled = true;
+  const r = await m.removeModel(); rmBtn.disabled = false; aiLabel(m);
+  toast(r.freed ? `AI model removed · ${(r.freed / 1e9 >= 0.1 ? (r.freed / 1e9).toFixed(2) + " GB" : Math.round(r.freed / 1e6) + " MB")} freed` : r.n ? "AI model removed" : "No AI model stored");
+});
+// ask the model for a piece (or a variation of prev). Shows the swirl with % while it downloads and while it paints. null = use a genome
+async function paintSVG(text, prev, label) {
+  const m = await aiMod(); if (!m.hasGPU() && !window.__museSvgStub) return null;
+  if (!m.ready()) { dream.start("Downloading on-device AI (once, ~0.9 GB)"); dream.pct = 0; await m.load((pr) => { dream.pct = pr; }); aiLabel(m); if (!m.ready()) { dream.stop(); return null; } }
+  dream.start(label); dream.pct = 0;
+  try { return await m.drawSVG(text, { W, H, prev, onProgress: (p) => (dream.pct = p) }); } catch (e) { console.warn(e); return null; } finally { dream.stop(); }
+}
 form.addEventListener("submit", async (e) => {
-  e.preventDefault(); const text = q.value.trim(); if (!text || !cur()) return; q.blur(); form.hidden = true;
-  const m = await aiMod(); let it = null, src = "quick"; if (m.ai.state === "loading") dream.stop();
-  if (m.ai.state === "ready") { dream.start("Thinking"); dream.pct = -1; try { it = await m.ask(text, cur().g); if (it) src = "AI " + (m.ai.lastMs / 1000).toFixed(1) + "s"; } catch (err) { console.warn(err); } dream.stop(); }
-  const kw = m.parse(text);
-  if (!it || (!it.fam && it.hue == null && !it.avoidHue.length && !Object.keys(it.d).length)) { it = kw; src = "quick"; }
-  else { // the parser is exact about named styles/colours: let it win on those
-    if (kw.fam) it.fam = kw.fam; if (kw.hue != null) it.hue = kw.hue; it.avoidHue.push(...kw.avoidHue); it.avoidFam.push(...kw.avoidFam); }
-  if (!it.chips.length && !it.fam && it.hue == null && !Object.keys(it.d).length && !it.avoidHue.length && !it.avoidFam.length) { toast("Didn't catch that. Try colours, styles or moods"); return; }
-  const g = m.apply(cur().g, it, mutate); g.prompt = text;
-  S.h = S.h.slice(0, S.i + 1); S.h.push({ g, base: S.i, v: 0, liked: S.liked }); S.i++; save(); paintAll(); ui();
+  e.preventDefault(); const text = q.value.trim(); if (!text || !cur() || busy) return; q.blur(); form.hidden = true;
+  const m = await aiMod(), kw = m.parse(text), c = cur();
+  const fb = m.apply(genomeOf(c) || randomGenome(), kw, mutate); fb.prompt = text; // the old genome path: fallback, and seed for later swipes
+  busy = true; let r = null; try { r = await paintSVG(text, null, "Painting"); } finally { busy = false; }
+  let entry, chips, src;
+  if (r) { entry = { svg: r.svg, prompt: text, fb, base: S.i, v: 0, liked: S.liked }; chips = [text.length > 28 ? text.slice(0, 27) + "…" : text]; src = "AI " + (r.ms / 1000).toFixed(0) + "s"; }
+  else {
+    if (!kw.chips.length && !kw.fam && kw.hue == null && !Object.keys(kw.d).length && !kw.avoidHue.length && !kw.avoidFam.length) { toast("Didn't catch that. Try colours, styles or moods"); return; }
+    entry = { g: fb, base: S.i, v: 0, liked: S.liked }; chips = kw.chips; src = "quick";
+  }
+  S.h = S.h.slice(0, S.i + 1); S.h.push(entry); S.i++; save(); paintAll(); ui();
   top.classList.remove("enter"); void top.offsetWidth; top.classList.add("enter"); q.value = "";
-  chipsEl.innerHTML = it.chips.map((c) => `<span>${c.replace(/[<&]/g, "")}</span>`).join("") + `<span class="src">${src}</span>`; chipsEl.hidden = false;
+  chipsEl.innerHTML = chips.map((c) => `<span>${c.replace(/[<&>]/g, "")}</span>`).join("") + `<span class="src">${src}</span>`; chipsEl.hidden = false;
   clearTimeout(chipsEl.t); chipsEl.t = setTimeout(() => (chipsEl.hidden = true), 3200);
-  window.__museLast = { it, src };
+  window.__museLast = { it: kw, src };
 });
 
 /* loading animation: the current artwork dissolves into a swirling paint flow sampled from its own colours */
@@ -354,7 +411,7 @@ window.__museDream = dream;
 
 let rz = 0; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(paintAll, 150); });
 load(); ui(); if (S.h.length) paintAll();
-window.__muse = { get S() { return S; }, mutate, randomGenome, render, FAM, verdict, jump };
+window.__muse = { get S() { return S; }, mutate, randomGenome, render, FAM, verdict, jump, plan, get busy() { return busy; }, get next() { return { nextLike, nextNope }; } };
 })();
 
 /* no zooming: block pinch (iOS gesture events, multi-touch moves) and double-tap zoom */
