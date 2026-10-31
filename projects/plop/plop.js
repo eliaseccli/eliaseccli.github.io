@@ -3,8 +3,11 @@
    tuned for bouncy, squishy, satisfying merges. The screen edges are the container. */
 (() => {
 "use strict";
-const COLS = ["#ff6b6b", "#ffc23d", "#34d399", "#4da3ff", "#b07cff"];
-const DARK = ["#c2413f", "#d0901a", "#16a072", "#2571c9", "#7d4dd0"];
+const COLS = ["#ff6b6b", "#ffc23d", "#34d399", "#4da3ff", "#b07cff", "#ff7ac6", "#22d3ee", "#a3e635"];
+const DARK = ["#c2413f", "#d0901a", "#16a072", "#2571c9", "#7d4dd0", "#c93f8f", "#0e98b0", "#6c9c12"];
+const NCMIN = 1, NCMAX = 8, NCDEF = 4;
+let NC = clampNC(+localStorage.getItem("plop.colors") || NCDEF);
+function clampNC(n) { return Math.max(NCMIN, Math.min(NCMAX, Math.round(n) || NCDEF)); }
 const LET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const ZL = 25, KEY = "plop.v1";
 const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
@@ -58,7 +61,8 @@ function buildGrid() {
 }
 
 /* ---------- physics ---------- */
-const GRAV = 2600, REST = 0.42, WREST = 0.5, STEP = 1 / 120;
+const GRAV = 990, REST = 0.42, WREST = 0.5, STEP = 1 / 120;
+const FULL = 0.74; let FILL = 0, over = false, fullT = 0, blocked = false, DROPK = 1;
 let gravOn = 0, now = 0, merges = [], best = 0, total = 0, won = false, dropT = 0;
 function solvePairs(first) {
   buildGrid(); mark.fill(-1, 0, B.length);
@@ -83,7 +87,7 @@ function solvePairs(first) {
         a.x -= nx * corr * wa; a.y -= ny * corr * wa; b.x += nx * corr * wb; b.y += ny * corr * wb;
         const rvx = b.vx - a.vx, rvy = b.vy - a.vy, vn = rvx * nx + rvy * ny;
         if (vn < 0) {
-          const e = vn < -120 ? REST : 0.02; // bouncy on real hits, calm when resting in a pile
+          const e = vn < -70 ? REST : 0.02; // bouncy on real hits, calm when resting in a pile
           const j = (-(1 + e) * vn) / ws;
           a.vx -= nx * j * wa; a.vy -= ny * j * wa; b.vx += nx * j * wb; b.vy += ny * j * wb;
           // friction + spin from the tangential slip
@@ -98,7 +102,7 @@ function solvePairs(first) {
   }
 }
 function squish(b, nx, ny, v) {
-  const s = clamp(v / 2600, 0, 0.32) / (1 + b.L * 0.04);
+  const s = clamp(v / 1300, 0, 0.32) / (1 + b.L * 0.04);
   if (s > Math.abs(b.sq)) { b.sq = s; b.sqa = Math.atan2(ny, nx); }
 }
 function walls(b) {
@@ -115,12 +119,13 @@ function step(dt) {
   const g = GRAV * gravOn * gravOn;
   for (const b of B) {
     if (b.held) {
-      const tx = clamp(drag.x, box.l + b.r, box.r - b.r), ty = clamp(drag.y, box.t + b.r, box.b - b.r);
-      // stiff, slightly underdamped spring to the finger: feels like holding a jelly
-      const kx = (tx - b.x) * 22, ky = (ty - b.y) * 22, lim = 3200;
-      b.vx = lerp(b.vx, clamp(kx, -lim, lim), 0.32); b.vy = lerp(b.vy, clamp(ky, -lim, lim), 0.32);
+      drag.oy = lerp(drag.oy, drag.touch ? -(b.r * 0.8 + 30) : 0, 0.08); // lift above the finger so the plop stays visible
+      const tx = clamp(drag.x, box.l + b.r, box.r - b.r), ty = clamp(drag.y + drag.oy, box.t + b.r, box.b - b.r);
+      // soft, lagging spring: the letter trails the finger like it's on a rubber band
+      const kx = (tx - b.x) * 7, ky = (ty - b.y) * 7, lim = 1600;
+      b.vx = lerp(b.vx, clamp(kx, -lim, lim), 0.06); b.vy = lerp(b.vy, clamp(ky, -lim, lim), 0.06);
     } else { b.vy += g * dt; if (gravOn < 1) { b.vx += Math.sin(now * 1.7 + b.id) * 6 * dt; b.vy += Math.cos(now * 1.3 + b.id * 1.7) * 6 * dt; } }
-    b.vx *= 0.9993; b.vy *= 0.9993; b.av *= 0.985;
+    b.vx *= 0.998; b.vy *= 0.998; // floaty air drag b.av *= 0.985;
     b.x += b.vx * dt; b.y += b.vy * dt; b.ang += b.av * dt;
     // springs: pop scale and squash wobble
     b.sv += (-(b.sc - 1) * 420 - b.sv * 13) * dt; b.sc += b.sv * dt;
@@ -130,7 +135,15 @@ function step(dt) {
   for (let it = 0; it < 4; it++) { solvePairs(it === 0); for (const b of B) walls(b); }
   doMerges();
   if (B.some((b) => b.dead)) B = B.filter((b) => !b.dead);
-  dropT -= dt; if (gravOn >= 1 && dropT <= 0) { dropT = 0.9; maybeDrop(); }
+  dropT -= dt; if (!over && gravOn >= 1 && dropT <= 0) { dropT = dropEvery(); maybeDrop(); }
+  // game over: the pile reaches the ceiling and stays there
+  if (!over && gravOn >= 1 && NC > 1) {
+    let fill = 0; for (const b of B) fill += b.r * b.r; fill *= Math.PI / ((box.r - box.l) * (box.b - box.t)); FILL = fill;
+    let top = blocked || fill > FULL; const lim = box.t + rA * 1.2;
+    if (!top) for (const b of B) if (!b.held && now - b.born > 2 && b.y - b.r < lim && Math.abs(b.vy) < 300) { top = true; break; }
+    fullT = top ? fullT + dt : Math.max(0, fullT - dt);
+    if (fullT > 3) gameOver();
+  }
 }
 
 /* ---------- merging + juice ---------- */
@@ -150,7 +163,7 @@ function doMerges() {
     for (const o of B) {
       if (o === n || o.dead) continue;
       const dx = o.x - x, dy = o.y - y, d = Math.hypot(dx, dy);
-      if (d < R && d > 0.01) { const f = (1 - d / R) * (240 + 26 * L) * Math.min(1.6, n.m / o.m) ** 0.25; o.vx += (dx / d) * f; o.vy += (dy / d) * f - f * 0.25; squish(o, dx / d, dy / d, f * 2.2); }
+      if (d < R && d > 0.01) { const f = (1 - d / R) * (150 + 16 * L) * Math.min(1.6, n.m / o.m) ** 0.25; o.vx += (dx / d) * f; o.vy += (dy / d) * f - f * 0.25; squish(o, dx / d, dy / d, f * 2.2); }
     }
     // chain = the fresh letter plops again right away (A+A -> B, B+B -> C ...)
     const fresh2 = (q) => now - q.born < 0.9 ? q.chain || 1 : 0;
@@ -164,27 +177,33 @@ function doMerges() {
     if (L === ZL && !won) { won = true; setTimeout(win, 700); }
   }
 }
-// keep the screen ~3/4 full: drop fresh letters from the ceiling, tiers trailing your best so Z stays reachable
+// constant pressure: a stream of A's from the ceiling. More colours = slower stream (each A is harder to pair).
+const DROP = [0, 0.12, 0.1, 0.15, 0.18, 0.21, 0.24, 0.27, 0.3]; // seconds between A's per colour count (tuned by headless sim)
+function dropEvery() { return DROP[NC] * DROPK; }
 function maybeDrop() {
-  const area = (box.r - box.l) * (box.b - box.t);
-  let used = 0; for (const b of B) used += Math.PI * b.r * b.r;
-  if (used / area > 0.6) return;
-  const hi = Math.max(0, best - 2), lo = Math.max(0, best - 6);
-  const L = Math.min(ZL - 1, lo + Math.floor(Math.pow(Math.random(), 1.8) * (hi - lo + 1)));
-  const r = rad(L), x = rnd(box.l + r, box.r - r), y = box.t + r + 2;
-  for (const o of B) if (Math.hypot(o.x - x, o.y - y) < o.r + r) return;
-  body(x, y, L, (Math.random() * 5) | 0, { vy: 200, sc: 0.3, sv: 6 });
-  if (used / area < 0.4) dropT = 0.22; else if (used / area < 0.5) dropT = 0.45;
+  const r = rad(0);
+  for (let k = 0; k < 8; k++) {
+    const x = rnd(box.l + r, box.r - r), y = box.t + r + 2;
+    let free = true; for (const o of B) if (Math.hypot(o.x - x, o.y - y) < o.r + r) { free = false; break; }
+    if (free) { body(x, y, 0, (Math.random() * NC) | 0, { vy: 90, sc: 0.3, sv: 6 }); blocked = false; return; }
+  }
+  blocked = true; // nowhere to drop: the screen is full
+}
+function gameOver() {
+  over = true; FL.length = 0; save();
+  if (typeof document === "undefined") return;
+  const el = $("[data-over]"); el.querySelector("b").textContent = LET[best]; el.hidden = false;
+  try { navigator.vibrate && navigator.vibrate([60, 40, 120]); } catch (e) {}
 }
 
 /* ---------- fresh game: a floating lattice of A's filling the lower 3/4 ---------- */
 function fresh() {
-  B = []; best = 0; total = 0; won = false; now = 0; gravOn = 0; combo = 0;
+  B = []; best = 0; total = 0; won = false; over = false; fullT = 0; blocked = false; const ov = $("[data-over]"); if (ov) ov.hidden = true; now = 0; gravOn = 0; combo = 0;
   const s = rA * 2.3, top = box.t + (box.b - box.t) * 0.25;
   let row = 0;
   for (let y = box.b - rA - 2; y > top; y -= s * 0.866, row++) {
     for (let x = box.l + rA + 2 + (row % 2 ? s / 2 : 0); x < box.r - rA - 1; x += s) {
-      body(x + rnd(-1.2, 1.2), y + rnd(-1.2, 1.2), 0, (Math.random() * 5) | 0, { sc: 0, sv: rnd(4, 9) });
+      body(x + rnd(-1.2, 1.2), y + rnd(-1.2, 1.2), 0, (Math.random() * NC) | 0, { sc: 0, sv: rnd(4, 9) });
     }
   }
   showBest(); $("[data-win]").hidden = true; save();
@@ -201,7 +220,7 @@ function burst(x, y, r, c, L) {
   if (P.length > 700) P.splice(0, P.length - 700);
 }
 function ring(x, y, r, c) { RINGS.push({ x, y, r, t: 0, c }); }
-function floater(x, y, text, c, big = 1) { FL.push({ x, y, text, c, t: 0, big }); }
+function floater(x, y, text, c, big = 1) { if (FL.length > 12) FL.shift(); FL.push({ x, y, text, c, t: 0, big }); }
 
 /* ---------- sound + haptics ---------- */
 let AC = null, master = null, muted = localStorage.getItem("plop.mute") === "1", lastSnd = 0, lastTick = 0, lastVib = 0;
@@ -247,17 +266,19 @@ function tick(L, v) {
 const sprites = new Map();
 function sprite(L, c) {
   const k = L * 8 + c; let s = sprites.get(k); if (s) return s;
-  const r = rad(L), pad = 3, size = Math.ceil((r * 2 + pad * 2) * DPR);
+  const r = rad(L), pad = r * 0.5 + 4, size = Math.ceil((r * 2 + pad * 2) * DPR);
   const cv = document.createElement("canvas"); cv.width = cv.height = size; const g = cv.getContext("2d");
   g.scale(DPR, DPR); const cx = r + pad;
-  const grd = g.createRadialGradient(cx - r * 0.35, cx - r * 0.45, r * 0.1, cx, cx, r);
-  grd.addColorStop(0, lighten(COLS[c], 0.35)); grd.addColorStop(0.65, COLS[c]); grd.addColorStop(1, DARK[c]);
-  g.beginPath(); g.arc(cx, cx, r, 0, Math.PI * 2); g.fillStyle = grd; g.fill();
-  g.beginPath(); g.ellipse(cx - r * 0.3, cx - r * 0.42, r * 0.38, r * 0.2, -0.5, 0, Math.PI * 2); g.fillStyle = "rgba(255,255,255,.28)"; g.fill();
-  g.font = `900 ${r * 1.28}px ui-rounded, "SF Pro Rounded", "Nunito", "Arial Rounded MT Bold", system-ui, sans-serif`;
+  // just the glyph: glossy coloured letter with a dark rim; the round hitbox stays invisible
+  const grd = g.createLinearGradient(0, cx - r, 0, cx + r);
+  grd.addColorStop(0, lighten(COLS[c], 0.45)); grd.addColorStop(0.55, COLS[c]); grd.addColorStop(1, DARK[c]);
+  g.font = `900 ${r * 2.05}px ui-rounded, "SF Pro Rounded", "Nunito", "Arial Rounded MT Bold", system-ui, sans-serif`;
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillStyle = "rgba(0,0,0,.18)"; g.fillText(LET[L], cx, cx + r * 0.1);
-  g.fillStyle = "#fff"; g.fillText(LET[L], cx, cx + r * 0.06);
+  const yy = cx + r * 0.08; g.lineJoin = "round";
+  g.fillStyle = "rgba(0,0,0,.28)"; g.fillText(LET[L], cx, yy + r * 0.09);
+  g.lineWidth = Math.max(2, r * 0.14); g.strokeStyle = DARK[c]; g.strokeText(LET[L], cx, yy);
+  g.fillStyle = grd; g.fillText(LET[L], cx, yy);
+  g.lineWidth = Math.max(1, r * 0.035); g.strokeStyle = "rgba(255,255,255,.45)"; g.strokeText(LET[L], cx, yy - r * 0.02);
   s = { cv, half: cx }; sprites.set(k, s); return s;
 }
 function lighten(hex, t) { const n = parseInt(hex.slice(1), 16); const f = (v) => Math.round(v + (255 - v) * t); return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`; }
@@ -266,6 +287,10 @@ function lighten(hex, t) { const n = parseInt(hex.slice(1), 16); const f = (v) =
 function render(dt) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = "#14131f"; ctx.fillRect(0, 0, W, H);
+  // danger: the screen glows red from the top as it fills up
+  const dz = Math.max(clamp((FILL - FULL + 0.08) / 0.08, 0, 1) * 0.5, over ? 1 : fullT / 3);
+  if (dz > 0.01) { const gr = ctx.createLinearGradient(0, 0, 0, H * 0.45); const pulse = 0.75 + 0.25 * Math.sin(now * (6 + dz * 8));
+    gr.addColorStop(0, `rgba(255,60,80,${0.42 * dz * pulse})`); gr.addColorStop(1, "rgba(255,60,80,0)"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H * 0.45); }
   for (const b of B) {
     const s = sprite(b.L, b.c), sc = Math.max(0.01, b.sc);
     ctx.save(); ctx.translate(b.x, b.y);
@@ -296,7 +321,7 @@ function render(dt) {
 }
 
 /* ---------- input: grab a letter with a spring ---------- */
-const drag = { b: null, x: 0, y: 0, id: -1 };
+const drag = { b: null, x: 0, y: 0, id: -1, oy: 0, touch: false };
 canvas.addEventListener("pointerdown", (e) => {
   audio(); if (AC && AC.state === "suspended") AC.resume();
   if (drag.b) return;
@@ -304,7 +329,7 @@ canvas.addEventListener("pointerdown", (e) => {
   for (const b of B) { const d = Math.hypot(b.x - e.clientX, b.y - e.clientY); if (d < b.r + 14 && d - b.r < pd) { pd = d - b.r; pick = b; } }
   if (!pick) return;
   canvas.setPointerCapture?.(e.pointerId);
-  drag.b = pick; drag.id = e.pointerId; drag.x = e.clientX; drag.y = e.clientY; pick.held = true;
+  drag.b = pick; drag.id = e.pointerId; drag.x = e.clientX; drag.y = e.clientY; drag.oy = 0; drag.touch = e.pointerType !== "mouse"; pick.held = true;
   pick.sc = 1.12; pick.sv = 2; tick(pick.L, 3000);
 });
 canvas.addEventListener("pointermove", (e) => { if (e.pointerId === drag.id) { drag.x = e.clientX; drag.y = e.clientY; } });
@@ -321,28 +346,38 @@ const sndBtn = $("[data-sound]");
 const setSnd = () => { sndBtn.textContent = muted ? "🔇" : "🔊"; };
 setSnd();
 sndBtn.addEventListener("click", () => { muted = !muted; localStorage.setItem("plop.mute", muted ? "1" : "0"); setSnd(); audio(); if (AC) AC.resume(); });
+const ncOut = $("[data-nc] output");
+const setNC = (n) => { n = clampNC(n); ncOut.textContent = n === 1 ? "auto" : n; ncOut.toggleAttribute("data-auto", n === 1);
+  $("[data-nc] [data-dots]").innerHTML = COLS.slice(0, n).map((c) => `<i style="background:${c}"></i>`).join("");
+  $("[data-nc] [data-minus]").disabled = n <= NCMIN; $("[data-nc] [data-plus]").disabled = n >= NCMAX;
+  if (n !== NC) { NC = n; localStorage.setItem("plop.colors", n); $("[data-win]").hidden = true; fresh(); save(); } };
+$("[data-nc] [data-minus]").addEventListener("click", () => setNC(NC - 1));
+$("[data-nc] [data-plus]").addEventListener("click", () => setNC(NC + 1));
+setNC(NC);
 $("[data-reset]").addEventListener("click", () => { fresh(); });
+$("[data-over-again]").addEventListener("click", () => { fresh(); });
 $("[data-again]").addEventListener("click", () => { fresh(); });
 $("[data-keep]").addEventListener("click", () => { $("[data-win]").hidden = true; });
 function win() {
-  $("[data-win]").hidden = false;
-  for (let i = 0; i < 6; i++) setTimeout(() => { const x = rnd(W * 0.2, W * 0.8), y = rnd(H * 0.2, H * 0.6), c = (Math.random() * 5) | 0; burst(x, y, 30, c, 20); ring(x, y, 40, c); plop(3 + i, i + 1); }, i * 160);
+  if (NC === 1) setTimeout(() => { if (NC === 1) fresh(); }, 4500); // auto mode: celebrate, then loop the show
+  else $("[data-win]").hidden = false;
+  for (let i = 0; i < 6; i++) setTimeout(() => { const x = rnd(W * 0.2, W * 0.8), y = rnd(H * 0.2, H * 0.6), c = (Math.random() * NC) | 0; burst(x, y, 30, c, 20); ring(x, y, 40, c); plop(3 + i, i + 1); }, i * 160);
 }
 
 /* ---------- save ---------- */
 function save() {
   try {
     const bw = box.r - box.l, bh = box.b - box.t;
-    localStorage.setItem(KEY, JSON.stringify({ v: 1, best, total, won, b: B.map((b) => [+((b.x - box.l) / bw).toFixed(4), +((b.y - box.t) / bh).toFixed(4), b.L, b.c]) }));
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, nc: NC, over, best, total, won, b: B.map((b) => [+((b.x - box.l) / bw).toFixed(4), +((b.y - box.t) / bh).toFixed(4), b.L, b.c]) }));
   } catch (e) {}
 }
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (!s || s.v !== 1 || !Array.isArray(s.b) || !s.b.length) return false;
+    if (!s || s.v !== 1 || (s.nc || 5) !== NC || !Array.isArray(s.b) || !s.b.length) return false;
     const bw = box.r - box.l, bh = box.b - box.t;
-    B = []; for (const [x, y, L, c] of s.b) body(box.l + x * bw, box.t + y * bh, clamp(L | 0, 0, ZL), clamp(c | 0, 0, 4));
-    best = s.best | 0; total = s.total | 0; won = !!s.won; now = 2; gravOn = 1; showBest(); return true;
+    B = []; for (const [x, y, L, c] of s.b) body(box.l + x * bw, box.t + y * bh, clamp(L | 0, 0, ZL), clamp(c | 0, 0, NC - 1));
+    best = s.best | 0; total = s.total | 0; won = !!s.won; if (s.over) return false; now = 2; gravOn = 1; showBest(); return true;
   } catch (e) { return false; }
 }
 setInterval(save, 2000);
@@ -365,6 +400,14 @@ function frame(t) {
   render(dt);
 }
 requestAnimationFrame(frame);
-window.__plop = { stats: () => ({ n: B.length, best, total, fps: Math.round(fpsAvg), frames, outside: B.filter((b) => b.x < box.l - 1 || b.x > box.r + 1 || b.y < box.t - 1 || b.y > box.b + 1).length, maxPen: maxPen() }), get B() { return B; }, box: () => box, rad, fresh, save };
+window.__plop = { stats: () => ({ n: B.length, best, total, fps: Math.round(fpsAvg), frames, outside: B.filter((b) => b.x < box.l - 1 || b.x > box.r + 1 || b.y < box.t - 1 || b.y > box.b + 1).length, maxPen: maxPen() }), get B() { return B; }, box: () => box, rad, fresh, save, setNC,
+  // headless benchmark: simulate `sec` seconds; every `every` s a "player" flicks a random letter at its nearest twin
+  sim(sec, every, k) { DROPK = k || 1; let t = 0, nx = every || 1e9, stuckT = 0, lastTot = total, longest = 0;
+    while (t < sec && !over) { step(STEP); t += STEP; now += 0;
+      if (total !== lastTot) { lastTot = total; stuckT = 0; } else { stuckT += STEP; longest = Math.max(longest, stuckT); }
+      if (every && t >= nx) { nx += every; let a = null, q = null, d = 1e9;
+        for (let k = 0; k < 25; k++) { const p = B[(Math.random() * B.length) | 0]; for (const o of B) if (o !== p && o.L === p.L && o.c === p.c) { const e = Math.hypot(o.x - p.x, o.y - p.y) - p.L * 30; if (e < d) { d = e; q = o; a = p; } } }
+        if (q) { a.vx = (q.x - a.x) * 6; a.vy = (q.y - a.y) * 6; } } }
+    DROPK = 1; let mt = 1e9, fill = 0; for (const b of B) { mt = Math.min(mt, b.y - b.r - box.t); fill += Math.PI * b.r * b.r; } fill /= (box.r - box.l) * (box.b - box.t); return { mt: Math.round(mt), fill: +fill.toFixed(2), fullT: +fullT.toFixed(1), t: +t.toFixed(0), over, best, total, n: B.length, won, longestIdle: +longest.toFixed(1) }; } };
 function maxPen() { let m = 0; for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) { const a = B[i], b = B[j]; const p = a.r + b.r - Math.hypot(a.x - b.x, a.y - b.y); if (p > m) m = p; } return +m.toFixed(2); }
 })();

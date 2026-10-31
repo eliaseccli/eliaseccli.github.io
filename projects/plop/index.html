@@ -23,7 +23,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="./plop.css?v=1">
+  <link rel="stylesheet" href="./plop.css?v=3">
 </head>
 <body>
   <canvas id="c" aria-label="Letters to plop together"></canvas>
@@ -32,11 +32,13 @@
   <div class="hud">
     <div class="best" data-best><small>best</small><b>A</b></div>
     <div class="actions">
+      <div class="nc" data-nc title="Colours (changing restarts)"><button type="button" data-minus aria-label="Fewer colours">−</button><span data-dots></span><output></output><button type="button" data-plus aria-label="More colours">+</button></div>
       <button type="button" data-sound aria-label="Sound" title="Sound">🔊</button>
-      <button type="button" data-reset title="Start over">Restart</button>
+      <button type="button" data-reset title="Start over">↻</button>
     </div>
   </div>
+  <div class="win over" data-over hidden><small>Game over</small><b>A</b><span>The screen is full. Best letter reached.</span><button type="button" data-over-again>Play again</button></div>
   <div class="win" data-win hidden><b>Z</b><span>You made a giant Z!</span><button type="button" data-again>Play again</button><button type="button" data-keep>Keep plopping</button></div>
-  <script src="./plop.js?v=2"></script>
+  <script src="./plop.js?v=4"></script>
 </body>
 </html>

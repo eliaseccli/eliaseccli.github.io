@@ -21,3 +21,12 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh;
 .win button + button { background: rgba(255,255,255,.15); color: #fff; }
 @keyframes pop { from { transform: scale(.2); } }
 @keyframes fade { from { opacity: 0; } }
+.hud .nc { display: flex; align-items: center; gap: 2px; height: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); padding: 0 2px; }
+.hud .nc button { border: 0; background: transparent; min-width: 34px; padding: 0; font-size: 20px; height: 36px; }
+.hud .nc button:disabled { opacity: .3; }
+.hud .nc [data-dots] { display: grid; grid-template-columns: repeat(4, 7px); gap: 2px; }
+.hud .nc [data-dots] i { width: 7px; height: 7px; border-radius: 50%; }
+.hud .nc output { font-weight: 800; font-size: 14px; min-width: 14px; text-align: center; margin-left: 3px; }
+@media (max-width: 400px) { .hud .nc output { display: none; } .hud .nc output:is([data-auto]) { display: block; } }
+.win.over small { font-size: 15px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; opacity: .7; }
+.win.over b { color: #ffc23d; }
