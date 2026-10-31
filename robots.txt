@@ -1,3 +1,5 @@
 User-agent: *
 Disallow: /secret
 Disallow: /secret/
+
+Sitemap: https://eliaseccli.com/sitemap.xml

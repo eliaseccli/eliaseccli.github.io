@@ -7,7 +7,7 @@ const clip = window.polygonClipping;
 
 const map = L.map("map", { zoomControl: false, attributionControl: true });
 L.control.zoom({ position: "topright" }).addTo(map);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap",
   maxZoom: 19
 }).addTo(map);

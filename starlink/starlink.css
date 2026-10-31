@@ -344,7 +344,7 @@ canvas.drag { cursor: grabbing; }
   font-size: 1.08rem; color: var(--ink); cursor: pointer; user-select: none;
 }
 .chk input { width: 1.45em; height: 1.45em; accent-color: #f97316; }
-.chk em { color: rgba(255, 255, 255, 0.34); font-style: normal; font-size: 0.92rem; margin-left: 0.15rem; }
+.chk em { color: rgba(255, 255, 255, 0.55); font-style: normal; font-size: 0.92rem; margin-left: 0.15rem; }
 .chk.all { font-weight: 560; padding: 0.2rem 0; }
 .swatch {
   width: 0.7rem; height: 0.7rem; border-radius: 50%;
