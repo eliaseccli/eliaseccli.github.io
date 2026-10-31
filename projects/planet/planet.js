@@ -268,7 +268,7 @@ let saveT = 0;
 function save(now = false) {
   clearTimeout(saveT);
   const go = () => {
-    S.clouds = clouds.map((c) => ({ d: c.d.toArray().map(r3), ax: c.ax.toArray().map(r3), sp: c.sp, w: Math.round(c.w * 1e4) / 1e4, e: c.evap ? 1 : 0 }));
+    S.clouds = clouds.map((c) => ({ d: c.d.toArray().map(r3), ax: c.ax.toArray().map(r3), sp: c.sp, w: Math.round(c.w * 1e4) / 1e4, e: c.evap ? 1 : 0, a: Math.round(c.age), l: Math.round(c.life), z: +c.sz.toFixed(2) }));
     S.vapor = Math.round(vapor * 1e5) / 1e5;
     S.villages = villages.map((v) => ({ d: v.d.toArray().map(r3), n: v.n, r: v.ruin ? r3(simT - v.ruinT) : -1 }));
     S.critters = critters.filter((c) => !c.dying).map((c) => ({ d: c.d.toArray().map(r3), h: c.h.toArray().map(r3), col: c.col, a: r3(c.age), l: r3(c.life), hu: r3(c.hunger), cd: r3(Math.max(0, c.cd)) }));
@@ -609,7 +609,7 @@ function makeCloud(o) {
   world.add(g);
   const d = V(...o.d).normalize();
   const ax = o.ax ? V(...o.ax).normalize() : tangentOf(d).applyAxisAngle(d, rnd(0, 6.28));
-  const c = { g, puffs, mat, rain, drops, d, ax, sp: o.sp ?? rnd(0.035, 0.07) * (Math.random() < 0.5 ? -1 : 1), raining: false, next: rnd(1, 5), born: o.anim ? clock() : -9, wob: rnd(0, 6), w: o.w ?? 0.2, evap: !!o.e, fade: 0 };
+  const c = { g, puffs, mat, rain, drops, d, ax, sp: o.sp ?? rnd(0.035, 0.07) * (Math.random() < 0.5 ? -1 : 1), raining: false, next: rnd(1, 5), born: o.anim ? clock() : -9, wob: rnd(0, 6), w: o.w ?? 0.2, evap: !!o.e, fade: 0, age: o.a ?? 0, life: o.l ?? rnd(90, 240), sz: o.z ?? 1 };
   clouds.push(c);
   return c;
 }
@@ -620,12 +620,38 @@ function stepCloud(c, dt) {
   if (c.next <= 0) { c.raining = !c.raining; c.next = c.raining ? rnd(5, 9) : rnd(6, 14); if (c.raining && speed <= 2) sfx.rain(); }
   if (c.raining) treeHash.query(c.d, 0.23, (t) => { t.wet = Math.min(1, t.wet + dt * 0.5); });
   if (c.evap && c.w <= 0.0005 && !c.raining) c.fade += dt / 4;
+  c.age += dt;
+  if (c.merged) { c.raining = false; c.fade += dt / 1.5; c.d.lerp(c.into.d, Math.min(1, dt * 2)).normalize(); }
+  else if (c.age > c.life) { c.raining = false; c.fade += dt / 6; } // clouds dissipate after their lifetime
+}
+// cloud bookkeeping: merge neighbours, return the water of dissipated clouds to the air, keep a few around
+const CLOUD_MIN = 3, MERGE_COS = Math.cos(0.07);
+let cloudT = 0;
+function cloudTick(dt) {
+  cloudT += dt; if (cloudT < 1) return; cloudT = 0;
+  for (let i = 0; i < clouds.length; i++) {
+    const a = clouds[i]; if (a.fade > 0) continue;
+    for (let j = i + 1; j < clouds.length; j++) {
+      const b = clouds[j]; if (b.fade > 0 || a.d.dot(b.d) < MERGE_COS) continue;
+      const [big, small] = a.w >= b.w ? [a, b] : [b, a];
+      big.w += small.w; small.w = 0; small.merged = true; small.into = big; small.fade = 0.001;
+      big.sz = Math.min(1.8, Math.sqrt(big.sz * big.sz + small.sz * small.sz));
+      big.life = Math.max(big.life, small.life - small.age + big.age);
+      if (small === a) break;
+    }
+  }
+  let live = 0; for (const c of clouds) if (c.fade === 0) live++;
+  for (; live < CLOUD_MIN; live++) {
+    const d = V(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    const w = Math.min(vapor, 0.2); vapor -= w; // ambient clouds only carry water the air already holds
+    makeCloud({ d: d.toArray(), w, anim: true });
+  }
 }
 function drawCloud(c, dt, t) {
   const r = RAIN_TOP + Math.sin(t * 0.6 + c.wob) * 0.008;
   c.g.position.copy(c.d).multiplyScalar(r);
   orientTo(c.g, c.d, 0);
-  c.g.scale.setScalar(Math.max(0.001, (c.born < 0 ? 1 : elastic((t - c.born) / 0.8)) * (1 - Math.min(1, c.fade))));
+  c.g.scale.setScalar(Math.max(0.001, (c.born < 0 ? 1 : elastic((t - c.born) / 0.8)) * (1 - Math.min(1, c.fade)) * c.sz));
   c.mat.color.setScalar(lerp(c.mat.color.r, c.raining ? 0.72 : 1, Math.min(1, dt * 2)));
   c.rain.visible = c.raining;
   if (c.raining) {
@@ -853,7 +879,8 @@ function step(dt) {
   for (const c of critters) if (!c.dying) critHash.add(c);
   for (const c of clouds) stepCloud(c, dt);
   for (const v of volcanoes) stepVolcano(v, dt);
-  for (let i = clouds.length - 1; i >= 0; i--) if (clouds[i].fade >= 1) { world.remove(clouds[i].g); clouds.splice(i, 1); }
+  for (let i = clouds.length - 1; i >= 0; i--) if (clouds[i].fade >= 1) { const c = clouds[i]; vapor += Math.max(0, c.w); c.w = 0; world.remove(c.g); c.mat.dispose(); clouds.splice(i, 1); }
+  cloudTick(dt);
   waterT += dt; if (waterT >= 0.5) { waterTick(waterT); waterT = 0; }
   villT += dt; if (villT >= 2) { villT = 0; villageTick(); }
   // trees: grow only in sunlight AND with rain; wilt in long droughts
