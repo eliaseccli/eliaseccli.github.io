@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0b0f">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Muse · Elias</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <script src="/projects/unlock.js?v=1"></script>
+  <script>
+    (function () {
+      var ok = false;
+      try { ok = !!window.ProjectsUnlock.get(); } catch (e) {}
+      if (!ok) {
+        try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
+        location.replace("../?next=" + encodeURIComponent(location.pathname));
+      } else {
+        document.documentElement.classList.add("is-open");
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./muse.css?v=1">
+</head>
+<body>
+  <div class="stage" data-stage>
+    <canvas class="card under" data-under></canvas>
+    <div class="card top" data-top><canvas data-cv></canvas><b class="stamp like">LIKE</b><b class="stamp nope">NOPE</b></div>
+  </div>
+  <div class="intro" data-intro><h1>Muse</h1><p>Tap to paint.<br>Swipe right if you like it, left if you don't.<br>It learns your taste as you go.</p></div>
+  <a class="fab back" href="../" aria-label="Back to projects">‹</a>
+  <div class="bar" data-bar>
+    <button type="button" data-undo aria-label="Undo">↶</button>
+    <button type="button" class="nope" data-no aria-label="Dislike">✕</button>
+    <button type="button" data-save aria-label="Save image">⤓</button>
+    <button type="button" class="like" data-yes aria-label="Like">♥</button>
+    <button type="button" data-redo aria-label="Redo">↷</button>
+  </div>
+  <div class="toast" data-toast hidden></div>
+  <script src="./muse.js?v=1"></script>
+</body>
+</html>

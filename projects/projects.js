@@ -197,6 +197,25 @@
     try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
+  function ensureMuseCard(root) {
+    if (!root) return;
+    if (root.querySelector('a[href*="muse"]')) return;
+    var shelf = root.querySelector(".shelf") || root;
+    var card = document.createElement("a");
+    card.className = "card";
+    card.href = "./muse/";
+    var strong = document.createElement("strong");
+    strong.textContent = "Muse";
+    var span = document.createElement("span");
+    span.textContent = "Swipe through generative art. It learns your taste.";
+    card.appendChild(strong);
+    card.appendChild(span);
+    var after = shelf.querySelector('a[href*="plop"]');
+    if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
+    else shelf.appendChild(card);
+    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
+  }
+
   function unlock(html) {
     var gate = document.querySelector("[data-gate]");
     var panel = document.querySelector("[data-panel]");
@@ -204,6 +223,7 @@
     ensureLookupCard(panel);
     ensurePlanetCard(panel);
     ensurePlopCard(panel);
+    ensureMuseCard(panel);
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");
