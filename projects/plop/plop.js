@@ -215,7 +215,7 @@ function dropL() { // returns [letter, colour]: random active colour, smallest l
   if (t && NC > 1) { // once 4 or fewer of that smallest letter are left, feed the next letter up instead (no endless A loop)
     let n = 0, up = null;
     for (const b of B) if (b.c === c && !b.mate && b.L < ZL) { if (b.L === t.L) n++; else if (b.L > t.L && (!up || b.L < up.L)) up = b; }
-    if (n <= 4 && up) t = up;
+    if (n <= 4 && n % 2 === 0 && up) t = up; // odd count: one more of the small letter first, so every one can pair
   }
   if (NC === 1 && t) { // auto mode: skip buried letters (a drop could never reach them), so the chain keeps climbing
     const open = (b) => !B.some((o) => o !== b && o.y < b.y - b.r * 0.3 && Math.abs(o.x - b.x) < (o.r + b.r) * 0.8);
