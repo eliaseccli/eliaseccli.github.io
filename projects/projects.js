@@ -178,12 +178,32 @@
     try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
+  function ensurePlopCard(root) {
+    if (!root) return;
+    if (root.querySelector('a[href*="plop"]')) return;
+    var shelf = root.querySelector(".shelf") || root;
+    var card = document.createElement("a");
+    card.className = "card";
+    card.href = "./plop/";
+    var strong = document.createElement("strong");
+    strong.textContent = "Plop";
+    var span = document.createElement("span");
+    span.textContent = "Squish matching letters together. Get to a giant Z.";
+    card.appendChild(strong);
+    card.appendChild(span);
+    var after = shelf.querySelector('a[href*="planet"]');
+    if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
+    else shelf.appendChild(card);
+    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
+  }
+
   function unlock(html) {
     var gate = document.querySelector("[data-gate]");
     var panel = document.querySelector("[data-panel]");
     panel.innerHTML = html;
     ensureLookupCard(panel);
     ensurePlanetCard(panel);
+    ensurePlopCard(panel);
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#14131f">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Plop · Elias</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <script src="/projects/unlock.js?v=1"></script>
+  <script>
+    (function () {
+      var ok = false;
+      try { ok = !!window.ProjectsUnlock.get(); } catch (e) {}
+      if (!ok) {
+        try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
+        location.replace("../?next=" + encodeURIComponent(location.pathname));
+      } else {
+        document.documentElement.classList.add("is-open");
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./plop.css?v=1">
+</head>
+<body>
+  <canvas id="c" aria-label="Letters to plop together"></canvas>
+  <div class="safe" data-safe></div>
+  <a class="back" href="../" aria-label="Back to projects">‹</a>
+  <div class="hud">
+    <div class="best" data-best><small>best</small><b>A</b></div>
+    <div class="actions">
+      <button type="button" data-sound aria-label="Sound" title="Sound">🔊</button>
+      <button type="button" data-reset title="Start over">Restart</button>
+    </div>
+  </div>
+  <div class="win" data-win hidden><b>Z</b><span>You made a giant Z!</span><button type="button" data-again>Play again</button><button type="button" data-keep>Keep plopping</button></div>
+  <script src="./plop.js?v=2"></script>
+</body>
+</html>
