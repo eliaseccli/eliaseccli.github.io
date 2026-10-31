@@ -212,6 +212,11 @@ let HIP = 0.2;
 function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
   const c = (Math.random() * NC) | 0; let t = null;
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
+  if (t && NC > 1) { // once 4 or fewer of that smallest letter are left, feed the next letter up instead (no endless A loop)
+    let n = 0, up = null;
+    for (const b of B) if (b.c === c && !b.mate && b.L < ZL) { if (b.L === t.L) n++; else if (b.L > t.L && (!up || b.L < up.L)) up = b; }
+    if (n <= 4 && up) t = up;
+  }
   if (NC === 1 && t) { // auto mode: skip buried letters (a drop could never reach them), so the chain keeps climbing
     const open = (b) => !B.some((o) => o !== b && o.y < b.y - b.r * 0.3 && Math.abs(o.x - b.x) < (o.r + b.r) * 0.8);
     const busy = new Set(); for (const b of B) if (b.aim) { busy.add(b); busy.add(b.aim); }
