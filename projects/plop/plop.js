@@ -210,7 +210,12 @@ function dropEvery() { return DROP[NC] * DROPK * Math.max(0.2, 1 / (1 + playT / 
 // mostly A's, sometimes a letter trailing your best (best-1..best-4, weighted low) so Z stays reachable
 let HIP = 0.2;
 function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
-  const c = (Math.random() * NC) | 0; let t = null;
+  // strongly favour colours that are behind: each letter ahead of the furthest-behind colour makes a colour 8x less likely
+  const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c]) mn[b.c] = b.L;
+  for (let k = 0; k < NC; k++) if (mn[k] >= ZL) mn[k] = 0; // colour not on screen: counts as A
+  const lo = Math.min(...mn), w = mn.map((L) => Math.pow(8, lo - L)); let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
+  while (c < NC - 1 && (r -= w[c]) > 0) c++;
+  let t = null;
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
   if (t && NC > 1) {
     // Drops trail the colour's best letter by a gap that widens as you climb (B-D: 1, E-I: 2, J-N: 3, O-S: 4, T+: 5).
