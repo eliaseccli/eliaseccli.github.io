@@ -34,7 +34,7 @@ function measure() {
 let B = [], nextId = 1;
 function body(x, y, L, c, o = {}) {
   const b = { id: nextId++, x, y, vx: o.vx || 0, vy: o.vy || 0, L, c, r: rad(L), m: 0, ang: o.ang ?? rnd(-0.25, 0.25), av: 0,
-    sc: o.sc ?? 1, sv: o.sv || 0, sq: 0, sqv: 0, sqa: 0, born: now, dead: false };
+    sc: o.sc ?? 1, sv: o.sv || 0, sq: 0, sqv: 0, sqa: 0, born: now, drop: o.drop || 0, dead: false, mate: null, mT: 0, jel: 0 };
   b.m = b.r * b.r; B.push(b); return b;
 }
 function resizeBodies(oldBox, oldRA, oldG) {
@@ -77,11 +77,12 @@ function solvePairs(first) {
         let dx = b.x - a.x, dy = b.y - a.y; const rr = a.r + b.r, d2 = dx * dx + dy * dy;
         if (d2 >= rr * rr || d2 === 0) {
           // same letter + colour just kissing: plop
-          if (first && a.L === b.L && a.c === b.c && a.L < ZL && d2 < (rr + 1.5) ** 2 && gravOn > 0.2) merges.push([a, b]);
+          if (first && a.L === b.L && a.c === b.c && a.L < ZL && d2 < (rr + 1.5) ** 2 && gravOn > 0.2) link(a, b);
           continue;
         }
+        if (a.mate === b) continue; // gooing together: no collision between the pair
         const d = Math.sqrt(d2), nx = dx / d, ny = dy / d, pen = rr - d;
-        if (first && a.L === b.L && a.c === b.c && a.L < ZL && gravOn > 0.2) merges.push([a, b]);
+        if (first && a.L === b.L && a.c === b.c && a.L < ZL && gravOn > 0.2) link(a, b);
         const ia = 1 / a.m, ib = 1 / b.m, wa = a.held ? 0 : ia, wb = b.held ? 0 : ib, ws = wa + wb || 1;
         const corr = Math.max(0, pen - 0.3) * 0.8 / ws;
         a.x -= nx * corr * wa; a.y -= ny * corr * wa; b.x += nx * corr * wb; b.y += ny * corr * wb;
@@ -125,20 +126,23 @@ function step(dt) {
       const kx = (tx - b.x) * 7, ky = (ty - b.y) * 7, lim = 1600;
       b.vx = lerp(b.vx, clamp(kx, -lim, lim), 0.06); b.vy = lerp(b.vy, clamp(ky, -lim, lim), 0.06);
     } else { b.vy += g * dt; if (gravOn < 1) { b.vx += Math.sin(now * 1.7 + b.id) * 6 * dt; b.vy += Math.cos(now * 1.3 + b.id * 1.7) * 6 * dt; } }
+    if (b.drop) { if (b.vy > 340) b.vy = lerp(b.vy, 340, 0.08); if (now - b.born > 6) b.drop = 0; } // new arrivals drift down gently
     b.vx *= 0.998; b.vy *= 0.998; // floaty air drag b.av *= 0.985;
     b.x += b.vx * dt; b.y += b.vy * dt; b.ang += b.av * dt;
     // springs: pop scale and squash wobble
-    b.sv += (-(b.sc - 1) * 420 - b.sv * 13) * dt; b.sc += b.sv * dt;
-    b.sqv += (-b.sq * 620 - b.sqv * 16) * dt; b.sq += b.sqv * dt;
+    const jelly = now < b.jel; // fresh plop: loosely damped so it wobbles several times
+    b.sv += (-(b.sc - 1) * (jelly ? 300 : 420) - b.sv * (jelly ? 4.5 : 13)) * dt; b.sc += b.sv * dt;
+    if (!b.mate) { b.sqv += (-b.sq * (jelly ? 380 : 620) - b.sqv * (jelly ? 4 : 16)) * dt; b.sq += b.sqv * dt; }
   }
-  merges.length = 0;
+  merges.length = 0; goo(dt);
   for (let it = 0; it < 4; it++) { solvePairs(it === 0); for (const b of B) walls(b); }
   doMerges();
   if (B.some((b) => b.dead)) B = B.filter((b) => !b.dead);
+  if (gravOn >= 1 && !over) playT += dt;
   dropT -= dt; if (!over && gravOn >= 1 && dropT <= 0) { dropT = dropEvery(); maybeDrop(); }
   // game over: the pile reaches the ceiling and stays there
-  if (!over && gravOn >= 1 && NC > 1) {
-    let fill = 0; for (const b of B) fill += b.r * b.r; fill *= Math.PI / ((box.r - box.l) * (box.b - box.t)); FILL = fill;
+  { let fill = 0; for (const b of B) fill += b.r * b.r; FILL = fill * Math.PI / ((box.r - box.l) * (box.b - box.t)); }
+  if (!over && gravOn >= 1 && NC > 1) { const fill = FILL;
     let top = blocked || fill > FULL; const lim = box.t + rA * 1.2;
     if (!top) for (const b of B) if (!b.held && now - b.born > 2 && b.y - b.r < lim && Math.abs(b.vy) < 300) { top = true; break; }
     fullT = top ? fullT + dt : Math.max(0, fullT - dt);
@@ -148,16 +152,36 @@ function step(dt) {
 
 /* ---------- merging + juice ---------- */
 let combo = 0, comboT = 0, plops = 0;
+// phase 1 of a plop (~0.26 s): the twins are pulled together and stretch into each other like goo
+const GOO = 0.26;
+function link(a, b) { if (a.mate || b.mate) return; a.mate = b; b.mate = a; a.mT = b.mT = 0; }
+function goo(dt) {
+  for (const a of B) {
+    const b = a.mate; if (!b || a.id > b.id || a.dead) continue;
+    if (b.dead || !B.includes(b)) { a.mate = null; continue; }
+    a.mT += dt; b.mT = a.mT; const k = Math.min(1, a.mT / GOO), e = k * k;
+    const m = a.m + b.m, mx = (a.x * a.m + b.x * b.m) / m, my = (a.y * a.m + b.y * b.m) / m;
+    const f = Math.min(1, dt * (3 + 40 * e));
+    if (!a.held) { a.x += (mx - a.x) * f; a.y += (my - a.y) * f; }
+    if (!b.held) { b.x += (mx - b.x) * f; b.y += (my - b.y) * f; }
+    const ax = Math.atan2(b.y - a.y, b.x - a.x);
+    // stretch toward each other, then squish flat as they meet
+    const st = k < 0.7 ? -0.32 * (k / 0.7) : -0.32 + 0.6 * ((k - 0.7) / 0.3);
+    a.sqa = b.sqa = ax; a.sq = b.sq = st; a.sqv = b.sqv = 0;
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    if (k >= 1 || d < a.r * 0.15) merges.push([a, b]);
+  }
+}
 function doMerges() {
   for (const [a, b] of merges) {
     if (a.dead || b.dead) continue;
     a.dead = b.dead = true;
     const L = a.L + 1, m = a.m + b.m;
     const x = (a.x * a.m + b.x * b.m) / m, y = (a.y * a.m + b.y * b.m) / m;
-    const n = body(x, y, L, a.c, { vx: (a.vx * a.m + b.vx * b.m) / m, vy: (a.vy * a.m + b.vy * b.m) / m - 160, sc: 0.62, sv: 9, ang: (a.ang + b.ang) / 2 });
+    const n = body(x, y, L, a.c, { vx: (a.vx * a.m + b.vx * b.m) / m, vy: (a.vy * a.m + b.vy * b.m) / m - 160, sc: 0.5, sv: 7, ang: (a.ang + b.ang) / 2 });
     n.av = (a.av + b.av) / 2 + rnd(-3, 3);
     if (a.held || b.held) { n.held = true; drag.b = n; }
-    n.sq = 0.22; n.sqa = Math.atan2(b.y - a.y, b.x - a.x) + Math.PI / 2; // squash across the line of the two parents
+    n.jel = now + 0.8; n.sq = 0.34; n.sqv = 0; n.sqa = Math.atan2(b.y - a.y, b.x - a.x); // wide along the line they came from, then jelly wobble
     // shockwave: shove neighbours outward so the pile bounces
     const R = n.r * 3.2;
     for (const o of B) {
@@ -178,14 +202,28 @@ function doMerges() {
   }
 }
 // constant pressure: a stream of A's from the ceiling. More colours = slower stream (each A is harder to pair).
-const DROP = [0, 0.12, 0.1, 0.15, 0.18, 0.21, 0.24, 0.27, 0.3]; // seconds between A's per colour count (tuned by headless sim)
-function dropEvery() { return DROP[NC] * DROPK; }
+const DROP = [0, 0.9, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.5]; // seconds between drops at the start, per colour count
+let playT = 0; // ramps the stream: interval / (1 + playT / RAMP)
+const RAMP = 360;
+function dropEvery() { return DROP[NC] * DROPK * Math.max(0.2, 1 / (1 + playT / RAMP)); }
+// mostly A's, sometimes a letter trailing your best (best-1..best-4, weighted low) so Z stays reachable
+let HIP = 0.2;
+function dropL() { // returns [letter, colour]
+  const A = [0, (Math.random() * NC) | 0];
+  if (best < 2 || Math.random() > (NC === 1 ? (FILL > 0.45 ? 1 : 0.35) : HIP + (FILL > 0.6 ? 0.25 : 0))) return A; // auto: when crowded, only twins
+  // a twin of one of your big letters (best-4..best; auto mode always picks the smallest so the chain cascades)
+  const lo = Math.max(1, best - 4), pool = B.filter((b) => b.L >= lo && b.L < ZL && !b.mate);
+  if (!pool.length) return A;
+  let t; if (NC === 1) { const lo1 = Math.max(1, best - 3); t = null; for (const b of pool) if (b.L >= lo1 && (!t || b.L < t.L)) t = b; if (!t) return A; }
+  else { pool.sort((a, b) => a.L - b.L); t = pool[Math.floor(Math.pow(Math.random(), 1.6) * pool.length)]; }
+  return [t.L, t.c];
+}
 function maybeDrop() {
   const r = rad(0);
   for (let k = 0; k < 8; k++) {
-    const x = rnd(box.l + r, box.r - r), y = box.t + r + 2;
+    const x = rnd(box.l + r * 3, box.r - r * 3), y = box.t + r + 2;
     let free = true; for (const o of B) if (Math.hypot(o.x - x, o.y - y) < o.r + r) { free = false; break; }
-    if (free) { body(x, y, 0, (Math.random() * NC) | 0, { vy: 90, sc: 0.3, sv: 6 }); blocked = false; return; }
+    if (free) { const [dl, dc] = dropL(); body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); blocked = false; return; }
   }
   blocked = true; // nowhere to drop: the screen is full
 }
@@ -198,7 +236,7 @@ function gameOver() {
 
 /* ---------- fresh game: a floating lattice of A's filling the lower 3/4 ---------- */
 function fresh() {
-  B = []; best = 0; total = 0; won = false; over = false; fullT = 0; blocked = false; const ov = $("[data-over]"); if (ov) ov.hidden = true; now = 0; gravOn = 0; combo = 0;
+  B = []; best = 0; total = 0; won = false; over = false; fullT = 0; blocked = false; playT = 0; const ov = $("[data-over]"); if (ov) ov.hidden = true; now = 0; gravOn = 0; combo = 0;
   const s = rA * 2.3, top = box.t + (box.b - box.t) * 0.25;
   let row = 0;
   for (let y = box.b - rA - 2; y > top; y -= s * 0.866, row++) {
@@ -291,6 +329,9 @@ function render(dt) {
   const dz = Math.max(clamp((FILL - FULL + 0.08) / 0.08, 0, 1) * 0.5, over ? 1 : fullT / 3);
   if (dz > 0.01) { const gr = ctx.createLinearGradient(0, 0, 0, H * 0.45); const pulse = 0.75 + 0.25 * Math.sin(now * (6 + dz * 8));
     gr.addColorStop(0, `rgba(255,60,80,${0.42 * dz * pulse})`); gr.addColorStop(1, "rgba(255,60,80,0)"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H * 0.45); }
+  for (const a of B) { const b = a.mate; if (!b || a.id > b.id) continue; // gooey bridge between twins
+    const k = Math.min(1, a.mT / GOO); ctx.globalAlpha = 0.35 + 0.3 * k; ctx.strokeStyle = COLS[a.c]; ctx.lineCap = "round";
+    ctx.lineWidth = a.r * (0.5 + 0.9 * k); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.globalAlpha = 1; }
   for (const b of B) {
     const s = sprite(b.L, b.c), sc = Math.max(0.01, b.sc);
     ctx.save(); ctx.translate(b.x, b.y);
@@ -368,7 +409,7 @@ function win() {
 function save() {
   try {
     const bw = box.r - box.l, bh = box.b - box.t;
-    localStorage.setItem(KEY, JSON.stringify({ v: 1, nc: NC, over, best, total, won, b: B.map((b) => [+((b.x - box.l) / bw).toFixed(4), +((b.y - box.t) / bh).toFixed(4), b.L, b.c]) }));
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, nc: NC, over, playT: Math.round(playT), best, total, won, b: B.map((b) => [+((b.x - box.l) / bw).toFixed(4), +((b.y - box.t) / bh).toFixed(4), b.L, b.c]) }));
   } catch (e) {}
 }
 function load() {
@@ -377,7 +418,7 @@ function load() {
     if (!s || s.v !== 1 || (s.nc || 5) !== NC || !Array.isArray(s.b) || !s.b.length) return false;
     const bw = box.r - box.l, bh = box.b - box.t;
     B = []; for (const [x, y, L, c] of s.b) body(box.l + x * bw, box.t + y * bh, clamp(L | 0, 0, ZL), clamp(c | 0, 0, NC - 1));
-    best = s.best | 0; total = s.total | 0; won = !!s.won; if (s.over) return false; now = 2; gravOn = 1; showBest(); return true;
+    best = s.best | 0; total = s.total | 0; won = !!s.won; if (s.over) return false; playT = s.playT || 0; now = 2; gravOn = 1; showBest(); return true;
   } catch (e) { return false; }
 }
 setInterval(save, 2000);
@@ -401,13 +442,14 @@ function frame(t) {
 }
 requestAnimationFrame(frame);
 window.__plop = { stats: () => ({ n: B.length, best, total, fps: Math.round(fpsAvg), frames, outside: B.filter((b) => b.x < box.l - 1 || b.x > box.r + 1 || b.y < box.t - 1 || b.y > box.b + 1).length, maxPen: maxPen() }), get B() { return B; }, box: () => box, rad, fresh, save, setNC,
+  stage() { B = []; const y = (box.t + box.b) / 2, r = rad(4); gravOn = 0.25; now = 0.5; body(box.l + (box.r - box.l) / 2 - r * 1.2, y, 4, 0, { vx: 60 }); body(box.l + (box.r - box.l) / 2 + r * 1.2, y, 4, 0, { vx: -60 }); },
   // headless benchmark: simulate `sec` seconds; every `every` s a "player" flicks a random letter at its nearest twin
-  sim(sec, every, k) { DROPK = k || 1; let t = 0, nx = every || 1e9, stuckT = 0, lastTot = total, longest = 0;
-    while (t < sec && !over) { step(STEP); t += STEP; now += 0;
+  sim(sec, every, k, hip) { DROPK = k || 1; const oh = HIP; if (hip != null) HIP = hip; let zT = 0; let t = 0, nx = every || 1e9, stuckT = 0, lastTot = total, longest = 0;
+    while (t < sec && !over && !zT) { if (won) zT = t; step(STEP); t += STEP; now += 0;
       if (total !== lastTot) { lastTot = total; stuckT = 0; } else { stuckT += STEP; longest = Math.max(longest, stuckT); }
       if (every && t >= nx) { nx += every; let a = null, q = null, d = 1e9;
         for (let k = 0; k < 25; k++) { const p = B[(Math.random() * B.length) | 0]; for (const o of B) if (o !== p && o.L === p.L && o.c === p.c) { const e = Math.hypot(o.x - p.x, o.y - p.y) - p.L * 30; if (e < d) { d = e; q = o; a = p; } } }
         if (q) { a.vx = (q.x - a.x) * 6; a.vy = (q.y - a.y) * 6; } } }
-    DROPK = 1; let mt = 1e9, fill = 0; for (const b of B) { mt = Math.min(mt, b.y - b.r - box.t); fill += Math.PI * b.r * b.r; } fill /= (box.r - box.l) * (box.b - box.t); return { mt: Math.round(mt), fill: +fill.toFixed(2), fullT: +fullT.toFixed(1), t: +t.toFixed(0), over, best, total, n: B.length, won, longestIdle: +longest.toFixed(1) }; } };
+    DROPK = 1; HIP = oh; let mt = 1e9, fill = 0; for (const b of B) { mt = Math.min(mt, b.y - b.r - box.t); fill += Math.PI * b.r * b.r; } fill /= (box.r - box.l) * (box.b - box.t); return { zT: +zT.toFixed(0), mt: Math.round(mt), fill: +fill.toFixed(2), fullT: +fullT.toFixed(1), t: +t.toFixed(0), over, best, total, n: B.length, won, longestIdle: +longest.toFixed(1) }; } };
 function maxPen() { let m = 0; for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) { const a = B[i], b = B[j]; const p = a.r + b.r - Math.hypot(a.x - b.x, a.y - b.y); if (p > m) m = p; } return +m.toFixed(2); }
 })();
