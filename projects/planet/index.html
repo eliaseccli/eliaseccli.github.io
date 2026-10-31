@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#04040a">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Pokeable planet · Elias</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+    (function () {
+      var ok = false;
+      try { ok = !!sessionStorage.getItem("projects.ok"); } catch (e) {}
+      if (!ok) {
+        try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
+        location.replace("../?next=" + encodeURIComponent(location.pathname));
+      } else {
+        document.documentElement.classList.add("is-open");
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./planet.css?v=1">
+</head>
+<body>
+  <canvas id="c" aria-label="A small planet you can poke"></canvas>
+  <a class="back" href="../" aria-label="Back to projects">‹</a>
+  <div class="hud">
+    <div class="count" data-count>🌲 0 · 🕳️ 0 · 🐾 0</div>
+    <div class="actions">
+      <button type="button" data-sound aria-label="Sound off" title="Sound">🔇</button>
+      <button type="button" data-reset title="Reset planet">Reset</button>
+    </div>
+  </div>
+  <div class="toast" data-toast></div>
+  <nav class="tools" data-tools>
+    <button type="button" data-tool="tree" class="on" aria-label="Tree">🌲</button>
+    <button type="button" data-tool="meteor" aria-label="Meteor">☄️</button>
+    <button type="button" data-tool="water" aria-label="Water">💧</button>
+    <button type="button" data-tool="cloud" aria-label="Cloud">☁️</button>
+    <button type="button" data-tool="critter" aria-label="Critter">🐹</button>
+  </nav>
+  <script type="module" src="./planet.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+html, body { margin: 0; height: 100%; background: #04040a; overflow: hidden; overscroll-behavior: none; }
+html:not(.is-open) body { visibility: hidden; }
+body { font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; color: rgba(255,255,255,.88);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#c:active { cursor: grabbing; }
+.glass { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); }
+.back { position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 14px; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; color: rgba(255,255,255,.75); text-decoration: none; font-size: 24px; line-height: 1;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }
+.hud { position: fixed; top: calc(env(safe-area-inset-top) + 12px); right: 14px; left: 62px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; pointer-events: none; }
+.count { font-size: 12.5px; letter-spacing: .02em; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.actions { display: flex; gap: 6px; pointer-events: auto; }
+.actions button, .tools button { font: inherit; color: inherit; cursor: pointer; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.actions button { height: 32px; min-width: 32px; padding: 0 10px; border-radius: 16px; font-size: 12.5px; }
+.tools { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 16px); transform: translateX(-50%); display: flex; gap: 6px; padding: 6px;
+  border-radius: 28px; background: rgba(20,20,34,.45); border: 1px solid rgba(255,255,255,.12); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.tools button { width: 46px; height: 46px; border-radius: 23px; font-size: 22px; line-height: 1; padding: 0; border-color: transparent; background: transparent; transition: transform .18s cubic-bezier(.3,1.6,.5,1), background .2s; }
+.tools button.on { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.22); transform: translateY(-3px) scale(1.08); }
+.tools button:active { transform: scale(.9); }
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 6px); opacity: 0; transition: opacity .3s, transform .3s;
+  font-size: 12.5px; color: rgba(255,255,255,.7); pointer-events: none; white-space: nowrap; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
