@@ -10,7 +10,7 @@ body { font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, san
   display: grid; place-items: center; color: rgba(255,255,255,.75); text-decoration: none; font-size: 24px; line-height: 1;
   background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }
 .hud { position: fixed; top: calc(env(safe-area-inset-top) + 12px); right: 14px; left: 62px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; pointer-events: none; }
-.count { font-size: 12.5px; letter-spacing: .02em; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.count { font-size: 12px; letter-spacing: .02em; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; white-space: pre; text-align: right; line-height: 1.35; }
 .actions { display: flex; gap: 6px; pointer-events: auto; }
 .actions button, .tools button { font: inherit; color: inherit; cursor: pointer; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08);
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
