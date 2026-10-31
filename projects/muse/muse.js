@@ -232,7 +232,7 @@ function start() { S = { h: [{ g: randomGenome(), base: -1, v: 0 }], i: 0, liked
 
 function verdict(v) {
   const c = cur(); if (!c || busy) return;
-  c.v = v; if (v > 0) { S.liked = S.i; S.likes++; }
+  delete c.u; c.v = v; if (v > 0) { S.liked = S.i; S.likes++; }
   const g = v > 0 ? nextLike : nextNope, canvas = v > 0 ? offLike : offNope;
   S.h = S.h.slice(0, S.i + 1); S.h.push({ g, base: v > 0 ? S.i : S.liked, v: 0, liked: S.liked }); S.i++; save();
   showUnder(v, true);
@@ -245,10 +245,16 @@ function verdict(v) {
     busy = false; dragX = dragY = 0; paintAll(); ui();
   }, 340);
 }
+let jumpT = 0;
 function jump(d) {
-  const j = S.i + d; if (j < 0 || j >= S.h.length || busy) return; S.i = j;
-  // the "last liked" pointer travels with history
+  const now = performance.now(); if (now - jumpT < 220) return; // one press = one step, even on a jittery double tap
+  const j = S.i + d; if (j < 0 || j >= S.h.length || busy) return; jumpT = now;
+  // undo really undoes the swipe on the picture you return to; redo re-applies it
+  if (d < 0) { const e = S.h[j]; e.u = e.v; e.v = 0; }
+  else { const e = S.h[S.i]; if (e.u !== undefined) { e.v = e.u; delete e.u; } }
+  S.i = j;
   S.liked = -1; for (let k = S.i; k >= 0; k--) if (S.h[k].v === 1) { S.liked = k; break; }
+  S.likes = S.h.slice(0, S.i + 1).filter((e) => e.v === 1).length;
   save(); paintAll(); ui(); top.classList.remove("enter"); void top.offsetWidth; top.classList.add("enter");
 }
 
@@ -298,7 +304,7 @@ const rs = $("[data-restart]"); let armT = 0;
 rs.addEventListener("pointerdown", (e) => e.stopPropagation());
 rs.addEventListener("click", () => {
   if (!rs.classList.contains("armed")) { rs.classList.add("armed"); rs.textContent = "Tap again"; clearTimeout(armT); armT = setTimeout(() => { rs.classList.remove("armed"); rs.textContent = "Restart"; }, 2500); return; }
-  clearTimeout(armT); rs.classList.remove("armed"); rs.textContent = "Restart"; try { localStorage.removeItem(KEY); } catch (e) {} start(); toast("Fresh start");
+  clearTimeout(armT); rs.classList.remove("armed"); rs.textContent = "Restart"; try { localStorage.removeItem(KEY); } catch (e) {} S = { h: [], i: -1, liked: -1, likes: 0 }; for (const cv of [cvTop, cvUnder]) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height); document.body.classList.remove("clean"); ui();
 });
 /* ---------- describe it (on-device): keyword parser instantly, local LLM when loaded ---------- */
 const askBtn = $("[data-ask]"), form = $("[data-prompt]"), q = $("[data-q]"), aiState = $("[data-aistate]"), chipsEl = $("[data-chips]");
