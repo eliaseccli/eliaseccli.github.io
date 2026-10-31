@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#0b0b0f">
   <meta name="color-scheme" content="dark">
   <meta name="robots" content="noindex, nofollow">
@@ -23,7 +23,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="./muse.css?v=1">
+  <link rel="stylesheet" href="./muse.css?v=2">
 </head>
 <body>
   <div class="stage" data-stage>
@@ -32,14 +32,15 @@
   </div>
   <div class="intro" data-intro><h1>Muse</h1><p>Tap to paint.<br>Swipe right if you like it, left if you don't.<br>It learns your taste as you go.</p></div>
   <a class="fab back" href="../" aria-label="Back to projects">‹</a>
+  <button type="button" class="restart" data-restart aria-label="Restart">Restart</button>
   <div class="bar" data-bar>
-    <button type="button" data-undo aria-label="Undo">↶</button>
+    <button type="button" data-undo aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
     <button type="button" class="nope" data-no aria-label="Dislike">✕</button>
     <button type="button" data-save aria-label="Save image">⤓</button>
     <button type="button" class="like" data-yes aria-label="Like">♥</button>
-    <button type="button" data-redo aria-label="Redo">↷</button>
+    <button type="button" data-redo aria-label="Redo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
   </div>
   <div class="toast" data-toast hidden></div>
-  <script src="./muse.js?v=1"></script>
+  <script src="./muse.js?v=2"></script>
 </body>
 </html>

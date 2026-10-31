@@ -126,7 +126,8 @@ function step(dt) {
       const kx = (tx - b.x) * 7, ky = (ty - b.y) * 7, lim = 1600;
       b.vx = lerp(b.vx, clamp(kx, -lim, lim), 0.06); b.vy = lerp(b.vy, clamp(ky, -lim, lim), 0.06);
     } else { b.vy += g * dt; if (gravOn < 1) { b.vx += Math.sin(now * 1.7 + b.id) * 6 * dt; b.vy += Math.cos(now * 1.3 + b.id * 1.7) * 6 * dt; } }
-    if (b.drop) { if (b.vy > 340) b.vy = lerp(b.vy, 340, 0.08); if (now - b.born > 6) b.drop = 0; } // new arrivals drift down gently
+    if (b.drop) { if (b.vy > 340) b.vy = lerp(b.vy, 340, 0.08); if (now - b.born > 6) b.drop = 0; }
+    if (b.aim) { const t = b.aim; if (t.dead || t.L !== b.L || now - b.born > 8) b.aim = null; else { b.vx = lerp(b.vx, clamp((t.x - b.x) * 3, -260, 260), 0.06); if (Math.hypot(t.x - b.x, t.y - b.y) < (t.r + b.r) * 2.2 && !t.mate && !b.mate) { link(b, t); b.aim = null; } } } // auto mode: steer onto the twin // new arrivals drift down gently
     b.vx *= 0.998; b.vy *= 0.998; // floaty air drag b.av *= 0.985;
     b.x += b.vx * dt; b.y += b.vy * dt; b.ang += b.av * dt;
     // springs: pop scale and squash wobble
@@ -208,22 +209,22 @@ const RAMP = 360;
 function dropEvery() { return DROP[NC] * DROPK * Math.max(0.2, 1 / (1 + playT / RAMP)); }
 // mostly A's, sometimes a letter trailing your best (best-1..best-4, weighted low) so Z stays reachable
 let HIP = 0.2;
-function dropL() { // returns [letter, colour]
-  const A = [0, (Math.random() * NC) | 0];
-  if (best < 2 || Math.random() > (NC === 1 ? (FILL > 0.45 ? 1 : 0.35) : HIP + (FILL > 0.6 ? 0.25 : 0))) return A; // auto: when crowded, only twins
-  // a twin of one of your big letters (best-4..best; auto mode always picks the smallest so the chain cascades)
-  const lo = Math.max(1, best - 4), pool = B.filter((b) => b.L >= lo && b.L < ZL && !b.mate);
-  if (!pool.length) return A;
-  let t; if (NC === 1) { const lo1 = Math.max(1, best - 3); t = null; for (const b of pool) if (b.L >= lo1 && (!t || b.L < t.L)) t = b; if (!t) return A; }
-  else { pool.sort((a, b) => a.L - b.L); t = pool[Math.floor(Math.pow(Math.random(), 1.6) * pool.length)]; }
-  return [t.L, t.c];
+function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
+  const c = (Math.random() * NC) | 0; let t = null;
+  for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
+  if (NC === 1 && t) { // auto mode: skip buried letters (a drop could never reach them), so the chain keeps climbing
+    const open = (b) => !B.some((o) => o !== b && o.y < b.y - b.r * 0.3 && Math.abs(o.x - b.x) < (o.r + b.r) * 0.8);
+    const busy = new Set(); for (const b of B) if (b.aim) { busy.add(b); busy.add(b.aim); }
+    let u = null; for (const b of B) if (!b.mate && !busy.has(b) && b.L < ZL && open(b) && (!u || b.L < u.L)) u = b; t = u; }
+  return [t ? t.L : 0, c, t];
 }
 function maybeDrop() {
   const r = rad(0);
+  const d = dropL(), aim = NC === 1 && d[2] ? clamp(d[2].x, box.l + r * 3, box.r - r * 3) : null; // auto mode drops onto its twin
   for (let k = 0; k < 8; k++) {
-    const x = rnd(box.l + r * 3, box.r - r * 3), y = box.t + r + 2;
+    const x = aim != null && k < 4 ? clamp(aim + rnd(-1, 1) * r * k, box.l + r * 3, box.r - r * 3) : rnd(box.l + r * 3, box.r - r * 3), y = box.t + r + 2;
     let free = true; for (const o of B) if (Math.hypot(o.x - x, o.y - y) < o.r + r) { free = false; break; }
-    if (free) { const [dl, dc] = dropL(); body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); blocked = false; return; }
+    if (free) { const [dl, dc] = d; const nb = body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); if (aim != null && nb) nb.aim = d[2]; blocked = false; return; }
   }
   blocked = true; // nowhere to drop: the screen is full
 }
@@ -453,3 +454,9 @@ window.__plop = { stats: () => ({ n: B.length, best, total, fps: Math.round(fpsA
     DROPK = 1; HIP = oh; let mt = 1e9, fill = 0; for (const b of B) { mt = Math.min(mt, b.y - b.r - box.t); fill += Math.PI * b.r * b.r; } fill /= (box.r - box.l) * (box.b - box.t); return { zT: +zT.toFixed(0), mt: Math.round(mt), fill: +fill.toFixed(2), fullT: +fullT.toFixed(1), t: +t.toFixed(0), over, best, total, n: B.length, won, longestIdle: +longest.toFixed(1) }; } };
 function maxPen() { let m = 0; for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) { const a = B[i], b = B[j]; const p = a.r + b.r - Math.hypot(a.x - b.x, a.y - b.y); if (p > m) m = p; } return +m.toFixed(2); }
 })();
+
+/* no zooming: block pinch (iOS gesture events, multi-touch moves) and double-tap zoom */
+(() => { const no = (e) => e.preventDefault();
+  for (const t of ["gesturestart", "gesturechange", "gestureend", "dblclick"]) document.addEventListener(t, no, { passive: false });
+  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  let last = 0; document.addEventListener("touchend", (e) => { const n = Date.now(); if (n - last < 320 && e.target.closest && !e.target.closest("a,button,input,label")) e.preventDefault(); last = n; }, { passive: false }); })();

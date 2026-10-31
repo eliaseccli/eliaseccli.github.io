@@ -224,7 +224,7 @@ function showUnder(dir, force) {
 }
 function ui() {
   $("[data-undo]").disabled = S.i <= 0; $("[data-redo]").disabled = S.i >= S.h.length - 1;
-  intro.hidden = S.h.length > 0; bar.classList.toggle("off", !S.h.length);
+  intro.hidden = S.h.length > 0; $("[data-restart]").hidden = !S.h.length; bar.classList.toggle("off", !S.h.length);
 }
 function toast(t) { const el = $("[data-toast]"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (el.hidden = true), 1600); }
 
@@ -266,7 +266,7 @@ stage.addEventListener("pointermove", (e) => {
 const up = (e) => {
   if (!down) return; down = false;
   if (!S.h.length) { start(); return; }
-  if (!moved) { bar.classList.toggle("off"); return; } // tap: hide / show the controls for a clean view
+  if (!moved) { bar.classList.toggle("off"); document.body.classList.toggle("clean", bar.classList.contains("off")); return; } // tap: hide / show the controls for a clean view
   const vx = dragX / Math.max(1, performance.now() - t0);
   if (Math.abs(dragX) > W * 0.25 || Math.abs(vx) > 0.6 && Math.abs(dragX) > 40) verdict(dragX > 0 ? 1 : -1);
   else { top.classList.add("back"); top.classList.remove("moving"); top.style.transform = ""; stLike.style.opacity = stNope.style.opacity = 0; dragX = dragY = 0; }
@@ -293,7 +293,20 @@ $("[data-save]").addEventListener("click", async () => {
   setTimeout(() => URL.revokeObjectURL(url), 4000); toast("Saved. On iPhone: long-press to add to Photos");
 });
 
+// Restart: first tap arms it ("Tap again"), second tap within 2.5 s wipes history and starts fresh
+const rs = $("[data-restart]"); let armT = 0;
+rs.addEventListener("pointerdown", (e) => e.stopPropagation());
+rs.addEventListener("click", () => {
+  if (!rs.classList.contains("armed")) { rs.classList.add("armed"); rs.textContent = "Tap again"; clearTimeout(armT); armT = setTimeout(() => { rs.classList.remove("armed"); rs.textContent = "Restart"; }, 2500); return; }
+  clearTimeout(armT); rs.classList.remove("armed"); rs.textContent = "Restart"; try { localStorage.removeItem(KEY); } catch (e) {} start(); toast("Fresh start");
+});
 let rz = 0; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(paintAll, 150); });
 load(); ui(); if (S.h.length) paintAll();
 window.__muse = { get S() { return S; }, mutate, randomGenome, render, FAM, verdict, jump };
 })();
+
+/* no zooming: block pinch (iOS gesture events, multi-touch moves) and double-tap zoom */
+(() => { const no = (e) => e.preventDefault();
+  for (const t of ["gesturestart", "gesturechange", "gestureend", "dblclick"]) document.addEventListener(t, no, { passive: false });
+  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  let last = 0; document.addEventListener("touchend", (e) => { const n = Date.now(); if (n - last < 320 && e.target.closest && !e.target.closest("a,button,input,label")) e.preventDefault(); last = n; }, { passive: false }); })();

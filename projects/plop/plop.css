@@ -30,3 +30,4 @@ canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh;
 @media (max-width: 400px) { .hud .nc output { display: none; } .hud .nc output:is([data-auto]) { display: block; } }
 .win.over small { font-size: 15px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; opacity: .7; }
 .win.over b { color: #ffc23d; }
+button, a { touch-action: manipulation; }
