@@ -39,3 +39,23 @@ html, body { touch-action: none; overscroll-behavior: none; -webkit-touch-callou
 .restart:active { transform: scale(.94); }
 body.clean .restart { opacity: 0; pointer-events: none; }
 button, a { touch-action: manipulation; }
+
+.ask { position: fixed; top: calc(env(safe-area-inset-top) + 14px); left: 50%; transform: translateX(-50%); z-index: 5; height: 40px; padding: 0 15px 0 12px; display: flex; align-items: center; gap: 7px; border-radius: 20px; font: inherit; font-size: 15px; font-weight: 600; color: #fff; border: 1px solid rgba(255,255,255,.18); background: rgba(20,20,28,.38); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); cursor: pointer; transition: opacity .3s; }
+.ask svg, .prompt svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+body.clean .ask { opacity: 0; pointer-events: none; }
+.prompt { position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 64px); z-index: 7; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px; border-radius: 26px; background: rgba(16,16,22,.62); border: 1px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); }
+.prompt[hidden] { display: none; }
+.prompt input { flex: 1; min-width: 0; height: 40px; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 16px; padding: 0 10px; }
+.prompt input::placeholder { color: rgba(255,255,255,.45); }
+.prompt button { width: 40px; height: 40px; border-radius: 50%; border: 0; background: #fff; color: #111; display: grid; place-items: center; cursor: pointer; }
+.prompt small { flex-basis: 100%; padding: 0 10px 2px; font-size: 12px; color: rgba(255,255,255,.55); }
+.prompt small:empty { display: none; }
+.chips { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 64px); z-index: 6; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 0 16px; pointer-events: none; animation: chipin .3s ease-out; }
+.chips[hidden] { display: none; }
+.chips span { font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 12px; color: #fff; background: rgba(20,20,28,.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.14); }
+.chips span.src { opacity: .6; font-weight: 500; }
+@keyframes chipin { from { opacity: 0; transform: translateY(-6px); } }
+.dream { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .5s; }
+.dream.on { opacity: 1; }
+.dreamlabel { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 92px); z-index: 5; text-align: center; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: rgba(255,255,255,.85); text-shadow: 0 1px 8px rgba(0,0,0,.6); pointer-events: none; }
+.dreamlabel b { font-variant-numeric: tabular-nums; }

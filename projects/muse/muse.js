@@ -300,6 +300,52 @@ rs.addEventListener("click", () => {
   if (!rs.classList.contains("armed")) { rs.classList.add("armed"); rs.textContent = "Tap again"; clearTimeout(armT); armT = setTimeout(() => { rs.classList.remove("armed"); rs.textContent = "Restart"; }, 2500); return; }
   clearTimeout(armT); rs.classList.remove("armed"); rs.textContent = "Restart"; try { localStorage.removeItem(KEY); } catch (e) {} start(); toast("Fresh start");
 });
+/* ---------- describe it (on-device): keyword parser instantly, local LLM when loaded ---------- */
+const askBtn = $("[data-ask]"), form = $("[data-prompt]"), q = $("[data-q]"), aiState = $("[data-aistate]"), chipsEl = $("[data-chips]");
+let AI = null; const aiMod = () => AI || (AI = import("./muse-ai.js?v=1"));
+for (const el of [askBtn, form]) el.addEventListener("pointerdown", (e) => e.stopPropagation());
+function aiLabel(m) { const a = m.ai; aiState.textContent = a.state === "ready" ? "On-device AI ready · " + a.model.replace(/-MLC$/, "") : a.state === "loading" ? `Downloading on-device AI… ${Math.round(a.progress * 100)}% (quick mode works meanwhile)` : a.state === "unsupported" ? "Quick mode (this browser has no WebGPU)" : a.state === "error" ? "Quick mode (AI failed to load)" : ""; }
+askBtn.addEventListener("click", async () => {
+  if (!form.hidden) { form.hidden = true; q.blur(); return; }
+  form.hidden = false; chipsEl.hidden = true; q.focus();
+  const m = await aiMod(); aiLabel(m);
+  if (m.ai.state === "idle" && m.hasGPU()) { dream.start("Waking up the on-device AI"); m.load((pr) => { dream.pct = pr; aiLabel(m); }).then(() => { aiLabel(m); dream.stop(); }); }
+});
+form.addEventListener("submit", async (e) => {
+  e.preventDefault(); const text = q.value.trim(); if (!text || !cur()) return; q.blur(); form.hidden = true;
+  const m = await aiMod(); let it = null, src = "quick"; if (m.ai.state === "loading") dream.stop();
+  if (m.ai.state === "ready") { dream.start("Thinking"); dream.pct = -1; try { it = await m.ask(text, cur().g); if (it) src = "AI " + (m.ai.lastMs / 1000).toFixed(1) + "s"; } catch (err) { console.warn(err); } dream.stop(); }
+  const kw = m.parse(text);
+  if (!it || (!it.fam && it.hue == null && !it.avoidHue.length && !Object.keys(it.d).length)) { it = kw; src = "quick"; }
+  else { // the parser is exact about named styles/colours: let it win on those
+    if (kw.fam) it.fam = kw.fam; if (kw.hue != null) it.hue = kw.hue; it.avoidHue.push(...kw.avoidHue); it.avoidFam.push(...kw.avoidFam); }
+  if (!it.chips.length && !it.fam && it.hue == null && !Object.keys(it.d).length && !it.avoidHue.length && !it.avoidFam.length) { toast("Didn't catch that. Try colours, styles or moods"); return; }
+  const g = m.apply(cur().g, it, mutate); g.prompt = text;
+  S.h = S.h.slice(0, S.i + 1); S.h.push({ g, base: S.i, v: 0, liked: S.liked }); S.i++; save(); paintAll(); ui();
+  top.classList.remove("enter"); void top.offsetWidth; top.classList.add("enter"); q.value = "";
+  chipsEl.innerHTML = it.chips.map((c) => `<span>${c.replace(/[<&]/g, "")}</span>`).join("") + `<span class="src">${src}</span>`; chipsEl.hidden = false;
+  clearTimeout(chipsEl.t); chipsEl.t = setTimeout(() => (chipsEl.hidden = true), 3200);
+  window.__museLast = { it, src };
+});
+
+/* loading animation: the current artwork dissolves into a swirling paint flow sampled from its own colours */
+const dream = (() => {
+  const cv = $("[data-dream]"), lab = $("[data-dreamlabel]"), x = cv.getContext("2d"); let raf = 0, on = false, pts = [], t = 0, msg = "", nz = null;
+  const o = { pct: 0, get on() { return on; } };
+  o.start = (m) => { msg = m; if (on) return; on = true; const w = cv.width = Math.round(innerWidth * Math.min(2, DPR)), h = cv.height = Math.round(innerHeight * Math.min(2, DPR));
+    x.drawImage(cvTop, 0, 0, w, h); const src = x.getImageData(0, 0, w, h).data; nz = noise2((Math.random() * 1e9) | 0); pts = [];
+    for (let i = 0; i < 700; i++) { const px = Math.random() * w, py = Math.random() * h, k = ((py | 0) * w + (px | 0)) * 4; pts.push({ x: px, y: py, c: `rgb(${src[k]},${src[k + 1]},${src[k + 2]})`, l: Math.random() * 80 }); }
+    x.fillStyle = "rgba(0,0,0,.25)"; x.fillRect(0, 0, w, h); cv.hidden = lab.hidden = false; requestAnimationFrame(() => cv.classList.add("on")); top.style.filter = "saturate(1.2) blur(2px)"; loop(); };
+  o.stop = () => { if (!on) return; on = false; cv.classList.remove("on"); top.style.filter = ""; lab.hidden = true; setTimeout(() => { if (!on) { cancelAnimationFrame(raf); cv.hidden = true; } }, 520); };
+  function loop() { raf = requestAnimationFrame(loop); t += 0.006; const w = cv.width, h = cv.height, s = w / 390;
+    x.globalAlpha = 0.06; x.fillStyle = "#000"; x.fillRect(0, 0, w, h); x.globalAlpha = 0.85; x.lineWidth = 2.2 * s; x.lineCap = "round";
+    for (const p of pts) { const a = nz.fbm(p.x / w * 2.2, p.y / h * 2.2 + t, 3) * TAU * 1.6 + t * 2, ox = p.x, oy = p.y; p.x += Math.cos(a) * 2.4 * s; p.y += Math.sin(a) * 2.4 * s; p.l -= 1;
+      x.strokeStyle = p.c; x.beginPath(); x.moveTo(ox, oy); x.lineTo(p.x, p.y); x.stroke(); if (p.l < 0 || p.x < 0 || p.y < 0 || p.x > w || p.y > h) { p.x = Math.random() * w; p.y = Math.random() * h; p.l = 40 + Math.random() * 80; } }
+    lab.innerHTML = msg + (o.pct >= 0 ? ` <b>${Math.round(o.pct * 100)}%</b>` : '<b class="dots">' + ".".repeat(1 + ((t * 12) | 0) % 3) + "</b>"); }
+  return o;
+})();
+window.__museDream = dream;
+
 let rz = 0; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(paintAll, 150); });
 load(); ui(); if (S.h.length) paintAll();
 window.__muse = { get S() { return S; }, mutate, randomGenome, render, FAM, verdict, jump };
