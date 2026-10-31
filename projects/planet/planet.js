@@ -1085,7 +1085,7 @@ canvas.addEventListener("pointermove", (e) => {
     if (pinch0 > 0) zoomTarget = clamp(zoom0 * (pinch0 / dist), ZMIN, ZMAX);
     // two-finger twist rolls the view around the screen centre, following the fingers
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    if (twistA !== null) { let d = ang - twistA; d = Math.atan2(Math.sin(d), Math.cos(d)); camQ.multiply(qx.setFromAxisAngle(V(0, 0, 1), -d)).normalize(); }
+    if (twistA !== null) { let d = ang - twistA; d = Math.atan2(Math.sin(d), Math.cos(d)); camQ.multiply(qx.setFromAxisAngle(V(0, 0, 1), d)).normalize(); }
     twistA = ang;
   }
 });
