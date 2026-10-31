@@ -12,10 +12,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<script>
+<script src="/projects/unlock.js?v=1"></script>
+  <script>
     (function () {
       var ok = false;
-      try { ok = !!sessionStorage.getItem("projects.ok"); } catch (e) {}
+      try { ok = !!window.ProjectsUnlock.get(); } catch (e) {}
       if (!ok) {
         try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
         location.replace("../?next=" + encodeURIComponent(location.pathname));
@@ -24,7 +25,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="./planet.css?v=2">
+  <link rel="stylesheet" href="./planet.css?v=4">
 </head>
 <body>
   <canvas id="c" aria-label="A small planet you can poke"></canvas>
@@ -44,7 +45,8 @@
     <button type="button" data-tool="cloud" aria-label="Cloud">☁️</button>
     <button type="button" data-tool="critter" aria-label="Critter">🐹</button>
     <button type="button" data-tool="volcano" aria-label="Volcano">🌋</button>
+    <button type="button" data-tool="land" aria-label="Land">🏝️</button>
   </nav>
-  <script type="module" src="./planet.js?v=2"></script>
+  <script type="module" src="./planet.js?v=4"></script>
 </body>
 </html>

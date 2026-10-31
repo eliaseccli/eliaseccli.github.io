@@ -1,7 +1,7 @@
 (function () {
   var KEY = "projects.ok";
   try {
-    if (!sessionStorage.getItem(KEY)) {
+    if (!(window.ProjectsUnlock ? window.ProjectsUnlock.get() : sessionStorage.getItem(KEY))) {
       try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
       location.replace("../?next=" + encodeURIComponent(location.pathname));
       return;

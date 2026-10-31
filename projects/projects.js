@@ -156,7 +156,7 @@
     } else {
       shelf.appendChild(card);
     }
-    try { sessionStorage.setItem(KEY, root.innerHTML); } catch (err) {}
+    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
   function ensurePlanetCard(root) {
@@ -175,7 +175,7 @@
     var after = shelf.querySelector('a[href*="lookup"]');
     if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
     else shelf.appendChild(card);
-    try { sessionStorage.setItem(KEY, root.innerHTML); } catch (err) {}
+    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
   function unlock(html) {
@@ -216,7 +216,7 @@
       return crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, ct);
     }).then(function (buf) {
       var html = new TextDecoder().decode(buf);
-      try { sessionStorage.setItem(KEY, html); } catch (err) {}
+      try { window.ProjectsUnlock.set(html); } catch (err) {}
       var next = consumeNext();
       if (next) {
         location.replace(next);
@@ -484,7 +484,7 @@
   });
 
   try {
-    var cached = sessionStorage.getItem(KEY);
+    var cached = window.ProjectsUnlock.get();
     if (cached) {
       var next = consumeNext();
       if (next) {

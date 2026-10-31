@@ -24,3 +24,4 @@ body { font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, san
 .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 6px); opacity: 0; transition: opacity .3s, transform .3s;
   font-size: 12.5px; color: rgba(255,255,255,.7); pointer-events: none; white-space: nowrap; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 400px) { .tools { gap: 3px; padding: 5px; } .tools button { width: 42px; height: 42px; font-size: 20px; } }

@@ -12,10 +12,11 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<script>
+<script src="/projects/unlock.js?v=1"></script>
+  <script>
     (function () {
       var ok = false;
-      try { ok = !!sessionStorage.getItem("projects.ok"); } catch (e) {}
+      try { ok = !!window.ProjectsUnlock.get(); } catch (e) {}
       if (!ok) {
         try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
         location.replace("../?next=" + encodeURIComponent(location.pathname));
@@ -53,7 +54,7 @@
     After <a href="https://pengzhe.ng" target="_blank" rel="noopener noreferrer">Peng Zheng</a>
     · <a href="https://x.com/pengzheng_/status/2094115772838903817" target="_blank" rel="noopener noreferrer">the post</a>
   </p>
-  <script src="./diorama.js?v=diorama25"></script>
+  <script src="./diorama.js?v=diorama26"></script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
