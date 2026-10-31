@@ -1052,7 +1052,7 @@ const pointers = new Map();
 // zoom = altitude above the unit sphere as a fraction of the default altitude (log-scaled, so speed ∝ distance)
 const ZMIN = 0.004, ZMAX = 1.9;
 const camDirL = V();
-let vel = { x: 0, y: 0 }, last = 0, zoom = 1, zoomTarget = 1, pinch0 = 0, zoom0 = 1, down = null, idle = 0, shake = 0;
+let twistA = null, vel = { x: 0, y: 0 }, last = 0, zoom = 1, zoomTarget = 1, pinch0 = 0, zoom0 = 1, down = null, idle = 0, shake = 0;
 const qx = new THREE.Quaternion(), qy = new THREE.Quaternion();
 // dragging orbits the CAMERA around a fixed planet: the sun, moon and stars stay put in space, so you can
 // fly over to the night side and back to the day side (trackball around the camera's own axes)
@@ -1066,7 +1066,7 @@ canvas.addEventListener("pointerdown", (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   idle = 0;
   if (pointers.size === 1) { down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 }; vel.x = vel.y = 0; last = performance.now(); }
-  else { down = null; const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zoomTarget; }
+  else { down = null; const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = zoomTarget; twistA = Math.atan2(b.y - a.y, b.x - a.x); }
 });
 canvas.addEventListener("pointermove", (e) => {
   const p = pointers.get(e.pointerId); if (!p) return;
@@ -1083,11 +1083,15 @@ canvas.addEventListener("pointermove", (e) => {
     const [a, b] = [...pointers.values()];
     const dist = Math.hypot(a.x - b.x, a.y - b.y);
     if (pinch0 > 0) zoomTarget = clamp(zoom0 * (pinch0 / dist), ZMIN, ZMAX);
+    // two-finger twist rolls the view around the screen centre, following the fingers
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    if (twistA !== null) { let d = ang - twistA; d = Math.atan2(Math.sin(d), Math.cos(d)); camQ.multiply(qx.setFromAxisAngle(V(0, 0, 1), -d)).normalize(); }
+    twistA = ang;
   }
 });
 function up(e) {
   if (!pointers.has(e.pointerId)) return;
-  pointers.delete(e.pointerId);
+  pointers.delete(e.pointerId); if (pointers.size < 2) twistA = null;
   if (pointers.size === 0 && down) {
     if (performance.now() - last > 80) vel.x = vel.y = 0;
     if (down.moved < 10 && !down.held && performance.now() - down.t < 450) { vel.x = vel.y = 0; tap(e.clientX, e.clientY); }
