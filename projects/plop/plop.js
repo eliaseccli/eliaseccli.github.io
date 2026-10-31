@@ -214,13 +214,13 @@ function dropL() { // returns [letter, colour]: random active colour, smallest l
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
   if (t && NC > 1) {
     // Drops trail the colour's best letter by a gap that widens as you climb (B-D: 1, E-I: 2, J-N: 3, O-S: 4, T+: 5).
-    // Start at the smallest letter; step up only while the current one has an even count of 4 or fewer, never past the cap.
+    // Start at the smallest letter; step up only while the current one has an even count of 2 or fewer, never past the cap.
     const cnt = {}; let top = 0;
     for (const b of B) if (b.c === c && !b.mate && b.L < ZL) { cnt[b.L] = (cnt[b.L] || 0) + 1; if (b.L > top) top = b.L; }
     const cap = Math.max(0, top - (1 + Math.floor(top / 5)));
     const lv = Object.keys(cnt).map(Number).sort((x, y) => x - y);
     let L = lv[0];
-    for (let k = 1; k < lv.length && lv[k] <= cap && cnt[L] <= 4 && cnt[L] % 2 === 0; k++) L = lv[k];
+    for (let k = 1; k < lv.length && lv[k] <= cap && cnt[L] <= 2 && cnt[L] % 2 === 0; k++) L = lv[k];
     if (L !== t.L) { let u = null; for (const b of B) if (b.c === c && !b.mate && b.L === L) { u = b; break; } if (u) t = u; }
   }
   if (NC === 1 && t) { // auto mode: skip buried letters (a drop could never reach them), so the chain keeps climbing
@@ -377,7 +377,8 @@ function render(dt) {
 const drag = { b: null, x: 0, y: 0, id: -1, oy: 0, touch: false };
 canvas.addEventListener("pointerdown", (e) => {
   audio(); if (AC && AC.state === "suspended") AC.resume();
-  if (drag.b) return;
+  if (drag.b && drag.id !== -1 && drag.id !== e.pointerId && B.includes(drag.b)) return; // second finger while one drags: ignore
+  if (drag.b) { drag.b.held = false; drag.b = null; drag.id = -1; } // stale grab (lost pointerup): never let it lock input
   let pick = null, pd = 1e9;
   for (const b of B) { const d = Math.hypot(b.x - e.clientX, b.y - e.clientY); if (d < b.r + 14 && d - b.r < pd) { pd = d - b.r; pick = b; } }
   if (!pick) return;
@@ -387,7 +388,9 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 canvas.addEventListener("pointermove", (e) => { if (e.pointerId === drag.id) { drag.x = e.clientX; drag.y = e.clientY; } });
 const release = (e) => { if (e.pointerId !== drag.id) return; if (drag.b) drag.b.held = false; for (const b of B) b.held = false; drag.b = null; drag.id = -1; };
-canvas.addEventListener("pointerup", release); canvas.addEventListener("pointercancel", release);
+canvas.addEventListener("pointerup", release); canvas.addEventListener("pointercancel", release); canvas.addEventListener("lostpointercapture", release);
+const releaseAll = () => { for (const b of B) b.held = false; drag.b = null; drag.id = -1; };
+addEventListener("blur", releaseAll); document.addEventListener("visibilitychange", releaseAll);
 document.addEventListener("gesturestart", (e) => e.preventDefault());
 
 /* ---------- HUD ---------- */
