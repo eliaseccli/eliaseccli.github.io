@@ -212,10 +212,16 @@ let HIP = 0.2;
 function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
   const c = (Math.random() * NC) | 0; let t = null;
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
-  if (t && NC > 1) { // once 4 or fewer of that smallest letter are left, feed the next letter up instead (no endless A loop)
-    let n = 0, up = null;
-    for (const b of B) if (b.c === c && !b.mate && b.L < ZL) { if (b.L === t.L) n++; else if (b.L > t.L && (!up || b.L < up.L)) up = b; }
-    if (n <= 4 && n % 2 === 0 && up) t = up; // odd count: one more of the small letter first, so every one can pair
+  if (t && NC > 1) {
+    // Drops trail the colour's best letter by a gap that widens as you climb (B-D: 1, E-I: 2, J-N: 3, O-S: 4, T+: 5).
+    // Start at the smallest letter; step up only while the current one has an even count of 4 or fewer, never past the cap.
+    const cnt = {}; let top = 0;
+    for (const b of B) if (b.c === c && !b.mate && b.L < ZL) { cnt[b.L] = (cnt[b.L] || 0) + 1; if (b.L > top) top = b.L; }
+    const cap = Math.max(0, top - (1 + Math.floor(top / 5)));
+    const lv = Object.keys(cnt).map(Number).sort((x, y) => x - y);
+    let L = lv[0];
+    for (let k = 1; k < lv.length && lv[k] <= cap && cnt[L] <= 4 && cnt[L] % 2 === 0; k++) L = lv[k];
+    if (L !== t.L) { let u = null; for (const b of B) if (b.c === c && !b.mate && b.L === L) { u = b; break; } if (u) t = u; }
   }
   if (NC === 1 && t) { // auto mode: skip buried letters (a drop could never reach them), so the chain keeps climbing
     const open = (b) => !B.some((o) => o !== b && o.y < b.y - b.r * 0.3 && Math.abs(o.x - b.x) < (o.r + b.r) * 0.8);
