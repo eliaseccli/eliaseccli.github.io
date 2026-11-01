@@ -135,6 +135,11 @@ function step(dt) {
     b.sv += (-(b.sc - 1) * (jelly ? 300 : 420) - b.sv * (jelly ? 4.5 : 13)) * dt; b.sc += b.sv * dt;
     if (!b.mate) { b.sqv += (-b.sq * (jelly ? 380 : 620) - b.sqv * (jelly ? 4 : 16)) * dt; b.sq += b.sqv * dt; }
   }
+  // ever so slight magnetism: matching letters (same colour + letter) nearby drift toward each other
+  if (gravOn >= 1) for (let i = 0; i < B.length; i++) { const a = B[i]; if (a.mate || a.held || a.L >= ZL) continue;
+    for (let j = i + 1; j < B.length; j++) { const b = B[j]; if (b.c !== a.c || b.L !== a.L || b.mate || b.held) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, reach = (a.r + b.r) * 3; if (d > reach) continue;
+      const f = 90 * (1 - d / reach) * dt / d; a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f; } }
   merges.length = 0; goo(dt);
   for (let it = 0; it < 4; it++) { solvePairs(it === 0); for (const b of B) walls(b); }
   doMerges();
