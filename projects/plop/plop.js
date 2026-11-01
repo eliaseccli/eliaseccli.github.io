@@ -215,7 +215,8 @@ function dropL() { // returns [letter, colour]: random active colour, smallest l
   const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c] && !(b.drop && now - (b.born || 0) < 5)) mn[b.c] = b.L; // fresh drops count only after 5 s
   for (let k = 0; k < NC; k++) if (mn[k] >= ZL) mn[k] = 0; // colour not on screen: counts as A
   const lo = Math.min(...mn); let w = mn.map((L) => Math.pow(3, lo - L));
-  const wh = w.map((x, k) => (HOLD[k + ':' + mn[k]] > now ? 0 : x)); if (wh.some((x) => x > 0)) w = wh; // that colour's letter is on its 10 s break let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
+  const wh = w.map((x, k) => (HOLD[k + ':' + mn[k]] > now ? 0 : x)); if (wh.some((x) => x > 0)) w = wh; // that colour's letter is on its 10 s break
+  let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
   while (c < NC - 1 && (r -= w[c]) > 0) c++;
   let t = null;
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
