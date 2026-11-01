@@ -209,11 +209,13 @@ const RAMP = 360;
 function dropEvery() { return DROP[NC] * DROPK * Math.max(0.2, 1 / (1 + playT / RAMP)); }
 // mostly A's, sometimes a letter trailing your best (best-1..best-4, weighted low) so Z stays reachable
 let HIP = 0.2;
+const HOLD = {}; // "colour:letter" -> time until which that letter of that colour doesn't drop
 function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
   // strongly favour colours that are behind: each letter ahead of the furthest-behind colour makes a colour 3x less likely
   const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c] && !(b.drop && now - (b.born || 0) < 5)) mn[b.c] = b.L; // fresh drops count only after 5 s
   for (let k = 0; k < NC; k++) if (mn[k] >= ZL) mn[k] = 0; // colour not on screen: counts as A
-  const lo = Math.min(...mn), w = mn.map((L) => Math.pow(3, lo - L)); let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
+  const lo = Math.min(...mn); let w = mn.map((L) => Math.pow(3, lo - L));
+  const wh = w.map((x, k) => (HOLD[k + ':' + mn[k]] > now ? 0 : x)); if (wh.some((x) => x > 0)) w = wh; // that colour's letter is on its 10 s break let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
   while (c < NC - 1 && (r -= w[c]) > 0) c++;
   let t = null;
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
@@ -242,7 +244,7 @@ function maybeDrop() {
   for (let k = 0; k < 8; k++) {
     const x = aim != null && k < 4 ? clamp(aim + rnd(-1, 1) * r * k, box.l + r * 3, box.r - r * 3) : rnd(box.l + r * 3, box.r - r * 3), y = box.t + r + 2;
     let free = true; for (const o of B) if (Math.hypot(o.x - x, o.y - y) < o.r + r) { free = false; break; }
-    if (free) { const [dl, dc] = d; const nb = body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); if (aim != null && nb) nb.aim = d[2]; if (d[3]) dropT = Math.max(dropT, 10); blocked = false; return; }
+    if (free) { const [dl, dc] = d; const nb = body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); if (aim != null && nb) nb.aim = d[2]; if (d[3]) HOLD[d[1] + ':' + d[0]] = now + 10; blocked = false; return; }
   }
   blocked = true; // nowhere to drop: the screen is full
 }
