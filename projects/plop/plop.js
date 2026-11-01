@@ -210,10 +210,10 @@ function dropEvery() { return DROP[NC] * DROPK * Math.max(0.2, 1 / (1 + playT / 
 // mostly A's, sometimes a letter trailing your best (best-1..best-4, weighted low) so Z stays reachable
 let HIP = 0.2;
 function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
-  // strongly favour colours that are behind: each letter ahead of the furthest-behind colour makes a colour 8x less likely
-  const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c]) mn[b.c] = b.L;
+  // strongly favour colours that are behind: each letter ahead of the furthest-behind colour makes a colour 3x less likely
+  const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c] && !(b.drop && now - (b.born || 0) < 5)) mn[b.c] = b.L; // fresh drops count only after 5 s
   for (let k = 0; k < NC; k++) if (mn[k] >= ZL) mn[k] = 0; // colour not on screen: counts as A
-  const lo = Math.min(...mn), w = mn.map((L) => Math.pow(8, lo - L)); let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
+  const lo = Math.min(...mn), w = mn.map((L) => Math.pow(3, lo - L)); let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
   while (c < NC - 1 && (r -= w[c]) > 0) c++;
   let t = null;
   for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
