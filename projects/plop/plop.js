@@ -209,34 +209,35 @@ const RAMP = 360;
 function dropEvery() { return DROP[NC] * DROPK * Math.max(0.2, 1 / (1 + playT / RAMP)); }
 // mostly A's, sometimes a letter trailing your best (best-1..best-4, weighted low) so Z stays reachable
 let HIP = 0.2;
+const isFresh = (b) => b.drop && now - (b.born || 0) < 5; // a new drop only counts after 5 s
 const HOLD = {}; // "colour:letter" -> time until which that letter of that colour doesn't drop
 function dropL() { // returns [letter, colour]: random active colour, smallest letter of that colour on screen (A if none)
   // strongly favour colours that are behind: each letter ahead of the furthest-behind colour makes a colour 3x less likely
-  const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c] && !(b.drop && now - (b.born || 0) < 5)) mn[b.c] = b.L; // fresh drops count only after 5 s
+  const mn = Array(NC).fill(0).map(() => ZL); for (const b of B) if (b.c < NC && !b.mate && b.L < mn[b.c] && !isFresh(b)) mn[b.c] = b.L; // fresh drops count only after 5 s
   for (let k = 0; k < NC; k++) if (mn[k] >= ZL) mn[k] = 0; // colour not on screen: counts as A
   const lo = Math.min(...mn); let w = mn.map((L) => Math.pow(3, lo - L));
   const wh = w.map((x, k) => (HOLD[k + ':' + mn[k]] > now ? 0 : x)); if (wh.some((x) => x > 0)) w = wh; // that colour's letter is on its 10 s break
   let r = Math.random() * w.reduce((a, x) => a + x, 0), c = 0;
   while (c < NC - 1 && (r -= w[c]) > 0) c++;
   let t = null;
-  for (const b of B) if (b.c === c && !b.mate && b.L < ZL && (!t || b.L < t.L)) t = b;
+  for (const b of B) if (b.c === c && !b.mate && !isFresh(b) && b.L < ZL && (!t || b.L < t.L)) t = b;
   if (t && NC > 1) {
     // Drops trail the colour's best letter by a gap that widens as you climb (B-D: 1, E-I: 2, J-N: 3, O-S: 4, T+: 5).
     // Start at the smallest letter; step up only while the current one has an even count of 2 or fewer, never past the cap.
     const cnt = {}; let top = 0;
-    for (const b of B) if (b.c === c && !b.mate && b.L < ZL) { cnt[b.L] = (cnt[b.L] || 0) + 1; if (b.L > top) top = b.L; }
+    for (const b of B) if (b.c === c && !b.mate && !isFresh(b) && b.L < ZL) { cnt[b.L] = (cnt[b.L] || 0) + 1; if (b.L > top) top = b.L; }
     const cap = Math.max(0, top - (1 + Math.floor(top / 5)));
     const lv = Object.keys(cnt).map(Number).sort((x, y) => x - y);
     let L = lv[0];
     for (let k = 1; k < lv.length && lv[k] <= cap && cnt[L] <= 2 && cnt[L] % 2 === 0; k++) L = lv[k];
-    if (L !== t.L) { let u = null; for (const b of B) if (b.c === c && !b.mate && b.L === L) { u = b; break; } if (u) t = u; }
+    if (L !== t.L) { let u = null; for (const b of B) if (b.c === c && !b.mate && !isFresh(b) && b.L === L) { u = b; break; } if (u) t = u; }
   }
   if (NC === 1 && t) { // auto mode: skip buried letters (a drop could never reach them), so the chain keeps climbing
     const open = (b) => !B.some((o) => o !== b && o.y < b.y - b.r * 0.3 && Math.abs(o.x - b.x) < (o.r + b.r) * 0.8);
     const busy = new Set(); for (const b of B) if (b.aim) { busy.add(b); busy.add(b.aim); }
     let u = null; for (const b of B) if (!b.mate && !busy.has(b) && b.L < ZL && open(b) && (!u || b.L < u.L)) u = b; t = u; }
   // a lone smallest letter: this drop is its partner, then pause 10 s so the player has time to plop it
-  let lone = 0; if (t && NC > 1) { let n = 0; for (const b of B) if (b.c === c && !b.mate && b.L === t.L) n++; lone = n === 1; }
+  let lone = 0; if (t && NC > 1) { let n = 0; for (const b of B) if (b.c === c && !b.mate && !isFresh(b) && b.L === t.L) n++; lone = n === 1; }
   return [t ? t.L : 0, c, t, lone];
 }
 function maybeDrop() {
