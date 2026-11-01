@@ -232,7 +232,9 @@ function dropL() { // returns [letter, colour]: random active colour, smallest l
     const open = (b) => !B.some((o) => o !== b && o.y < b.y - b.r * 0.3 && Math.abs(o.x - b.x) < (o.r + b.r) * 0.8);
     const busy = new Set(); for (const b of B) if (b.aim) { busy.add(b); busy.add(b.aim); }
     let u = null; for (const b of B) if (!b.mate && !busy.has(b) && b.L < ZL && open(b) && (!u || b.L < u.L)) u = b; t = u; }
-  return [t ? t.L : 0, c, t];
+  // a lone smallest letter: this drop is its partner, then pause 10 s so the player has time to plop it
+  let lone = 0; if (t && NC > 1) { let n = 0; for (const b of B) if (b.c === c && !b.mate && b.L === t.L) n++; lone = n === 1; }
+  return [t ? t.L : 0, c, t, lone];
 }
 function maybeDrop() {
   const r = rad(0);
@@ -240,7 +242,7 @@ function maybeDrop() {
   for (let k = 0; k < 8; k++) {
     const x = aim != null && k < 4 ? clamp(aim + rnd(-1, 1) * r * k, box.l + r * 3, box.r - r * 3) : rnd(box.l + r * 3, box.r - r * 3), y = box.t + r + 2;
     let free = true; for (const o of B) if (Math.hypot(o.x - x, o.y - y) < o.r + r) { free = false; break; }
-    if (free) { const [dl, dc] = d; const nb = body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); if (aim != null && nb) nb.aim = d[2]; blocked = false; return; }
+    if (free) { const [dl, dc] = d; const nb = body(x, y, dl, dc, { vy: 30, sc: 0.3, sv: 6, drop: 1 }); if (aim != null && nb) nb.aim = d[2]; if (d[3]) dropT = Math.max(dropT, 10); blocked = false; return; }
   }
   blocked = true; // nowhere to drop: the screen is full
 }
