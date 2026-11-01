@@ -1,4 +1,5 @@
 import * as THREE from "./vendor/three.module.min.js";
+import { createEco } from "./eco.js?v=20261101a";
 
 /* ---------- tiny helpers ---------- */
 const $ = (s) => document.querySelector(s);
@@ -23,7 +24,8 @@ const near = (d, ang) => d.clone().addScaledVector(tangentOf(d).applyAxisAngle(d
 const t0 = performance.now();
 const clock = () => (performance.now() - t0) / 1000;
 const qs = new URLSearchParams(location.search);
-let speed = clamp(+qs.get("speed") || 1, 0.1, 200);
+let speed = qs.get("speed") ? clamp(+qs.get("speed") || 1, 0.1, 200) : 1;
+try { if (!qs.get("speed")) { const sp = localStorage.getItem("planet.speed"); if (sp != null && sp !== "") speed = clamp(+sp, 0, 20); } } catch (e) {}
 let simT = 0;
 
 /* ---------- terrain field on a cube-sphere grid (persisted, cumulative) ---------- */
@@ -118,6 +120,15 @@ function applyLand(d, r, amt = 1) {
   }
   if (ring.length) for (const [k] of ring) wat[k] += pushed / ring.length;
   else vapor += pushed;
+  markTerrain(); waterDirty = true;
+}
+// dig tool: lower the ground (never below the sea floor); near the coast it lets the sea in
+function applyDig(d, r, amt = 1) {
+  forCells(d, r, (k, a) => {
+    const t = smooth(r, r * 0.3, a);
+    field[k] = Math.max(0.93 - baseG[k], field[k] - 0.006 * t * amt);
+    if (basalt[k] > 0) basalt[k] *= 1 - 0.3 * t * amt;
+  });
   markTerrain(); waterDirty = true;
 }
 // lava meeting water: the water flashes to steam (feeding clouds) and the lava cools into new basalt land
@@ -264,6 +275,15 @@ try {
     } else firstVisit = true;
   }
 } catch (e) { firstVisit = true; }
+/* ---------- ecosystem (per-tile sim in eco.js; one tick = one year) ---------- */
+const ECO = "planet.v3.eco", YEAR = 1; // sim seconds per year
+const eco = createEco();
+const tileV = []; for (let k = 0; k < eco.n; k++) tileV.push(V(eco.dir[k * 3], eco.dir[k * 3 + 1], eco.dir[k * 3 + 2]));
+function ecoTerrain() {
+  eco.refreshTerrain((k) => surfaceH(tileV[k]) - WATER, (k) => { const d = tileV[k]; return surfaceH(d) < WATER + 0.002 ? 1 : waterDepth(d) > 0.003 ? 2 : 0; });
+}
+let ecoLoaded = false;
+try { const r = localStorage.getItem(ECO); if (r) ecoLoaded = eco.load(JSON.parse(r)); } catch (e) { ecoLoaded = false; }
 let saveT = 0;
 function save(now = false) {
   clearTimeout(saveT);
@@ -275,6 +295,7 @@ function save(now = false) {
     S.trees = trees.filter((t) => !t.gone).map((t) => ({ d: t.d.toArray().map(r3), s: r3(t.s), y: r3(t.yaw), k: t.kind, c: t.vari, w: r3(t.wet), dr: r3(t.dry), wl: r3(t.wilt), f: t.dead ? t.fa.toArray().map(r3) : 0, da: t.dead ? r3(simT - t.deadT) : 0, b: t.burnt ? 1 : 0 }));
     S.volcanoes = volcanoes.map((v) => ({ d: v.d.toArray().map(r3), g: r3(v.g) }));
     try {
+      localStorage.setItem(ECO, JSON.stringify(eco.serialize()));
       localStorage.setItem(STORE, JSON.stringify(S));
       if (fieldDirty) {
         const fi = new Int16Array(CELLS), c = new Uint8Array(CELLS), b = new Uint8Array(CELLS);
@@ -358,9 +379,12 @@ let NV, unit, vbase, vI, vW;
 }
 const C = {
   deep: new THREE.Color(0x3f8f9a), sand: new THREE.Color(0xe6cf94), grass: new THREE.Color(0x7cc46a),
+  dry: new THREE.Color(0xc9b47a), floor: new THREE.Color(0x3f7f45), ash: new THREE.Color(0x4a3d36), burn: new THREE.Color(0x3a2420),
   grass2: new THREE.Color(0x4f9a5a), rock: new THREE.Color(0x9a8f86), snow: new THREE.Color(0xf4f6ff), crater: new THREE.Color(0x7a5a46), basalt: new THREE.Color(0x3b3230)
 };
+let vTile = null;
 function buildPlanet() {
+  if (!vTile) { vTile = new Int32Array(NV); for (let i = 0; i < NV; i++) vTile[i] = eco.tileAt(unit[i * 3], unit[i * 3 + 1], unit[i * 3 + 2]); }
   const p = planetGeo.attributes.position.array, c = planetGeo.attributes.color.array, col = new THREE.Color();
   for (let i = 0; i < NV; i++) {
     let f = 0, cr = 0, ba = 0;
@@ -369,8 +393,15 @@ function buildPlanet() {
     p[i * 3] = unit[i * 3] * h; p[i * 3 + 1] = unit[i * 3 + 1] * h; p[i * 3 + 2] = unit[i * 3 + 2] * h;
     if (h < WATER + 0.002) col.copy(C.deep).lerp(C.sand, 0.45);
     else if (h < WATER + 0.008) col.copy(C.sand);
-    else if (h < 1.06) col.copy(C.grass).lerp(C.grass2, smooth(1.02, 1.06, h));
-    else if (h < 1.078) col.copy(C.grass2).lerp(C.rock, smooth(1.06, 1.076, h));
+    else if (h < 1.078) {
+      const k = vTile[i], g = eco.grass[k], T = eco.temp[k], mo = eco.moist[k];
+      col.copy(C.dry).lerp(C.grass, smooth(0.04, 0.55, g)).lerp(C.grass2, smooth(1.02, 1.06, h) * 0.6).lerp(C.floor, eco.forest[k] * 0.5);
+      if (mo < 0.2 && g < 0.25) col.lerp(C.sand, smooth(0.2, 0.06, mo) * 0.75);
+      if (h > 1.06) col.lerp(C.rock, smooth(1.06, 1.076, h));
+      if (eco.ash[k] > 0) col.lerp(C.ash, Math.min(1, eco.ash[k]) * 0.8);
+      if (eco.fire[k]) col.lerp(C.burn, 0.75);
+      if (T < 0.14) col.lerp(C.snow, smooth(0.14, 0.02, T) * 0.9);
+    }
     else col.copy(C.rock).lerp(C.snow, smooth(1.078, 1.088, h));
     if (cr > 0) col.lerp(C.crater, Math.min(1, cr) * 0.85);
     if (ba > 0) col.lerp(C.basalt, Math.min(1, ba) * 0.92);
@@ -618,14 +649,14 @@ function stepCloud(c, dt) {
   c.d.applyAxisAngle(c.ax, c.sp * dt).normalize();
   c.next -= dt;
   if (c.next <= 0) { c.raining = !c.raining; c.next = c.raining ? rnd(5, 9) : rnd(6, 14); if (c.raining && speed <= 2) sfx.rain(); }
-  if (c.raining) treeHash.query(c.d, 0.23, (t) => { t.wet = Math.min(1, t.wet + dt * 0.5); });
+  if (c.raining) { c.er = (c.er || 0) + dt; if (c.er > 0.5) { c.er = 0; eco.rainOn(c.d.x, c.d.y, c.d.z, 0.05 * c.sz); } }
   if (c.evap && c.w <= 0.0005 && !c.raining) c.fade += dt / 4;
   c.age += dt;
   if (c.merged) { c.raining = false; c.fade += dt / 1.5; c.d.lerp(c.into.d, Math.min(1, dt * 2)).normalize(); }
   else if (c.age > c.life) { c.raining = false; c.fade += dt / 6; } // clouds dissipate after their lifetime
 }
 // cloud bookkeeping: merge neighbours, return the water of dissipated clouds to the air, keep a few around
-const CLOUD_MIN = 3, MERGE_COS = Math.cos(0.07);
+let CLOUD_MIN = Math.round(1 + eco.rain * 5); const MERGE_COS = Math.cos(0.07);
 let cloudT = 0;
 function cloudTick(dt) {
   cloudT += dt; if (cloudT < 1) return; cloudT = 0;
@@ -681,6 +712,7 @@ function volcanoDamage(v) {
   const k = 0.45 + 0.55 * v.str;
   coolLava(v.d, 0.26 * k, v.str); // small puffs barely reach past the cone, big blasts sweep wide
   ruinVillagesNear(v.d, 0.21 * k);
+  eco.damage(v.d.x, v.d.y, v.d.z, 0.16 * k, "wurde von der Lava begraben"); ecoDirty = true;
   critHash.query(v.d, 0.2 * k, (c) => { if (!c.dying) killCritter(c); });
   treeHash.query(v.d, 0.19 * k, (t) => {
     if (t.dead || t.gone) return;
@@ -701,7 +733,7 @@ function stepVolcano(v, dt) {
       // rare double eruption: a second burst follows quickly, otherwise a fresh random gap
       if (!v.dbl && Math.random() < 0.1) { v.nx = v.e + rnd(2, 7); v.dbl = true; } else { v.nx = v.e + eruptGap(); v.dbl = false; }
       shake = Math.max(shake, 0.12 + 0.3 * v.str); if (speed <= 2 && v.str > 0.5) sfx.rumble();
-      if (S.eruptions === 1) toast("Eruption! 🌋");
+      if (S.eruptions === 1) toast("Ausbruch! 🌋");
     }
   }
 }
@@ -831,6 +863,7 @@ function impact(m) {
   const r = 0.05 + 0.06 * s;
   applyCrater(d, r, 0.014 * s);
   ruinVillagesNear(d, r * 1.8);
+  eco.damage(d.x, d.y, d.z, r * 1.5, "wurde von einem Meteoriten getroffen"); ecoDirty = true;
   if (!wet) S.craters = (S.craters || 0) + 1;
   treeHash.query(d, r * 2, (t) => { if (!t.dead && !t.gone) { killTree(t, false); t.fallStart = clock() + (1 - t.d.dot(d)) * 6; t.fa = V().crossVectors(d, t.d).normalize(); if (t.fa.lengthSq() < 0.5) t.fa = tangentOf(t.d); } });
   for (const c of critters) {
@@ -860,6 +893,153 @@ function addRing(d, color, size) {
   world.add(m); rings.push({ m, t: 0, size });
 }
 
+/* ---------- ecosystem rendering: tiles -> low-poly instances ---------- */
+const hash = (k, s) => { const x = Math.sin(k * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
+const TILE_A = (Math.PI / 2) / 22; // angular tile size (~0.071 rad)
+function jitterDir(k, s, amt) {
+  const d = tileV[k], t = tangentOf(d).applyAxisAngle(d, hash(k, s) * 6.283);
+  return d.clone().addScaledVector(t, Math.sqrt(hash(k, s + 7)) * amt).normalize();
+}
+const TREE_SLOTS = 3, CRIT_SLOTS = 2;
+const treeSlot = [], critSlot = [];
+for (let k = 0; k < eco.n; k++) {
+  for (let j = 0; j < TREE_SLOTS; j++) treeSlot.push({ d: jitterDir(k, j * 3 + 1, TILE_A * 0.55), yaw: hash(k, j + 40) * 6.28, s: 0.75 + 0.5 * hash(k, j + 50), pine: hash(k, j + 60) < 0.5, h: 0 });
+  for (let j = 0; j < CRIT_SLOTS; j++) critSlot.push({ d: jitterDir(k, j * 5 + 90, TILE_A * 0.45), ph: hash(k, j + 99) * 6.28, col: CRITTER_COLORS[(hash(k, j + 70) * CRITTER_COLORS.length) | 0], h: tangentOf(tileV[k]).applyAxisAngle(tileV[k], hash(k, j + 80) * 6.28) });
+}
+const wallI = new Inst(houseGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 1 }), true);
+const roofI = new Inst(roofGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 1 }), true);
+const hullI = new Inst(new THREE.BoxGeometry(0.008, 0.004, 0.022).translate(0, 0.0015, 0), new THREE.MeshStandardMaterial({ color: 0x7a4f32, flatShading: true, roughness: 1 }), false);
+const sailI = new Inst(new THREE.ConeGeometry(0.006, 0.016, 3).scale(0.4, 1, 1).translate(0, 0.012, 0), new THREE.MeshStandardMaterial({ color: 0xf6f1e6, flatShading: true, roughness: 1 }), false);
+const ROOFS = [0xc8553d, 0x8d5a97, 0x3d7ea6, 0xd08a3a].map((c) => new THREE.Color(c));
+const WALL = new THREE.Color(0xf2e6d0), RUIN = new THREE.Color(0x5a524c), PLAGUE = new THREE.Color(0x7d8a4f), SNOWY = new THREE.Color(0xdfe8ef);
+const townLights = [];
+let ecoDirty = true, lastEco = -1;
+const critVis = [], fireTiles = [];
+function placeM(d, yaw, sc, lift = 0, sy = sc) {
+  _q.setFromUnitVectors(UP, d); if (yaw) _q.multiply(_q2.setFromAxisAngle(UP, yaw));
+  return _m.compose(_p.copy(d).multiplyScalar(surfaceH(d) + lift), _q, _s.set(sc, sy, sc));
+}
+const dryLand = (d) => surfaceH(d) > WATER + 0.005 && waterDepth(d) < 0.002;
+function ecoRebuild() {
+  ecoDirty = false;
+  const F = eco.forest, n = eco.n;
+  // trees
+  let nT = 0, nP = 0, nR = 0;
+  trunkI.ensure(n * TREE_SLOTS); pineI.ensure(n * TREE_SLOTS); roundI.ensure(n * TREE_SLOTS);
+  for (let k = 0; k < n; k++) {
+    if (eco.kind[k] || F[k] < 0.12) continue;
+    const burn = eco.fire[k] > 0, cold = eco.temp[k] < 0.25, dry = eco.moist[k] < 0.3;
+    for (let j = 0; j < TREE_SLOTS; j++) {
+      if (F[k] < 0.12 + j * 0.27) break;
+      const sl = treeSlot[k * TREE_SLOTS + j]; if (!dryLand(sl.d)) continue;
+      const pine = sl.pine || cold || eco.alt[k] > 0.05;
+      const m = placeM(sl.d, sl.yaw, sl.s * (0.55 + 0.6 * F[k]));
+      trunkI.mesh.setMatrixAt(nT++, m);
+      const I = pine ? pineI : roundI, i = pine ? nP++ : nR++;
+      I.mesh.setMatrixAt(i, m);
+      if (burn) _c.copy(BURNT); else { _c.copy(LEAF[pine ? 0 : 1][(hash(k, j) * (pine ? 3 : 1.6)) | 0]); if (dry) _c.lerp(WILT, smooth(0.3, 0.12, eco.moist[k]) * 0.8); if (cold) _c.lerp(SNOWY, smooth(0.25, 0.05, eco.temp[k]) * 0.6); }
+      I.mesh.setColorAt(i, _c);
+    }
+  }
+  trunkI.mesh.count = nT; pineI.mesh.count = nP; roundI.mesh.count = nR;
+  trunkI.done(); pineI.done(true); roundI.done(true);
+  // critters (animated per frame)
+  critVis.length = 0;
+  for (let k = 0; k < n && critVis.length < 700; k++) {
+    const c = eco.crit[k]; if (eco.kind[k] || c < 0.2) continue;
+    for (let j = 0; j < CRIT_SLOTS; j++) { if (c < 0.2 + j * 0.45) break; const sl = critSlot[k * CRIT_SLOTS + j]; if (dryLand(sl.d)) critVis.push(sl); }
+  }
+  // houses + ruins
+  let nH = 0;
+  const house = (d, yaw, sc, wall, roof) => {
+    wallI.ensure(nH + 1); roofI.ensure(nH + 1);
+    const m = placeM(d, yaw, sc, -0.001);
+    wallI.mesh.setMatrixAt(nH, m); wallI.mesh.setColorAt(nH, wall);
+    roofI.mesh.setMatrixAt(nH, roof ? m : ZERO); roofI.mesh.setColorAt(nH, roof || wall); nH++;
+  };
+  for (const t of eco.towns) {
+    const c = tileV[t.k], tan = tangentOf(c), cnt = clamp(1 + Math.floor(Math.sqrt(t.pop) * 0.8), 1, 16), big = t.pop >= 150;
+    const roof = t.plague ? PLAGUE : ROOFS[(hash(t.k, 3) * ROOFS.length) | 0];
+    for (let i = 0; i < cnt; i++) {
+      const d = i === 0 ? c : c.clone().addScaledVector(tan.clone().applyAxisAngle(c, i * 2.39996), 0.012 * Math.sqrt(i)).normalize();
+      if (i && !dryLand(d)) continue;
+      house(d, hash(t.k, i + 9) * 6.28, (big && i < 3 ? 1.35 : 1) * (0.85 + 0.3 * hash(t.k, i)), WALL, roof);
+    }
+  }
+  for (let k = 0; k < n; k++) {
+    if (!eco.ruin[k] || eco.townAt[k]) continue;
+    for (let i = 0; i < 3; i++) { const d = jitterDir(k, i + 200, TILE_A * 0.3); if (dryLand(d)) house(d, hash(k, i) * 6.28, 0.8 * Math.min(1, eco.ruin[k] / 20 + 0.3), RUIN, null); }
+  }
+  wallI.mesh.count = nH; roofI.mesh.count = nH; wallI.done(true); roofI.done(true);
+  // town lights
+  while (townLights.length < eco.towns.length) { const s = new THREE.Sprite(lightMat.clone()); world.add(s); townLights.push(s); }
+  townLights.forEach((s, i) => { const t = eco.towns[i]; s.visible = !!t; if (t) { s.userData.k = t.k; s.userData.r = 0.035 + Math.min(0.06, Math.sqrt(t.pop) * 0.004); } });
+  fireTiles.length = 0; for (let k = 0; k < n; k++) if (eco.fire[k]) fireTiles.push(k);
+}
+function ecoFrame(dt, t) {
+  // critters wander around their spot
+  const nC = critVis.length;
+  bodyI.ensure(nC); earI.ensure(nC); eyeI.ensure(nC);
+  for (let i = 0; i < nC; i++) {
+    const c = critVis[i], a = t * 0.35 + c.ph;
+    _v.copy(c.d).addScaledVector(c.h, Math.sin(a) * 0.01).addScaledVector(fwd.crossVectors(c.d, c.h), Math.sin(a * 0.7 + 1) * 0.01).normalize();
+    const hop = Math.abs(Math.sin(t * 9 + c.ph * 3)) * 0.005;
+    _v2.copy(c.h).multiplyScalar(Math.cos(a)).addScaledVector(fwd, Math.cos(a * 0.7 + 1) * 0.7).normalize(); // heading = wander velocity
+    tmp.crossVectors(_v2, _v).normalize(); _v2.crossVectors(_v, tmp);
+    _m.makeBasis(tmp, _v, _v2); _m.scale(_s.setScalar(1.7));
+    _m.setPosition(_p.copy(_v).multiplyScalar(surfaceH(_v) + hop));
+    bodyI.mesh.setMatrixAt(i, _m); earI.mesh.setMatrixAt(i, _m); eyeI.mesh.setMatrixAt(i, _m);
+    _c.setHex(c.col); bodyI.mesh.setColorAt(i, _c); earI.mesh.setColorAt(i, _c);
+  }
+  bodyI.done(true); earI.done(true); eyeI.done();
+  // boats ping-pong along their routes
+  const R = eco.routes;
+  hullI.ensure(R.length); sailI.ensure(R.length);
+  for (let i = 0; i < R.length; i++) {
+    const r = R[i], L = r.path.length;
+    if (L < 2) { hullI.mesh.setMatrixAt(i, ZERO); sailI.mesh.setMatrixAt(i, ZERO); continue; }
+    if (speed > 0) r.u = (r.u + dt * Math.min(speed, 5) * 1.6) % (2 * (L - 1));
+    const back = r.u > L - 1, s = back ? 2 * (L - 1) - r.u : r.u, j = Math.min(L - 2, Math.floor(s)), f = s - j;
+    const a = tileV[r.path[j]], b = tileV[r.path[j + 1]];
+    _v.copy(a).lerp(b, f).normalize();
+    _v2.copy(back ? a : b).sub(_v); _v2.addScaledVector(_v, -_v2.dot(_v)); if (_v2.lengthSq() < 1e-10) _v2.copy(tangentOf(_v)); _v2.normalize();
+    tmp.crossVectors(_v2, _v);
+    _m.makeBasis(tmp, _v, _v2); _m.scale(_s.setScalar(1.6));
+    _m.setPosition(_p.copy(_v).multiplyScalar(WATER + 0.001 + Math.sin(t * 3 + i) * 0.0008));
+    hullI.mesh.setMatrixAt(i, _m); sailI.mesh.setMatrixAt(i, _m);
+  }
+  hullI.done(); sailI.done();
+  // town lights at night
+  for (const s of townLights) {
+    if (!s.visible) continue; const d = tileV[s.userData.k];
+    s.position.copy(d).multiplyScalar(surfaceH(d) + 0.014);
+    const night = smooth(0.05, -0.2, d.dot(sunLocal)); s.material.opacity = night * 0.85; s.scale.setScalar(s.userData.r * (0.3 + 0.7 * night));
+  }
+  // fires
+  if (speed > 0) for (let i = 0; i < fireTiles.length && i < 80; i++) {
+    if (Math.random() > dt * 5) continue;
+    const d = near(tileV[fireTiles[i]], rnd(0, TILE_A * 0.5)), top = _p.copy(d).multiplyScalar(surfaceH(d) + 0.02);
+    glow.emit(top, _v.copy(d).multiplyScalar(rnd(0.03, 0.07)), 1, rnd(0.35, 0.6), 0.1, rnd(0.015, 0.03), rnd(0.5, 1), -0.02);
+    if (Math.random() < 0.3) smoke.emit(top, _v.copy(d).multiplyScalar(rnd(0.02, 0.05)), 0.3, 0.28, 0.26, 0.03, rnd(1.5, 2.5), 0, 0.03);
+  }
+}
+let ecoAcc = 0;
+function storm(k) {
+  for (let i = 0; i < 3; i++) { const c = makeCloud({ d: near(tileV[k], rnd(0, 0.08)).toArray(), w: 0.04, z: rnd(1.3, 1.7), sp: rnd(0.08, 0.14) * (i % 2 ? 1 : -1), l: rnd(25, 45), anim: true }); c.raining = true; c.next = rnd(10, 16); }
+  shake = Math.max(shake, 0.08); if (speed <= 5) sfx.rumble();
+}
+function ecoYear() {
+  ecoTerrain();
+  const ev = eco.tick();
+  for (const e of ev) {
+    if (e.t === "ms") { toast("🏅 " + e.s); sfx.pop(); }
+    else if (e.t === "volcano" && volcanoes.length < 6) { makeVolcano({ d: tileV[e.k].toArray() }); addRing(tileV[e.k], 0xff8a4a, 0.3); }
+    else if (e.t === "storm") storm(e.k);
+  }
+  CLOUD_MIN = Math.round(1 + eco.rain * 5);
+  ecoDirty = true; logDirty = true;
+}
+
 /* ---------- ecology step (fixed sim step, sped up with ?speed=) ---------- */
 const STEP = 0.05;
 let waterT = 0;
@@ -873,113 +1053,94 @@ function wildMeteor(dt) {
 }
 function step(dt) {
   simT += dt;
-  wildMeteor(dt);
-  treeHash.clear(); critHash.clear();
-  for (const t of trees) if (!t.dead && !t.gone) treeHash.add(t);
-  for (const c of critters) if (!c.dying) critHash.add(c);
   for (const c of clouds) stepCloud(c, dt);
   for (const v of volcanoes) stepVolcano(v, dt);
   for (let i = clouds.length - 1; i >= 0; i--) if (clouds[i].fade >= 1) { const c = clouds[i]; vapor += Math.max(0, c.w); c.w = 0; world.remove(c.g); c.mat.dispose(); clouds.splice(i, 1); }
   cloudTick(dt);
   waterT += dt; if (waterT >= 0.5) { waterTick(waterT); waterT = 0; }
-  villT += dt; if (villT >= 2) { villT = 0; villageTick(); }
-  // trees: grow only in sunlight AND with rain; wilt in long droughts
-  for (let i = 0, n = trees.length; i < n; i++) {
-    const t = trees[i];
-    if (t.gone) continue;
-    if (t.dead) { if (simT - t.deadT > 45) goneTree(t); continue; }
-    t.wet = Math.max(0, t.wet - dt / 50);
-    if (t.wet <= 0) t.dry += dt; else t.dry = 0;
-    if (t.dry > 100) t.wilt = Math.min(1, t.wilt + dt / 60); else if (t.wet > 0.2) t.wilt = Math.max(0, t.wilt - dt / 40);
-    if (t.wilt >= 1) { killTree(t, false); continue; }
-    const sunny = t.d.dot(sunLocal) > 0.05;
-    if (sunny && t.wet > 0.02 && t.wilt < 0.5) {
-      t.s = Math.min(1.6, t.s + dt * 0.014);
-      if (t.s > 0.9 && Math.random() < dt * 0.012) {
-        const nd = near(t.d, rnd(0.03, 0.09));
-        let dense = 0; treeHash.query(nd, 0.045, () => { dense++; });
-        if (dense < 3 && surfaceH(nd) > WATER + 0.008 && waterDepth(nd) < 0.0008) { const s = makeTree({ d: nd.toArray(), s: 0.05, w: t.wet * 0.6, anim: true }); treeHash.add(s); }
-      }
-    }
-  }
-  // critters: wander, eat trees, age, starve, breed
-  for (let i = 0, n = critters.length; i < n; i++) {
-    const c = critters[i];
-    if (c.dying) continue;
-    moveCritter(c, dt);
-    c.age += dt; c.cd -= dt; c.hunger += dt / 75; c.tick -= dt;
-    if (c.tick <= 0) {
-      c.tick = rnd(0.4, 0.7);
-      if (surfaceH(c.d) < WATER) { killCritter(c); continue; }
-      if (c.hunger > 0.25) {
-        let best = null, bd = -2;
-        treeHash.query(c.d, c.hunger > 0.5 ? 0.3 : 0.07, (t) => { if (!t.dead && !t.gone) { const dd = t.d.dot(c.d); if (dd > bd) { bd = dd; best = t; } } });
-        if (best && bd > Math.cos(0.07)) {
-          c.hunger = Math.max(0, c.hunger - 0.45); best.s -= 0.07; c.goal = null;
-          if (best.s < 0.04) goneTree(best);
-        } else if (best) c.goal = best.d.clone();
-      }
-      if (c.age > MATURE && c.cd <= 0 && c.hunger < 0.4) {
-        let mate = null;
-        critHash.query(c.d, 0.08, (o) => { if (o !== c && !o.dying && o.age > MATURE && o.cd <= 0 && o.hunger < 0.45) { mate = o; return true; } });
-        if (mate) {
-          let food = 0, crowd = 0; treeHash.query(c.d, 0.22, (t) => { if (!t.dead && !t.gone && t.s > 0.3) food++; });
-          critHash.query(c.d, 0.22, (o) => { if (!o.dying) crowd++; });
-          if (food && crowd <= food * 1.5 + 1) {
-            const nd = c.d.clone().add(mate.d).normalize();
-            const kid = makeCritter({ d: near(nd, 0.015).toArray(), col: Math.random() < 0.5 ? c.col : mate.col, a: 0, hu: 0.2, cd: 0, anim: true });
-            critHash.add(kid);
-            for (const p of [c, mate]) { p.cd = rnd(45, 80); p.hunger += 0.25; }
-            S.births = (S.births || 0) + 1;
-            if (speed <= 2 && Math.random() < 0.3) sfx.squeak();
-          }
-        }
-      }
-    }
-    if (c.hunger >= 1 || c.age >= c.life) killCritter(c);
-  }
+  ecoAcc += dt; if (ecoAcc >= YEAR) { ecoAcc -= YEAR; ecoYear(); }
 }
 
-/* ---------- tools ---------- */
-let tool = "tree";
+/* ---------- tools + controls (German UI) ---------- */
+let tool = "up";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmt = (x) => Math.round(x).toLocaleString("de-DE");
 function act(d) {
-  const h = surfaceH(d);
-  if (tool === "tree") {
-    if (h < WATER + 0.006) { toast("Trees don't swim 🌊"); sfx.bloop(); return; }
-    for (let i = 0; i < 2; i++) {
-      const dd = i === 0 ? d : near(d, rnd(0.02, 0.04));
-      if (i === 1 && (Math.random() < 0.55 || surfaceH(dd) < WATER + 0.006)) continue;
-      makeTree({ d: dd.toArray(), s: rnd(0.1, 0.3), w: 0.8, anim: true });
-    }
-    sfx.pop(); syncVillages();
-  } else if (tool === "meteor") {
-    launchMeteor(d, meteorSize());
-  } else if (tool === "water") {
-    applyLake(d, 0.17); addRing(d, 0x9fdcff, 0.25); sfx.bloop();
-  } else if (tool === "land") {
-    applyLand(d, 0.09); addRing(d, 0xd9b77a, 0.18); sfx.pop();
-  } else if (tool === "cloud") {
-    makeCloud({ d: d.toArray(), anim: true }); sfx.puff();
-  } else if (tool === "critter") {
-    if (h < WATER + 0.006) { toast("Critters can't swim 🫧"); sfx.bloop(); return; }
-    makeCritter({ d: d.toArray(), a: MATURE + 1, cd: rnd(2, 8), anim: true }); sfx.squeak();
-  } else if (tool === "volcano") {
-    makeVolcano({ d: d.toArray() }); shake = Math.max(shake, 0.2); sfx.rumble(); addRing(d, 0xff8a4a, 0.3);
-  }
-  updateCount(); save();
+  if (tool === "up") { applyLand(d, 0.09); addRing(d, 0xd9b77a, 0.18); sfx.pop(); }
+  else if (tool === "down") { applyDig(d, 0.09); addRing(d, 0x9fdcff, 0.18); sfx.bloop(); }
+  else { inspect(d); return; }
+  save();
 }
-const TIPS = { tree: "Tap to plant a tree", meteor: "Tap to call a meteor", water: "Tap to make a lake", cloud: "Tap to add a rain cloud", critter: "Tap to drop a critter", volcano: "Tap to raise a volcano", land: "Tap or hold to raise land and push water back" };
+const cardEl = $("[data-card]");
+let cardK = -1;
+function terrainName(i) {
+  if (i.kind === 1) return "🌊 Meer"; if (i.kind === 2) return "💧 See";
+  if (i.fire) return "🔥 Brennender Wald";
+  if (i.ash > 0.4) return "🌑 Asche – hier wächst bald Neues";
+  if (i.temp < 0.12) return "❄️ Schnee und Eis";
+  if (i.alt > 0.06) return "⛰️ Gebirge";
+  if (i.forest > 0.45) return "🌲 Wald";
+  if (i.grass > 0.45) return "🌾 Wiese";
+  if (i.moist < 0.2) return "🏜️ Wüste";
+  return "🌿 Steppe";
+}
+function renderCard() {
+  if (cardK < 0) return;
+  const i = eco.info(cardK), pc = (x) => Math.round(clamp(x, 0, 1) * 100) + " %";
+  let h = "";
+  if (i.town) {
+    const t = i.town;
+    h += `<b>🏘️ ${esc(t.name)}</b> · ${eco.townLabel(t)}<br>👥 ${fmt(t.pop)} Einwohner (Platz für ~${fmt(t.cap || t.pop)})<br>Gegründet im Jahr ${fmt(t.born)}`;
+    if (t.plague) h += "<br>☠️ Die Pest wütet hier";
+    else if (t.hunger) h += "<br>🥣 Hungersnot";
+    h += i.routes.length ? `<br>⛵ Handel mit ${i.routes.map(esc).join(", ")}` : t.harbor ? "<br>⚓ Hafen, noch ohne Handelspartner" : "";
+    h += "<hr>";
+  } else if (eco.ruin[cardK]) h += "<b>🏚️ Ruinen</b> einer verlassenen Siedlung<hr>";
+  h += `<b>${terrainName(i)}</b><br>🌡️ ${Math.round(i.temp * 40 - 8)} °C · 💧 Feuchte ${pc(i.moist)}`;
+  if (!i.kind) h += `<br>🌾 Gras ${pc(i.grass)} · 🌲 Wald ${pc(i.forest)}<br>🐾 ${fmt(i.crit * 3)} Tiere`;
+  cardEl.innerHTML = `<button type="button" data-close aria-label="Schließen">×</button>` + h;
+  cardEl.hidden = false;
+}
+function inspect(d) { cardK = eco.tileAt(d.x, d.y, d.z); addRing(d, 0xffffff, 0.1); sfx.tick(); renderCard(); }
+cardEl.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) { cardEl.hidden = true; cardK = -1; } });
+const TIPS = { up: "Tippen oder halten: Land heben", down: "Tippen oder halten: Land senken", look: "Tippe auf einen Ort, um ihn anzusehen" };
 document.querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => {
   tool = b.dataset.tool;
   document.querySelectorAll("[data-tool]").forEach((x) => x.classList.toggle("on", x === b));
+  if (tool !== "look") { cardEl.hidden = true; cardK = -1; }
   toast(TIPS[tool]); sfx.tick();
 }));
+const speedBtns = document.querySelectorAll("[data-speed]");
+function paintSpeed() { speedBtns.forEach((b) => b.classList.toggle("on", +b.dataset.speed === speed)); }
+speedBtns.forEach((b) => b.addEventListener("click", () => {
+  speed = +b.dataset.speed; paintSpeed(); sfx.tick();
+  try { localStorage.setItem("planet.speed", String(speed)); } catch (e) {}
+}));
+paintSpeed();
+for (const [sel, key] of [["[data-warm]", "warm"], ["[data-rain]", "rain"]]) {
+  const el = $(sel); el.value = Math.round(eco[key] * 100);
+  el.addEventListener("input", () => { eco[key] = el.value / 100; if (key === "rain") CLOUD_MIN = Math.round(1 + eco.rain * 5); save(); });
+}
+// chronicle
+const lastEl = $("[data-last]"), logEl = $("[data-log]");
+let logDirty = true;
+function paintLog() {
+  logDirty = false;
+  const L = eco.log, e = L[L.length - 1];
+  lastEl.textContent = e ? `Jahr ${fmt(e.y)}: ${e.s}` : "Die Chronik ist noch leer.";
+  if (!logEl.hidden) logEl.innerHTML = `<b>📜 Chronik</b>` + (eco.ms.length ? "" : "") + L.slice().reverse().map((x) => `<p><span>Jahr ${fmt(x.y)}</span> ${esc(x.s)}</p>`).join("");
+}
+$("[data-logbtn]").addEventListener("click", () => { logEl.hidden = !logEl.hidden; paintLog(); sfx.tick(); });
+logEl.addEventListener("click", () => { logEl.hidden = true; });
 
 /* ---------- HUD ---------- */
 const countEl = $("[data-count]");
-const alive = () => { let n = 0; for (const c of critters) if (!c.dying) n++; return n; };
+const alive = () => eco.critters || 0;
 function updateCount() {
-  countEl.textContent = `🌲 ${standing()} · 🐾 ${alive()} · 🕳️ ${S.craters || 0} · 🌋 ${volcanoes.length} · 🏡 ${villages.filter((v) => !v.ruin).length}\n🐣 ${S.births || 0} · 💀 ${S.deaths || 0}`;
+  const pop = eco.towns.reduce((a, t) => a + t.pop, 0);
+  countEl.textContent = `Jahr ${fmt(eco.year)} · 👥 ${fmt(pop)} · 🏘️ ${eco.towns.length}\n🐾 ${fmt(alive())} · 🌲 ${fmt(eco.forestTiles || 0)} · ⛵ ${eco.routes.length}${eco.burning ? " · 🔥 " + eco.burning : ""}`;
+  if (logDirty) paintLog();
+  if (cardK >= 0 && !cardEl.hidden) renderCard();
 }
 let toastT = 0;
 function toast(msg) {
@@ -989,8 +1150,8 @@ function toast(msg) {
 const resetBtn = $("[data-reset]");
 let resetArm = 0;
 resetBtn.addEventListener("click", () => {
-  if (!resetArm) { resetBtn.textContent = "Sure?"; resetArm = setTimeout(() => { resetArm = 0; resetBtn.textContent = "Reset"; }, 2500); return; }
-  clearTimeout(resetArm); resetArm = 0; resetBtn.textContent = "Reset";
+  if (!resetArm) { resetBtn.textContent = "Sicher?"; resetArm = setTimeout(() => { resetArm = 0; resetBtn.textContent = "Neu"; }, 2500); return; }
+  clearTimeout(resetArm); resetArm = 0; resetBtn.textContent = "Neu";
   trees.length = 0; critters.length = 0;
   clouds.forEach((c) => world.remove(c.g)); clouds.length = 0;
   villages.forEach((v) => world.remove(v.g)); villages.length = 0;
@@ -998,14 +1159,15 @@ resetBtn.addEventListener("click", () => {
   meteors.forEach((m) => world.remove(m.rock)); meteors.length = 0;
   field.fill(0); crat.fill(0); basalt.fill(0); wat.fill(0); vapor = 0; waterDirty = true; markTerrain();
   S = { v: 2, trees: [], critters: [], clouds: [], volcanoes: [], craters: 0, births: 0, deaths: 0, eruptions: 0 };
-  buildPlanet(); buildWater(); seedFresh(); updateCount(); save(true); toast("A fresh little world ✨"); sfx.pop();
+  eco.reset(); eco.warm = $("[data-warm]").value / 100; eco.rain = $("[data-rain]").value / 100; ecoTerrain(); eco.seed(); eco.tick(); ecoDirty = logDirty = true; cardEl.hidden = true; cardK = -1;
+  buildPlanet(); buildWater(); seedFresh(); updateCount(); save(true); toast("Eine frische kleine Welt ✨"); sfx.pop();
 });
 
 /* ---------- sound (muted by default, synthesized) ---------- */
 const soundBtn = $("[data-sound]");
 let ac = null, muted = true;
 try { muted = localStorage.getItem("planet.sound") !== "1"; } catch (e) {}
-function paintSound() { soundBtn.textContent = muted ? "🔇" : "🔊"; soundBtn.setAttribute("aria-label", muted ? "Sound off" : "Sound on"); }
+function paintSound() { soundBtn.textContent = muted ? "🔇" : "🔊"; soundBtn.setAttribute("aria-label", muted ? "Ton aus" : "Ton an"); }
 paintSound();
 soundBtn.addEventListener("click", () => {
   muted = !muted; paintSound();
@@ -1106,13 +1268,13 @@ document.addEventListener("gesturestart", (e) => e.preventDefault());
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 // hold-to-build for the land tool: after 300 ms without moving, keep raising land under the finger
 function holdTick(now) {
-  if (tool !== "land" || !down || pointers.size !== 1 || down.moved >= 10 || now - down.t < 300) return;
+  if ((tool !== "up" && tool !== "down") || !down || pointers.size !== 1 || down.moved >= 10 || now - down.t < 300) return;
   if (!down.held) { down.held = true; down.lastH = 0; }
   if (now - down.lastH < 120) return; down.lastH = now;
   ndc.set((down.x / innerWidth) * 2 - 1, -(down.y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObject(planet, false)[0]; if (!hit) return;
-  applyLand(world.worldToLocal(hit.point.clone()).normalize(), 0.09, 0.6);
+  (tool === "up" ? applyLand : applyDig)(world.worldToLocal(hit.point.clone()).normalize(), 0.09, 0.6);
   if (Math.random() < 0.3) sfx.tick();
   save();
 }
@@ -1148,24 +1310,27 @@ function landSpot(tries = 400, front = true) {
   return null;
 }
 function seedFresh() {
-  for (let i = 0; i < 14; i++) { const d = landSpot(); if (d) makeTree({ d: d.toArray(), s: rnd(0.3, 1), w: 0.9, anim: true }); }
-  for (let i = 0; i < 6; i++) { const d = landSpot(); if (d) makeCritter({ d: d.toArray(), a: rnd(10, 60), anim: true }); }
   for (let i = 0; i < 2; i++) { const d = landSpot(); if (d) makeCloud({ d: d.toArray(), anim: true }); }
   syncVillages();
 }
+ecoTerrain();
+if (!ecoLoaded) { // first run of the ecosystem: seed it, and let old hand-planted trees and critters live on as forest and animals
+  eco.seed();
+  for (const t of S.trees || []) if (Array.isArray(t.d) && !t.f) { const k = eco.tileAt(...t.d); if (!eco.kind[k]) { eco.forest[k] = Math.min(1, eco.forest[k] + 0.4); eco.grass[k] = Math.max(eco.grass[k], 0.5); } }
+  for (const c of S.critters || []) if (Array.isArray(c.d)) { const k = eco.tileAt(...c.d); if (!eco.kind[k]) eco.crit[k] = Math.min(1.5, eco.crit[k] + 0.3); }
+}
+eco.tick(); // fills in climate for the first frame
+S.trees = []; S.critters = []; S.villages = [];
 buildPlanet(); buildWater();
-(S.trees || []).forEach((t) => makeTree(t));
-(S.critters || []).forEach((c) => makeCritter(c));
 (S.clouds || []).forEach((c) => makeCloud(c));
 (S.volcanoes || []).forEach((v) => makeVolcano(v));
-(S.villages || []).forEach((v) => makeVillage(v));
 vapor = S.vapor || 0;
 if (firstVisit) seedFresh();
 if (firstVisit || migrated) save(true);
 syncVillages();
 updateCount();
 booted = true;
-setTimeout(() => toast(migrated ? "Your planet came along ✨" : "Drag to spin · tap to plant"), 600);
+setTimeout(() => toast(ecoLoaded ? "Willkommen zurück 🌍" : "Ziehen zum Drehen · tippen zum Heben"), 600);
 addEventListener("pagehide", () => save(true));
 document.addEventListener("visibilitychange", () => { if (document.hidden) save(true); });
 setInterval(() => save(), 8000);
@@ -1174,8 +1339,8 @@ setInterval(() => save(), 8000);
 let fpsAvg = 60, frames = 0;
 window.__planet = {
   _dbg: { world, camera, camQ, planet, sunDir, sunLocal, sunLight, sun, moon, wat, field, applyCrater, applyLake, applyLand, coolLava, waterDepth, villages, clouds, makeCloud, makeVillage, V, impact: (d, size) => impact({ d: V(...d).normalize(), size, rock: new THREE.Object3D() }), get vapor() { return vapor; }, set wildT(v) { wildT = v; }, setZoom: (v) => { zoom = zoomTarget = v; }, get zoom() { return zoom; } },
-  get speed() { return speed; }, set speed(v) { speed = clamp(+v || 1, 0.1, 200); },
-  stats: () => ({ trees: standing(), allTrees: trees.length, critters: alive(), births: S.births || 0, deaths: S.deaths || 0, craters: S.craters || 0, volcanoes: volcanoes.length, eruptions: S.eruptions || 0, simT: r3(simT), fps: Math.round(fpsAvg), frames, tris: planetGeo.index.count / 3, villages: villages.filter((v) => !v.ruin).length, ruins: villages.filter((v) => v.ruin).length, houses: villages.reduce((a, v) => a + (v.ruin ? 0 : v.n), 0), clouds: clouds.length, water: Math.round(waterVolume() * 1e4) / 1e4, vapor: Math.round(vapor * 1e4) / 1e4, cloudWater: Math.round(clouds.reduce((a, c) => a + c.w, 0) * 1e4) / 1e4 }),
+  eco, get speed() { return speed; }, set speed(v) { speed = clamp(+v || 0, 0, 200); paintSpeed(); },
+  stats: () => ({ year: eco.year, towns: eco.towns.length, pop: Math.round(eco.pop || 0), routes: eco.routes.length, burning: eco.burning, forestTiles: eco.forestTiles, trees: pineI.mesh.count + roundI.mesh.count, critterInst: critVis.length, critters: alive(), births: S.births || 0, deaths: S.deaths || 0, craters: S.craters || 0, volcanoes: volcanoes.length, eruptions: S.eruptions || 0, simT: r3(simT), fps: Math.round(fpsAvg), frames, tris: planetGeo.index.count / 3, villages: villages.filter((v) => !v.ruin).length, ruins: villages.filter((v) => v.ruin).length, houses: villages.reduce((a, v) => a + (v.ruin ? 0 : v.n), 0), clouds: clouds.length, water: Math.round(waterVolume() * 1e4) / 1e4, vapor: Math.round(vapor * 1e4) / 1e4, cloudWater: Math.round(clouds.reduce((a, c) => a + c.w, 0) * 1e4) / 1e4 }),
   spawn(kind, n = 1) {
     for (let i = 0; i < n; i++) {
       const d = landSpot(400, false); if (!d) continue;
@@ -1237,56 +1402,11 @@ function frame(now) {
   while (simAcc >= STEP && steps < 80) { step(STEP); simAcc -= STEP; steps++; }
   if (steps >= 80) simAcc = 0;
 
-  if (terrainDirty && t - lastBuild > 0.1) { buildPlanet(); placeVillages(); lastBuild = t; }
+  if (terrainDirty && t - lastBuild > 0.25) { buildPlanet(); placeVillages(); lastBuild = t; }
   if (waterDirty && t - lastWater > 0.2) { buildWater(); lastWater = t; }
 
-  // trees -> instances (swap-remove finished ones)
-  for (let i = trees.length - 1; i >= 0; i--) {
-    const tr = trees[i];
-    if (tr.gone && t - tr.goneT > 0.6) { trees[i] = trees[trees.length - 1]; trees.pop(); }
-    else if (tr.dead && tr.fallT < 1 && t > tr.fallStart) tr.fallT = Math.min(1, tr.fallT + dt * 2.8);
-  }
-  const nT = trees.length;
-  trunkI.ensure(nT); pineI.ensure(nT); roundI.ensure(nT);
-  const doColor = (colorTick++ % 6) === 0 || pineI.lastN !== nT;
-  pineI.lastN = nT;
-  for (let i = 0; i < nT; i++) {
-    const tr = trees[i], m = treeMatrix(tr, t);
-    trunkI.mesh.setMatrixAt(i, m);
-    (tr.kind === 0 ? pineI : roundI).mesh.setMatrixAt(i, m);
-    (tr.kind === 0 ? roundI : pineI).mesh.setMatrixAt(i, ZERO);
-    if (doColor) {
-      if (tr.dead) _c.copy(tr.burnt ? BURNT : DEAD);
-      else _c.copy(LEAF[tr.kind][tr.vari] || LEAF[tr.kind][0]).lerp(WILT, tr.wilt * 0.85);
-      (tr.kind === 0 ? pineI : roundI).mesh.setColorAt(i, _c);
-    }
-  }
-  trunkI.done(); pineI.done(doColor); roundI.done(doColor);
-
-  // critters -> instances
-  for (let i = critters.length - 1; i >= 0; i--) {
-    const c = critters[i];
-    if (c.dying && t - c.dying > 0.6) { critters[i] = critters[critters.length - 1]; critters.pop(); }
-  }
-  const nC = critters.length;
-  bodyI.ensure(nC); earI.ensure(nC); eyeI.ensure(nC);
-  for (let i = 0; i < nC; i++) {
-    const c = critters[i];
-    const hop = c.wait > 0 || c.dying ? 0 : Math.abs(Math.sin(t * 11 + c.ph)) * 0.006;
-    _p.copy(c.d).multiplyScalar(surfaceH(c.d) + hop + Math.sin(c.jump * Math.PI) * 0.06);
-    fwd.crossVectors(c.h, c.d);
-    _m.makeBasis(fwd, c.d, c.h);
-    _m.multiply(_m2.makeRotationZ(c.wait > 0 || c.dying ? (c.dying ? Math.min(1.5, (t - c.dying) * 4) : 0) : Math.sin(t * 11 + c.ph) * 0.12));
-    let k = c.born < 0 ? 1 : elastic((t - c.born) / 0.6);
-    if (c.dying) k *= Math.max(0, 1 - (t - c.dying) / 0.6);
-    const young = 0.6 + 0.4 * Math.min(1, c.age / MATURE);
-    _m.scale(_s.setScalar(Math.max(0.001, k * 1.9 * young)));
-    _m.setPosition(_p);
-    bodyI.mesh.setMatrixAt(i, _m); earI.mesh.setMatrixAt(i, _m); eyeI.mesh.setMatrixAt(i, _m);
-    _c.setHex(c.col); if (c.dying) _c.lerp(BURNT, 0.5);
-    bodyI.mesh.setColorAt(i, _c); earI.mesh.setColorAt(i, _c);
-  }
-  bodyI.done(true); earI.done(true); eyeI.done();
+  if (ecoDirty && t - lastEco > 0.25) { ecoRebuild(); lastEco = t; terrainDirty = true; }
+  ecoFrame(dt, t);
 
   for (const c of clouds) drawCloud(c, dt, t);
   for (const v of volcanoes) drawVolcano(v, dt);
