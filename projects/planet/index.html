@@ -25,7 +25,7 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="./planet.css?v=4r">
+  <link rel="stylesheet" href="./planet.css?v=20261101s">
 </head>
 <body>
   <canvas id="c" aria-label="A small planet you can poke"></canvas>
@@ -34,10 +34,14 @@
     <div class="count" data-count>🌲 0 · 🐾 0 · 🕳️ 0 · 🌋 0</div>
     <div class="actions">
       <button type="button" data-sound aria-label="Sound off" title="Sound">🔇</button>
-      <button type="button" data-reset title="Reset planet">Reset</button>
+      <button type="button" data-reset title="Neuer Planet">Neu</button>
     </div>
   </div>
   <div class="toast" data-toast></div>
+  <div class="brush" data-brush hidden>
+    <button type="button" data-brush-mode aria-label="Anheben">⬆️</button>
+    <input type="range" min="1" max="5" step="1" value="2" data-brush-size aria-label="Pinselgröße">
+  </div>
   <nav class="tools" data-tools>
     <button type="button" data-tool="tree" class="on" aria-label="Tree">🌲</button>
     <button type="button" data-tool="meteor" aria-label="Meteor">☄️</button>
@@ -47,6 +51,6 @@
     <button type="button" data-tool="volcano" aria-label="Volcano">🌋</button>
     <button type="button" data-tool="land" aria-label="Land">🏝️</button>
   </nav>
-  <script type="module" src="./planet.js?v=20261101r"></script>
+  <script type="module" src="./planet.js?v=20261101s"></script>
 </body>
 </html>

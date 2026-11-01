@@ -48,25 +48,45 @@ function sampleIdx(x, y, z, I, Wt, o) {
   I[o] = base; I[o + 1] = base + 1; I[o + 2] = base + N; I[o + 3] = base + N + 1;
   Wt[o] = (1 - a) * (1 - b); Wt[o + 1] = a * (1 - b); Wt[o + 2] = (1 - a) * b; Wt[o + 3] = a * b;
 }
+const carved = new Uint8Array(CELLS); // cells lowered by the brush stay low (no slow refill)
+const scorch = new Float32Array(CELLS), burn = new Float32Array(CELLS), treeN = new Uint16Array(CELLS), treeWet = new Float32Array(CELLS);
 const wat = new Float32Array(CELLS); // standing water depth on top of terrain (lakes, crater lakes)
 const field = new Float32Array(CELLS), baseG = new Float32Array(CELLS), crat = new Float32Array(CELLS), basalt = new Float32Array(CELLS);
-const waves = [];
-{
-  let s = 0x51a7;
-  const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < 9; i++) {
-    const v = V(r() * 2 - 1, r() * 2 - 1, r() * 2 - 1).normalize();
-    waves.push({ v, f: 1.6 + i * 0.9, a: 0.034 / (1 + i * 0.55), p: r() * 6.28 });
-  }
-  for (let i = 0; i < 16; i++) { // gentle fine detail
-    const v = V(r() * 2 - 1, r() * 2 - 1, r() * 2 - 1).normalize();
-    waves.push({ v, f: 7 + i * 1.9, a: 0.0042 / (1 + i * 0.18), p: r() * 6.28 });
-  }
+/* ---------- start terrain: value-noise fBm continents + ridged mountain ranges + carved valleys + islands ---------- */
+function hash3(i, j, k) {
+  let h = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 1274126177) ^ 0x51a7;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
+function vnoise(x, y, z) {
+  const i = Math.floor(x), j = Math.floor(y), k = Math.floor(z);
+  let fx = x - i, fy = y - j, fz = z - k;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy); fz = fz * fz * (3 - 2 * fz);
+  const a = hash3(i, j, k), b = hash3(i + 1, j, k), c = hash3(i, j + 1, k), d = hash3(i + 1, j + 1, k);
+  const e = hash3(i, j, k + 1), f = hash3(i + 1, j, k + 1), g = hash3(i, j + 1, k + 1), h = hash3(i + 1, j + 1, k + 1);
+  const l1 = a + (b - a) * fx, l2 = c + (d - c) * fx, l3 = e + (f - e) * fx, l4 = g + (h - g) * fx;
+  const m1 = l1 + (l2 - l1) * fy, m2 = l3 + (l4 - l3) * fy;
+  return (m1 + (m2 - m1) * fz) * 2 - 1;
+}
+function fbm(x, y, z, oct) { let s = 0, a = 0.5, f = 1; for (let o = 0; o < oct; o++) { s += a * vnoise(x * f, y * f, z * f); f *= 2.03; a *= 0.5; } return s; }
+function ridged(x, y, z, oct) { let s = 0, a = 0.55, f = 1, w = 1; for (let o = 0; o < oct; o++) { let r = 1 - Math.abs(vnoise(x * f, y * f, z * f)); r *= r * w; w = Math.min(1, r * 1.6); s += a * r; f *= 2.1; a *= 0.5; } return s; }
 function baseH(x, y, z) {
-  let n = 0;
-  for (const w of waves) n += Math.sin((x * w.v.x + y * w.v.y + z * w.v.z) * w.f + w.p) * w.a;
-  return 1.034 + n;
+  const wx = fbm(x * 1.7 + 11, y * 1.7, z * 1.7, 2) * 0.35, wy = fbm(x * 1.7, y * 1.7 + 23, z * 1.7, 2) * 0.35;
+  const cont = fbm(x * 1.25 + wx + 5.3, y * 1.25 + wy, z * 1.25 + 2.1, 5) * 1.6 - 0.07;
+  let h;
+  if (cont < 0) {
+    h = 1 + Math.max(-0.07, cont * 0.09);
+    const isl = fbm(x * 5.1 + 40, y * 5.1, z * 5.1, 3);
+    h += Math.max(0, isl - 0.2) * 0.16 * smooth(-0.45, -0.05, cont);
+  } else {
+    h = 1.002 + 0.016 * smooth(0, 0.35, cont) + cont * 0.01;
+    const mask = smooth(0.06, 0.32, cont) * smooth(-0.12, 0.18, fbm(x * 0.9 + 70, y * 0.9, z * 0.9, 2));
+    const r = ridged(x * 2.3 + 9, y * 2.3, z * 2.3 + 4, 5);
+    h += mask * r * r * 0.1;
+    const v = fbm(x * 3.2 + 31, y * 3.2, z * 3.2, 3);
+    h -= 0.014 * (1 - smooth(0, 0.07, Math.abs(v))) * smooth(0.02, 0.15, cont);
+  }
+  return h + fbm(x * 14, y * 14, z * 14, 2) * 0.0025;
 }
 for (let k = 0; k < CELLS; k++) baseG[k] = baseH(cellDir[k * 3], cellDir[k * 3 + 1], cellDir[k * 3 + 2]);
 const _I = new Int32Array(4), _W = new Float32Array(4);
@@ -112,13 +132,23 @@ function applyLand(d, r, amt = 1) {
     let up = 0.005 * t * amt;
     if (wat[k] > 0) up += Math.min(wat[k], 0.01) * t * amt;
     if (h < WATER) up = Math.max(up, ((WATER - h) * 0.45 + 0.003) * t * amt); // reclaim open sea in a few taps
-    up = Math.min(up, Math.max(0, 0.09 - field[k]));
+    up = Math.min(up, Math.max(0, 1.125 - h));
     field[k] += up; crat[k] *= 1 - 0.4 * t * amt;
     const out = Math.min(wat[k], up); wat[k] -= out; pushed += out;
   }
   if (ring.length) for (const [k] of ring) wat[k] += pushed / ring.length;
   else vapor += pushed;
   markTerrain(); waterDirty = true;
+}
+// brush lower: dig the ground down (can sink land below the sea); what sinks floods
+function applyLower(d, r, amt = 1) {
+  forCells(d, r, (k, a) => {
+    const t = smooth(r, r * 0.3, a); if (t <= 0) return;
+    const h = baseG[k] + field[k];
+    const dn = Math.min((0.005 + (h > 1.05 ? 0.004 : 0)) * t * amt, Math.max(0, h - 0.955));
+    field[k] -= dn; carved[k] = 1; crat[k] *= 1 - 0.3 * t * amt;
+  });
+  markTerrain(); waterDirty = true; floodCheck(d, r * 1.3);
 }
 // lava meeting water: the water flashes to steam (feeding clouds) and the lava cools into new basalt land
 function coolLava(d, rad, str) {
@@ -127,7 +157,7 @@ function coolLava(d, rad, str) {
     const h = baseG[k] + field[k], wet = wat[k] > 0.0004 || h < WATER + 0.002;
     if (!wet) return;
     const t = smooth(rad, rad * 0.4, a) * Math.min(1.5, str);
-    const up = Math.min(0.0035 * t + (h < WATER ? (WATER - h) * 0.12 * t : 0), Math.max(0, 0.09 - field[k]));
+    const up = Math.min(0.0035 * t + (h < WATER ? (WATER - h) * 0.12 * t : 0), Math.max(0, 1.1 - h));
     if (up <= 0) return;
     field[k] += up; basalt[k] = Math.min(1, basalt[k] + 0.6 * t);
     const boil = Math.min(wat[k], up); wat[k] -= boil; vapor += boil; n++;
@@ -191,7 +221,7 @@ function waterTick(dt) {
       let e = sun > 0.05 ? EVAP * sun * dt : 0;
       if (w - e < 0.0012 && sun > 0.05) e = w; // puddles vanish
       if (e > 0) { wat[k] = w - e; vapor += e; }
-    } else if (field[k] < 0 && crat[k] < 0.1 && basalt[k] < 0.05) {
+    } else if (field[k] < 0 && crat[k] < 0.1 && basalt[k] < 0.05 && !carved[k]) {
       field[k] = Math.min(0, field[k] + 0.00006 * dt); any = true; // dry lake beds slowly fill back in
     }
   }
@@ -232,7 +262,8 @@ function raiseVolcano(v, dg) {
 
 /* ---------- state + save (v2, migrates planet.v1) ---------- */
 const STORE = "planet.v2", FSTORE = "planet.v2.field", OLD = "planet.v1";
-let S = { v: 2, trees: [], critters: [], clouds: [], volcanoes: [], craters: 0, births: 0, deaths: 0, eruptions: 0 };
+const TV = 3; // terrain generation version; older saves keep their life but get the new landscape
+let S = { v: 2, tv: TV, trees: [], critters: [], clouds: [], volcanoes: [], craters: 0, births: 0, deaths: 0, eruptions: 0 };
 let firstVisit = false, migrated = false;
 function toB64(u8) { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
 function fromB64(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
@@ -240,10 +271,12 @@ try {
   const raw = localStorage.getItem(STORE);
   if (raw) {
     S = Object.assign(S, JSON.parse(raw));
-    const fr = localStorage.getItem(FSTORE);
+    const fr = S.tv === TV ? localStorage.getItem(FSTORE) : null;
+    if (S.tv !== TV) { S.tv = TV; S.villages = []; (S.volcanoes || []).forEach((v) => (v.g = 0)); migrated = true; fieldDirty = true; }
     if (fr) {
       const F = JSON.parse(fr);
       const fi = new Int16Array(fromB64(F.f).buffer), c = fromB64(F.c), b = fromB64(F.b);
+      if (F.k) { const kk = fromB64(F.k); if (kk.length === CELLS) carved.set(kk); }
       if (fi.length === CELLS) for (let k = 0; k < CELLS; k++) { field[k] = fi[k] / 20000; crat[k] = c[k] / 255; basalt[k] = b[k] / 255; }
       if (F.w) { const w = new Uint16Array(fromB64(F.w).buffer); if (w.length === CELLS) for (let k = 0; k < CELLS; k++) wat[k] = w[k] / 200000; }
       else for (let k = 0; k < CELLS; k++) { const h = baseG[k] + field[k]; if (baseG[k] >= WATER - 0.003 && h < WATER) wat[k] = WATER - h; } // older v2: carved lakes become real water
@@ -270,7 +303,7 @@ function save(now = false) {
   const go = () => {
     S.clouds = clouds.map((c) => ({ d: c.d.toArray().map(r3), ax: c.ax.toArray().map(r3), sp: c.sp, w: Math.round(c.w * 1e4) / 1e4, e: c.evap ? 1 : 0, a: Math.round(c.age), l: Math.round(c.life), z: +c.sz.toFixed(2) }));
     S.vapor = Math.round(vapor * 1e5) / 1e5;
-    S.villages = villages.map((v) => ({ d: v.d.toArray().map(r3), n: v.n, r: v.ruin ? r3(simT - v.ruinT) : -1 }));
+    S.villages = villages.filter((v) => !v.flooded).map((v) => ({ d: v.d.toArray().map(r3), n: v.n, p: r3(v.p), tr: v.tier, r: v.ruin ? r3(simT - v.ruinT) : -1 }));
     S.critters = critters.filter((c) => !c.dying).map((c) => ({ d: c.d.toArray().map(r3), h: c.h.toArray().map(r3), col: c.col, a: r3(c.age), l: r3(c.life), hu: r3(c.hunger), cd: r3(Math.max(0, c.cd)) }));
     S.trees = trees.filter((t) => !t.gone).map((t) => ({ d: t.d.toArray().map(r3), s: r3(t.s), y: r3(t.yaw), k: t.kind, c: t.vari, w: r3(t.wet), dr: r3(t.dry), wl: r3(t.wilt), f: t.dead ? t.fa.toArray().map(r3) : 0, da: t.dead ? r3(simT - t.deadT) : 0, b: t.burnt ? 1 : 0 }));
     S.volcanoes = volcanoes.map((v) => ({ d: v.d.toArray().map(r3), g: r3(v.g) }));
@@ -280,7 +313,7 @@ function save(now = false) {
         const fi = new Int16Array(CELLS), c = new Uint8Array(CELLS), b = new Uint8Array(CELLS);
         for (let k = 0; k < CELLS; k++) { fi[k] = clamp(Math.round(field[k] * 20000), -32767, 32767); c[k] = Math.round(crat[k] * 255); b[k] = Math.round(basalt[k] * 255); }
         const w = new Uint16Array(CELLS); for (let k = 0; k < CELLS; k++) w[k] = clamp(Math.round(wat[k] * 200000), 0, 65535);
-        localStorage.setItem(FSTORE, JSON.stringify({ f: toB64(new Uint8Array(fi.buffer)), c: toB64(c), b: toB64(b), w: toB64(new Uint8Array(w.buffer)) }));
+        localStorage.setItem(FSTORE, JSON.stringify({ f: toB64(new Uint8Array(fi.buffer)), c: toB64(c), b: toB64(b), w: toB64(new Uint8Array(w.buffer)), k: toB64(carved) }));
         fieldDirty = false;
       }
     } catch (e) {}
@@ -358,7 +391,7 @@ let NV, unit, vbase, vI, vW;
 }
 const C = {
   deep: new THREE.Color(0x3f8f9a), sand: new THREE.Color(0xe6cf94), grass: new THREE.Color(0x7cc46a),
-  grass2: new THREE.Color(0x4f9a5a), rock: new THREE.Color(0x9a8f86), snow: new THREE.Color(0xf4f6ff), crater: new THREE.Color(0x7a5a46), basalt: new THREE.Color(0x3b3230)
+  grass2: new THREE.Color(0x4f9a5a), rock: new THREE.Color(0x9a8f86), snow: new THREE.Color(0xf4f6ff), crater: new THREE.Color(0x7a5a46), ash: new THREE.Color(0x2e2724), ember: new THREE.Color(0xff6a1a), basalt: new THREE.Color(0x3b3230)
 };
 function buildPlanet() {
   const p = planetGeo.attributes.position.array, c = planetGeo.attributes.color.array, col = new THREE.Color();
@@ -367,11 +400,14 @@ function buildPlanet() {
     for (let k = 0; k < 4; k++) { const w = vW[i * 4 + k], j = vI[i * 4 + k]; f += w * field[j]; cr += w * crat[j]; ba += w * basalt[j]; }
     const h = vbase[i] + f;
     p[i * 3] = unit[i * 3] * h; p[i * 3 + 1] = unit[i * 3 + 1] * h; p[i * 3 + 2] = unit[i * 3 + 2] * h;
+    let sc = 0, bu = 0;
+    for (let k = 0; k < 4; k++) { const w = vW[i * 4 + k], j = vI[i * 4 + k]; sc += w * scorch[j]; bu += w * (burn[j] > 0 ? 1 : 0); }
     if (h < WATER + 0.002) col.copy(C.deep).lerp(C.sand, 0.45);
     else if (h < WATER + 0.008) col.copy(C.sand);
-    else if (h < 1.06) col.copy(C.grass).lerp(C.grass2, smooth(1.02, 1.06, h));
-    else if (h < 1.078) col.copy(C.grass2).lerp(C.rock, smooth(1.06, 1.076, h));
-    else col.copy(C.rock).lerp(C.snow, smooth(1.078, 1.088, h));
+    else if (h < 1.05) col.copy(C.grass).lerp(C.grass2, smooth(1.015, 1.05, h));
+    else if (h < 1.075) col.copy(C.grass2).lerp(C.rock, smooth(1.05, 1.07, h));
+    else col.copy(C.rock).lerp(C.snow, smooth(1.075, 1.09, h));
+    if (h >= WATER + 0.002) { if (sc > 0) col.lerp(C.ash, Math.min(1, sc) * 0.8); if (bu > 0) col.lerp(C.ember, bu * 0.75); }
     if (cr > 0) col.lerp(C.crater, Math.min(1, cr) * 0.85);
     if (ba > 0) col.lerp(C.basalt, Math.min(1, ba) * 0.92);
     c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b;
@@ -680,7 +716,7 @@ function makeVolcano(o) {
 function volcanoDamage(v) {
   const k = 0.45 + 0.55 * v.str;
   coolLava(v.d, 0.26 * k, v.str); // small puffs barely reach past the cone, big blasts sweep wide
-  ruinVillagesNear(v.d, 0.21 * k);
+  ruinVillagesNear(v.d, 0.21 * k); igniteNear(v.d, 0.3 * k, 0.35);
   critHash.query(v.d, 0.2 * k, (c) => { if (!c.dying) killCritter(c); });
   treeHash.query(v.d, 0.19 * k, (t) => {
     if (t.dead || t.gone) return;
@@ -701,7 +737,7 @@ function stepVolcano(v, dt) {
       // rare double eruption: a second burst follows quickly, otherwise a fresh random gap
       if (!v.dbl && Math.random() < 0.1) { v.nx = v.e + rnd(2, 7); v.dbl = true; } else { v.nx = v.e + eruptGap(); v.dbl = false; }
       shake = Math.max(shake, 0.12 + 0.3 * v.str); if (speed <= 2 && v.str > 0.5) sfx.rumble();
-      if (S.eruptions === 1) toast("Eruption! 🌋");
+      if (S.eruptions === 1) toast("Ausbruch! 🌋");
     }
   }
 }
@@ -724,40 +760,153 @@ function drawVolcano(v, dt) {
   }
 }
 
-/* ---------- villages ---------- */
+/* ---------- wildfire: spreads cell to cell over forest and grass, stopped by water, rock and bare ground ---------- */
+let fires = [], fireT = 0, regrowT = 0, lightT = 90 + Math.random() * 150;
+function cellOf(d) { sampleIdx(d.x, d.y, d.z, _I, _W, 0); let b = 0; for (let m = 1; m < 4; m++) if (_W[m] > _W[b]) b = m; return _I[b]; }
+const cellH = (k) => baseG[k] + field[k];
+function fuelOf(k) {
+  const h = cellH(k);
+  if (h < WATER + 0.004 || wat[k] > 0.0008 || h > 1.07 || basalt[k] > 0.5 || crat[k] > 0.5 || scorch[k] > 0.35) return 0;
+  return treeN[k] ? 1 : 0.3; // forest burns long and hot, grass thin and quick
+}
+function rainOver(k) {
+  const x = cellDir[k * 3], y = cellDir[k * 3 + 1], z = cellDir[k * 3 + 2];
+  for (const c of clouds) if (c.raining && c.d.x * x + c.d.y * y + c.d.z * z > 0.97) return true;
+  return false;
+}
+function ignite(k) { if (burn[k] > 0) return false; const f = fuelOf(k); if (!f) return false; burn[k] = f; fires.push(k); terrainDirty = true; return true; }
+function igniteNear(d, rad, p) { forCells(d, rad, (k) => { if (Math.random() < p) ignite(k); }); }
+function countTrees() {
+  treeN.fill(0); treeWet.fill(0);
+  for (const t of trees) {
+    if (t.dead || t.gone) continue;
+    if (t.cell === undefined) t.cell = cellOf(t.d);
+    treeN[t.cell]++; treeWet[t.cell] = Math.max(treeWet[t.cell], t.wet);
+  }
+}
+const FIRE_MAX = 700;
+function fireTick(dt) {
+  countTrees();
+  regrowT += dt;
+  if (regrowT >= 3) { // scorched land slowly greens again (~2-3 min), saplings creep back in
+    let any = false;
+    for (let k = 0; k < CELLS; k++) if (scorch[k] > 0 && burn[k] <= 0) {
+      scorch[k] = Math.max(0, scorch[k] - regrowT / 150); any = true;
+      if (scorch[k] < 0.4 && scorch[k] > 0.1 && Math.random() < 0.004 && trees.length < 2500) makeTree({ d: [cellDir[k * 3], cellDir[k * 3 + 1], cellDir[k * 3 + 2]], s: 0.05, w: 0.5, anim: true });
+    }
+    regrowT = 0; if (any) terrainDirty = true;
+  }
+  if (!fires.length) return;
+  const next = [];
+  for (const k of fires) {
+    const rain = rainOver(k);
+    burn[k] -= dt * (rain ? 0.6 : treeN[k] ? 0.12 : 0.35);
+    if (burn[k] <= 0 || cellH(k) < WATER + 0.004 || wat[k] > 0.0008) { burn[k] = 0; scorch[k] = 1; continue; }
+    next.push(k);
+    if (rain || fires.length > FIRE_MAX) continue;
+    const sun = cellDir[k * 3] * sunLocal.x + cellDir[k * 3 + 1] * sunLocal.y + cellDir[k * 3 + 2] * sunLocal.z;
+    const heat = (0.6 + 0.6 * Math.max(0, sun)) * (cellH(k) > 1.05 ? 0.6 : 1); // hot day side spreads faster
+    const dry = clamp(1 - (treeN[k] ? treeWet[k] : 0.3), 0.08, 1);
+    for (let q = 0; q < 4; q++) {
+      const n = NB[k * 4 + q]; if (burn[n] > 0) continue;
+      const f = fuelOf(n); if (!f) continue;
+      const dryN = 1 - (treeN[n] ? treeWet[n] : 0.3) * 0.85;
+      if (Math.random() < (f >= 1 ? 0.55 : 0.08) * heat * dry * dryN * dt * 2) { burn[n] = f; next.push(n); }
+    }
+  }
+  fires = next;
+  for (const t of trees) if (!t.dead && !t.gone && t.cell !== undefined && burn[t.cell] > 0 && Math.random() < 0.5) killTree(t, true);
+  terrainDirty = true;
+}
+// dry lightning: now and then a parched tree on the day side catches fire
+function lightning(dt) {
+  lightT -= dt; if (lightT > 0) return;
+  lightT = Math.min(400, 70 + -Math.log(1 - Math.random()) * 120);
+  let best = null;
+  for (let i = 0; i < 30 && trees.length; i++) { const t = trees[(Math.random() * trees.length) | 0]; if (!t.dead && !t.gone && t.wet < 0.15 && t.d.dot(sunLocal) > 0) { best = t; break; } }
+  if (!best || !ignite(cellOf(best.d))) return;
+  const p = _v.copy(best.d).multiplyScalar(surfaceH(best.d) + 0.02);
+  for (let i = 0; i < 14; i++) glow.emit(p, _v2.set(rnd(-0.1, 0.1), rnd(-0.1, 0.1), rnd(-0.1, 0.1)), 0.9, 0.95, 1, rnd(0.02, 0.04), rnd(0.2, 0.5));
+  S.fires = (S.fires || 0) + 1; if (booted) toast("Blitz – Waldbrand! 🔥");
+  if (speed <= 2) sfx.boom(0.3);
+}
+function drawFires(dt) {
+  const n = Math.min(fires.length, 40);
+  for (let i = 0; i < n; i++) {
+    const k = fires[(Math.random() * fires.length) | 0], big = treeN[k] > 0;
+    _v2.set(cellDir[k * 3], cellDir[k * 3 + 1], cellDir[k * 3 + 2]);
+    const p = _p.copy(_v2).multiplyScalar(cellH(k) + 0.006).add(_v.set(rnd(-0.01, 0.01), rnd(-0.01, 0.01), rnd(-0.01, 0.01)));
+    if (Math.random() < dt * (big ? 28 : 14)) glow.emit(p, _v.copy(_v2).multiplyScalar(rnd(0.03, 0.08)), 1, rnd(0.35, 0.7), 0.1, rnd(0.012, big ? 0.03 : 0.018), rnd(0.4, 0.9), -0.05);
+    if (Math.random() < dt * (big ? 6 : 2)) smoke.emit(p, _v.copy(_v2).multiplyScalar(rnd(0.03, 0.06)), 0.3, 0.28, 0.27, 0.03, rnd(2, 3.5), 0, 0.04);
+  }
+}
+
+/* ---------- settlements: village -> town -> city, and back, driven by local conditions ---------- */
 const villages = [];
 const houseGeo = new THREE.BoxGeometry(0.014, 0.012, 0.014).translate(0, 0.006, 0);
 const roofGeo = new THREE.ConeGeometry(0.012, 0.01, 4).rotateY(Math.PI / 4).translate(0, 0.017, 0);
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xf2e6d0, flatShading: true, roughness: 1 });
+const towerMat = new THREE.MeshStandardMaterial({ color: 0xc9d2de, flatShading: true, roughness: 0.8 });
 const roofMats = [0xc8553d, 0x8d5a97, 0x3d7ea6].map((c) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 1 }));
 const winMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });
 const winGeo = new THREE.PlaneGeometry(0.005, 0.005);
 const lightMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xffc46b, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending });
 const ruinMat = new THREE.MeshStandardMaterial({ color: 0x5a524c, flatShading: true, roughness: 1, transparent: true });
-const RUIN_FADE = 60, VR = 0.12;
-// villages are emergent: founded where trees and critters thrive, sized by the local population, wrecked by meteors and lava
-function villageRoom(d) { for (const v of villages) if (v.d.dot(d) > Math.cos(0.24)) return false; return true; }
-function localLife(d) { let t = 0, c = 0; treeHash.query(d, VR, (x) => { if (!x.dead && !x.gone) t++; }); critHash.query(d, VR, (x) => { if (!x.dying) c++; }); return { t, c, pop: c + t * 0.5 }; }
+const RUIN_FADE = 60, FLOOD_FADE = 5, VR = 0.12;
+const TIER_NAME = ["Dorf", "Stadt", "Großstadt"];
+function villageRoom(d) { for (const v of villages) if (!v.ruin && v.d.dot(d) > Math.cos(0.24)) return false; return true; }
+const _sd = V(), _st = V(), _sb = V();
+// look at the land around a site: water to drink, fields and forest for food, flat ground, fire, neighbours
+function siteCap(d, self) {
+  const k0 = cellOf(d), h0 = cellH(k0);
+  if (h0 < WATER + 0.004 || h0 > 1.068) return { cap: -5, h0 };
+  const tan = tangentOf(d), bit = _sb.crossVectors(d, tan);
+  let water = 0, farm = 0, landN = 0, slope = 0, fire = 0;
+  for (let i = 0; i < 16; i++) {
+    const a = i * 2.4, rr = i < 6 ? 0.045 : 0.1;
+    _sd.copy(d).addScaledVector(tan, Math.cos(a) * rr).addScaledVector(bit, Math.sin(a) * rr).normalize();
+    const k = cellOf(_sd), h = cellH(k);
+    if (burn[k] > 0) fire += 2; else if (scorch[k] > 0.5) fire += 0.5;
+    if (h < WATER + 0.003 || wat[k] > 0.001) { water++; continue; }
+    landN++; slope = Math.max(slope, Math.abs(h - h0));
+    if (h < 1.05 && scorch[k] < 0.3 && basalt[k] < 0.3 && crat[k] < 0.4) farm++;
+  }
+  let t = 0; treeHash.query(d, VR, (x) => { if (!x.dead && !x.gone) t++; });
+  let crowd = 0; for (const v of villages) if (v !== self && !v.ruin && v.d.dot(d) > Math.cos(0.35)) crowd += 0.5 + v.p / 8;
+  const wet = water ? (water > 10 ? 0.6 : 1) : 0.35;
+  const food = Math.min(1, farm / 9) * 0.65 + Math.min(1, t / 7) * 0.35;
+  const flat = 1 - smooth(0.006, 0.03, slope);
+  const cap = 24 * wet * food * flat * (h0 < 1.05 ? 1 : 0.5) - fire * 2 - crowd * 3;
+  return { cap, h0, landN };
+}
 function buildVillage(v) {
   while (v.g.children.length) v.g.remove(v.g.children[0]);
   const d = v.d, tan = tangentOf(d), bit = V().crossVectors(d, tan);
-  for (let i = 0; i < v.n; i++) {
-    const a = i * 2.4 + 0.4, rr = 0.021 * Math.sqrt(i);
+  const n = v.n, sp = [0.021, 0.017, 0.015][v.tier];
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.4 + 0.4, rr = sp * Math.sqrt(i);
     const hd = d.clone().addScaledVector(tan, Math.cos(a) * rr).addScaledVector(bit, Math.sin(a) * rr).normalize();
     const house = new THREE.Group();
+    // cities grow towers in the middle, towns get taller houses, villages stay little cottages
+    const tower = v.tier === 2 && i < Math.min(9, n * 0.4), hgt = tower ? 3.2 + 3.2 * ((i * 7919) % 10) / 10 * (1 - i / 12) : v.tier >= 1 && i < n * 0.6 ? 1.6 + (i % 3) * 0.3 : 1;
     if (v.ruin) house.add(new THREE.Mesh(houseGeo, v.rmat));
     else {
-      house.add(new THREE.Mesh(houseGeo, wallMat), new THREE.Mesh(roofGeo, roofMats[i % 3]));
-      const w = new THREE.Mesh(winGeo, winMat); w.position.set(0, 0.006, 0.0071); house.add(w);
+      house.add(new THREE.Mesh(houseGeo, tower ? towerMat : wallMat));
+      if (!tower) { const roof = new THREE.Mesh(roofGeo, roofMats[i % 3]); roof.position.y = 0.012 * (hgt - 1) / hgt; roof.scale.y = 1 / hgt; house.add(roof); }
+      const w = new THREE.Mesh(winGeo, winMat); w.position.set(0, 0.006, 0.0071); house.add(w); house.userData.win = w;
     }
-    house.userData.d = hd; orientTo(house, hd, a); house.scale.set(1.8, v.ruin ? 0.7 : 1.8, 1.8);
+    house.userData.d = hd; orientTo(house, hd, a);
+    const sc = tower ? 1.5 : 1.8;
+    house.scale.set(sc, v.ruin ? 0.7 : sc * hgt, sc);
     v.g.add(house);
-    if (!v.ruin) { const gl = new THREE.Sprite(lightMat); gl.scale.setScalar(0.09); gl.userData.d = hd; v.g.add(gl); }
+    if (!v.ruin && i % (v.tier + 1) === 0) { const gl = new THREE.Sprite(lightMat); gl.scale.setScalar(0.09 + 0.03 * v.tier); gl.userData.d = hd; v.g.add(gl); }
   }
-  v.built = v.n; placeVillage(v);
+  v.built = n; v.builtTier = v.tier; placeVillage(v);
 }
+const housesFor = (v) => v.tier === 0 ? clamp(Math.round(v.p), 1, 6) : v.tier === 1 ? clamp(Math.round(4 + v.p * 0.5), 6, 12) : clamp(Math.round(8 + v.p * 0.55), 12, 26);
 function makeVillage(o) {
-  const v = { d: V(...o.d).normalize(), n: o.n || 1, g: new THREE.Group(), ruin: o.r >= 0, ruinT: o.r >= 0 ? simT - o.r : 0, rmat: null, built: -1 };
+  const v = { d: V(...o.d).normalize(), p: o.p ?? Math.max(1, o.n || 1), tier: o.tr ?? 0, n: 1, g: new THREE.Group(), ruin: o.r >= 0, ruinT: o.r >= 0 ? simT - o.r : 0, rmat: null, built: -1, flooded: false };
+  v.n = v.ruin ? Math.max(1, o.n || 1) : housesFor(v);
   if (v.ruin) v.rmat = ruinMat.clone();
   v.g.userData.born = o.anim ? clock() : -9;
   world.add(v.g); villages.push(v); buildVillage(v);
@@ -769,37 +918,60 @@ function ruinVillage(v) {
   S.ruined = (S.ruined || 0) + 1;
 }
 function ruinVillagesNear(d, rad) { for (const v of villages) if (v.d.dot(d) > Math.cos(rad)) ruinVillage(v); }
+// flooding: land that sinks under the sea swallows settlements and drowns critters, with a splash
+function floodVillage(v) {
+  if (v.flooded) return;
+  v.flooded = true; v.ruin = false; ruinVillage(v); v.ruinT = simT;
+  const top = _st.copy(v.d).multiplyScalar(WATER + 0.004);
+  for (let i = 0; i < 30; i++) glow.emit(top, _v.copy(v.d).multiplyScalar(rnd(0.05, 0.25)).add(near(v.d, 1).sub(v.d).multiplyScalar(0.12)), 0.75, 0.9, 1, rnd(0.012, 0.03), rnd(0.5, 1), 0.7);
+  for (let i = 0; i < 6; i++) smoke.emit(top, _v.copy(v.d).multiplyScalar(rnd(0.02, 0.05)), 0.85, 0.9, 0.95, 0.04, rnd(1.5, 2.5), 0, 0.05);
+  addRing(v.d, 0x9fdcff, 0.2 + 0.05 * v.tier); sfx.bloop();
+  toast(`${TIER_NAME[v.tier]} überflutet 🌊`);
+}
+function floodCheck(d, rad) {
+  const c = Math.cos(rad);
+  for (const v of villages) if (!v.flooded && v.d.dot(d) > c && surfaceH(v.d) < WATER + 0.003) floodVillage(v);
+  for (const cr of critters) if (!cr.dying && cr.d.dot(d) > c && surfaceH(cr.d) < WATER + 0.002) {
+    killCritter(cr); glow.emit(_st.copy(cr.d).multiplyScalar(WATER + 0.004), _v.copy(cr.d).multiplyScalar(0.1), 0.75, 0.9, 1, 0.02, 0.6, 0.6);
+  }
+}
 let villT = 0;
 function villageTick() {
   for (let i = villages.length - 1; i >= 0; i--) {
     const v = villages[i];
     if (v.ruin) {
-      const age = simT - v.ruinT;
-      v.rmat.opacity = Math.max(0, 1 - age / RUIN_FADE);
-      if (age > RUIN_FADE) { world.remove(v.g); villages.splice(i, 1); }
+      const age = simT - v.ruinT, fade = v.flooded ? FLOOD_FADE : RUIN_FADE;
+      v.rmat.opacity = Math.max(0, 1 - age / fade);
+      if (age > fade) { world.remove(v.g); villages.splice(i, 1); }
       continue;
     }
-    if (surfaceH(v.d) < WATER + 0.004 || waterDepth(v.d) > 0.003) { ruinVillage(v); continue; } // flooded
-    const L = localLife(v.d);
-    const want = clamp(Math.floor(L.pop / 2.5), 0, 16);
-    if (want > v.n) v.n++;
-    else if (want < v.n - 1) v.n--;
-    if (v.n <= 0 || (L.t === 0 && L.c === 0)) { v.n = Math.max(1, v.n); ruinVillage(v); continue; } // abandoned
-    if (v.built !== v.n) buildVillage(v);
+    if (surfaceH(v.d) < WATER + 0.003) { floodVillage(v); continue; }
+    if (waterDepth(v.d) > 0.003) { ruinVillage(v); continue; }
+    const s = siteCap(v.d, v), cap = Math.max(-2, s.cap);
+    // drift toward what the land can carry; burning nearby knocks people out
+    v.p += cap > v.p ? Math.min(0.5, (cap - v.p) * 0.06) + rnd(0, 0.1) : Math.max(-0.8, (cap - v.p) * 0.05) - rnd(0, 0.05);
+    if (v.p < 0.4) { ruinVillage(v); if (booted) toast(`${TIER_NAME[v.tier]} verlassen 🏚️`); continue; }
+    const old = v.tier;
+    if (v.tier === 0 && v.p > 6) v.tier = 1; else if (v.tier === 1 && v.p > 14) v.tier = 2;
+    else if (v.tier === 2 && v.p < 11) v.tier = 1; else if (v.tier === 1 && v.p < 4.5) v.tier = 0;
+    if (v.tier !== old && booted) toast(v.tier > old ? (v.tier === 2 ? "Eine Großstadt wächst 🏙️" : "Aus dem Dorf wird eine Stadt 🏘️") : `${TIER_NAME[old]} schrumpft 📉`);
+    v.n = housesFor(v);
+    if (v.built !== v.n || v.builtTier !== v.tier) buildVillage(v);
   }
-  // founding: probe a few thriving spots
-  const live = trees.filter((t) => !t.dead && !t.gone);
-  for (let k = 0; k < 3 && live.length; k++) {
-    const t = live[(Math.random() * live.length) | 0];
-    const d = near(t.d, 0.03);
-    if (!villageRoom(d) || surfaceH(d) < WATER + 0.008 || waterDepth(d) > 0.0005) continue;
-    const L = localLife(d);
-    if (L.t >= 5 && L.c >= 2) {
-      makeVillage({ d: d.toArray(), n: 1, anim: booted });
-      S.founded = (S.founded || 0) + 1;
-      if (booted) toast(villages.filter((x) => !x.ruin).length === 1 ? "A village appeared 🏡" : "Another village 🏡");
-      break;
-    }
+  // founding: settlers probe a few spots and stay where the land is good
+  const live = villages.filter((x) => !x.ruin).length;
+  if (live >= 16 || Math.random() > 0.5) return;
+  for (let k = 0; k < 4; k++) {
+    let d;
+    if (trees.length && Math.random() < 0.6) { const t = trees[(Math.random() * trees.length) | 0]; if (t.dead || t.gone) continue; d = near(t.d, rnd(0.03, 0.07)); }
+    else d = V(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    if (!villageRoom(d) || waterDepth(d) > 0.0005 || burn[cellOf(d)] > 0) continue;
+    const s = siteCap(d, null);
+    if (s.h0 < WATER + 0.008 || s.cap < 5) continue;
+    makeVillage({ d: d.toArray(), p: 1, anim: booted });
+    S.founded = (S.founded || 0) + 1;
+    if (booted) toast(live === 0 ? "Ein Dorf entsteht 🏡" : "Neue Siedler 🏡");
+    break;
   }
 }
 function syncVillages() {}
@@ -830,7 +1002,7 @@ function impact(m) {
   const wet = surfaceH(d) < WATER + 0.004;
   const r = 0.05 + 0.06 * s;
   applyCrater(d, r, 0.014 * s);
-  ruinVillagesNear(d, r * 1.8);
+  ruinVillagesNear(d, r * 1.8); if (!wet) igniteNear(d, r * 2.4, 0.25);
   if (!wet) S.craters = (S.craters || 0) + 1;
   treeHash.query(d, r * 2, (t) => { if (!t.dead && !t.gone) { killTree(t, false); t.fallStart = clock() + (1 - t.d.dot(d)) * 6; t.fa = V().crossVectors(d, t.d).normalize(); if (t.fa.lengthSq() < 0.5) t.fa = tangentOf(t.d); } });
   for (const c of critters) {
@@ -882,6 +1054,8 @@ function step(dt) {
   for (let i = clouds.length - 1; i >= 0; i--) if (clouds[i].fade >= 1) { const c = clouds[i]; vapor += Math.max(0, c.w); c.w = 0; world.remove(c.g); c.mat.dispose(); clouds.splice(i, 1); }
   cloudTick(dt);
   waterT += dt; if (waterT >= 0.5) { waterTick(waterT); waterT = 0; }
+  fireT += dt; if (fireT >= 0.5) { fireTick(fireT); fireT = 0; }
+  lightning(dt);
   villT += dt; if (villT >= 2) { villT = 0; villageTick(); }
   // trees: grow only in sunlight AND with rain; wilt in long droughts
   for (let i = 0, n = trees.length; i < n; i++) {
@@ -898,7 +1072,8 @@ function step(dt) {
       if (t.s > 0.9 && Math.random() < dt * 0.012) {
         const nd = near(t.d, rnd(0.03, 0.09));
         let dense = 0; treeHash.query(nd, 0.045, () => { dense++; });
-        if (dense < 3 && surfaceH(nd) > WATER + 0.008 && waterDepth(nd) < 0.0008) { const s = makeTree({ d: nd.toArray(), s: 0.05, w: t.wet * 0.6, anim: true }); treeHash.add(s); }
+        const hn = surfaceH(nd);
+        if (dense < 3 && hn > WATER + 0.008 && hn < 1.072 && waterDepth(nd) < 0.0008 && !burn[cellOf(nd)]) { const s = makeTree({ d: nd.toArray(), s: 0.05, w: t.wet * 0.6, anim: true }); treeHash.add(s); }
       }
     }
   }
@@ -911,6 +1086,7 @@ function step(dt) {
     if (c.tick <= 0) {
       c.tick = rnd(0.4, 0.7);
       if (surfaceH(c.d) < WATER) { killCritter(c); continue; }
+      const ck = cellOf(c.d); if (burn[ck] > 0) { if (Math.random() < 0.35) { killCritter(c); continue; } c.h.multiplyScalar(-1); c.wait = 0; c.goal = null; }
       if (c.hunger > 0.25) {
         let best = null, bd = -2;
         treeHash.query(c.d, c.hunger > 0.5 ? 0.3 : 0.07, (t) => { if (!t.dead && !t.gone) { const dd = t.d.dot(c.d); if (dd > bd) { bd = dd; best = t; } } });
@@ -945,7 +1121,7 @@ let tool = "tree";
 function act(d) {
   const h = surfaceH(d);
   if (tool === "tree") {
-    if (h < WATER + 0.006) { toast("Trees don't swim 🌊"); sfx.bloop(); return; }
+    if (h < WATER + 0.006) { toast("Bäume können nicht schwimmen 🌊"); sfx.bloop(); return; }
     for (let i = 0; i < 2; i++) {
       const dd = i === 0 ? d : near(d, rnd(0.02, 0.04));
       if (i === 1 && (Math.random() < 0.55 || surfaceH(dd) < WATER + 0.006)) continue;
@@ -957,29 +1133,40 @@ function act(d) {
   } else if (tool === "water") {
     applyLake(d, 0.17); addRing(d, 0x9fdcff, 0.25); sfx.bloop();
   } else if (tool === "land") {
-    applyLand(d, 0.09); addRing(d, 0xd9b77a, 0.18); sfx.pop();
+    brushAt(d, 1); addRing(d, brushUp ? 0xd9b77a : 0x7fb8d8, brushR()); sfx.pop();
   } else if (tool === "cloud") {
     makeCloud({ d: d.toArray(), anim: true }); sfx.puff();
   } else if (tool === "critter") {
-    if (h < WATER + 0.006) { toast("Critters can't swim 🫧"); sfx.bloop(); return; }
+    if (h < WATER + 0.006) { toast("Tierchen können nicht schwimmen 🫧"); sfx.bloop(); return; }
     makeCritter({ d: d.toArray(), a: MATURE + 1, cd: rnd(2, 8), anim: true }); sfx.squeak();
   } else if (tool === "volcano") {
     makeVolcano({ d: d.toArray() }); shake = Math.max(shake, 0.2); sfx.rumble(); addRing(d, 0xff8a4a, 0.3);
   }
   updateCount(); save();
 }
-const TIPS = { tree: "Tap to plant a tree", meteor: "Tap to call a meteor", water: "Tap to make a lake", cloud: "Tap to add a rain cloud", critter: "Tap to drop a critter", volcano: "Tap to raise a volcano", land: "Tap or hold to raise land and push water back" };
+const TIPS = { tree: "Tippen: Baum pflanzen 🌲", meteor: "Tippen: Meteor rufen ☄️", water: "Tippen: See anlegen 💧", cloud: "Tippen: Regenwolke ☁️", critter: "Tippen: Tierchen absetzen 🐹", volcano: "Tippen: Vulkan heben 🌋", land: "Tippen oder halten & malen ⛰️" };
+const brushEl = $("[data-brush]"), brushModeEl = $("[data-brush-mode]"), brushSizeEl = $("[data-brush-size]");
+let brushUp = true;
+try { const b = JSON.parse(localStorage.getItem("planet.brush") || "{}"); if (b.s >= 1 && b.s <= 5) brushSizeEl.value = b.s; brushUp = b.u !== 0; } catch (e) {}
+const brushR = () => [0.035, 0.06, 0.09, 0.13, 0.18][(+brushSizeEl.value || 2) - 1];
+function paintBrush() { brushModeEl.textContent = brushUp ? "⬆️" : "⬇️"; brushModeEl.setAttribute("aria-label", brushUp ? "Anheben" : "Absenken"); try { localStorage.setItem("planet.brush", JSON.stringify({ s: +brushSizeEl.value, u: brushUp ? 1 : 0 })); } catch (e) {} }
+function showBrush() { brushEl.hidden = tool !== "land"; document.body.classList.toggle("brushing", tool === "land"); }
+paintBrush();
+brushModeEl.addEventListener("click", () => { brushUp = !brushUp; paintBrush(); toast(brushUp ? "Anheben ⬆️" : "Absenken ⬇️"); sfx.tick(); });
+brushSizeEl.addEventListener("input", () => { paintBrush(); sfx.tick(); });
+function brushAt(d, amt) { if (brushUp) applyLand(d, brushR(), amt); else applyLower(d, brushR(), amt); }
 document.querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => {
   tool = b.dataset.tool;
   document.querySelectorAll("[data-tool]").forEach((x) => x.classList.toggle("on", x === b));
-  toast(TIPS[tool]); sfx.tick();
+  toast(TIPS[tool]); sfx.tick(); showBrush();
 }));
 
 /* ---------- HUD ---------- */
 const countEl = $("[data-count]");
 const alive = () => { let n = 0; for (const c of critters) if (!c.dying) n++; return n; };
 function updateCount() {
-  countEl.textContent = `🌲 ${standing()} · 🐾 ${alive()} · 🕳️ ${S.craters || 0} · 🌋 ${volcanoes.length} · 🏡 ${villages.filter((v) => !v.ruin).length}\n🐣 ${S.births || 0} · 💀 ${S.deaths || 0}`;
+  const tc = [0, 0, 0]; for (const v of villages) if (!v.ruin) tc[v.tier]++;
+  countEl.textContent = `🌲 ${standing()} · 🐾 ${alive()} · 🕳️ ${S.craters || 0} · 🌋 ${volcanoes.length}\n🏡 ${tc[0]} · 🏘️ ${tc[1]} · 🏙️ ${tc[2]}${fires.length ? ` · 🔥 ${fires.length}` : ""} · 🐣 ${S.births || 0} · 💀 ${S.deaths || 0}`;
 }
 let toastT = 0;
 function toast(msg) {
@@ -989,16 +1176,16 @@ function toast(msg) {
 const resetBtn = $("[data-reset]");
 let resetArm = 0;
 resetBtn.addEventListener("click", () => {
-  if (!resetArm) { resetBtn.textContent = "Sure?"; resetArm = setTimeout(() => { resetArm = 0; resetBtn.textContent = "Reset"; }, 2500); return; }
-  clearTimeout(resetArm); resetArm = 0; resetBtn.textContent = "Reset";
+  if (!resetArm) { resetBtn.textContent = "Sicher?"; resetArm = setTimeout(() => { resetArm = 0; resetBtn.textContent = "Neu"; }, 2500); return; }
+  clearTimeout(resetArm); resetArm = 0; resetBtn.textContent = "Neu";
   trees.length = 0; critters.length = 0;
   clouds.forEach((c) => world.remove(c.g)); clouds.length = 0;
   villages.forEach((v) => world.remove(v.g)); villages.length = 0;
   volcanoes.forEach((v) => world.remove(v.glow)); volcanoes.length = 0;
   meteors.forEach((m) => world.remove(m.rock)); meteors.length = 0;
-  field.fill(0); crat.fill(0); basalt.fill(0); wat.fill(0); vapor = 0; waterDirty = true; markTerrain();
-  S = { v: 2, trees: [], critters: [], clouds: [], volcanoes: [], craters: 0, births: 0, deaths: 0, eruptions: 0 };
-  buildPlanet(); buildWater(); seedFresh(); updateCount(); save(true); toast("A fresh little world ✨"); sfx.pop();
+  field.fill(0); crat.fill(0); basalt.fill(0); wat.fill(0); carved.fill(0); scorch.fill(0); burn.fill(0); fires.length = 0; vapor = 0; waterDirty = true; markTerrain();
+  S = { v: 2, tv: TV, trees: [], critters: [], clouds: [], volcanoes: [], craters: 0, births: 0, deaths: 0, eruptions: 0 };
+  buildPlanet(); buildWater(); seedFresh(); updateCount(); save(true); toast("Eine frische kleine Welt ✨"); sfx.pop();
 });
 
 /* ---------- sound (muted by default, synthesized) ---------- */
@@ -1112,7 +1299,7 @@ function holdTick(now) {
   ndc.set((down.x / innerWidth) * 2 - 1, -(down.y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObject(planet, false)[0]; if (!hit) return;
-  applyLand(world.worldToLocal(hit.point.clone()).normalize(), 0.09, 0.6);
+  brushAt(world.worldToLocal(hit.point.clone()).normalize(), 0.6);
   if (Math.random() < 0.3) sfx.tick();
   save();
 }
@@ -1149,6 +1336,7 @@ function landSpot(tries = 400, front = true) {
 }
 function seedFresh() {
   for (let i = 0; i < 14; i++) { const d = landSpot(); if (d) makeTree({ d: d.toArray(), s: rnd(0.3, 1), w: 0.9, anim: true }); }
+  for (let g = 0; g < 5; g++) { const c = landSpot(400, g < 2); if (!c) continue; for (let i = 0; i < 9; i++) { const d = near(c, rnd(0.01, 0.08)); const h = surfaceH(d); if (h > WATER + 0.008 && h < 1.07) makeTree({ d: d.toArray(), s: rnd(0.4, 1.3), w: rnd(0.3, 0.9), anim: true }); } }
   for (let i = 0; i < 6; i++) { const d = landSpot(); if (d) makeCritter({ d: d.toArray(), a: rnd(10, 60), anim: true }); }
   for (let i = 0; i < 2; i++) { const d = landSpot(); if (d) makeCloud({ d: d.toArray(), anim: true }); }
   syncVillages();
@@ -1165,7 +1353,7 @@ if (firstVisit || migrated) save(true);
 syncVillages();
 updateCount();
 booted = true;
-setTimeout(() => toast(migrated ? "Your planet came along ✨" : "Drag to spin · tap to plant"), 600);
+setTimeout(() => toast(migrated ? "Neue Landschaft – dein Leben ist mitgekommen ✨" : "Ziehen zum Drehen · Tippen zum Pflanzen"), 600);
 addEventListener("pagehide", () => save(true));
 document.addEventListener("visibilitychange", () => { if (document.hidden) save(true); });
 setInterval(() => save(), 8000);
@@ -1173,9 +1361,9 @@ setInterval(() => save(), 8000);
 /* ---------- test / debug hooks ---------- */
 let fpsAvg = 60, frames = 0;
 window.__planet = {
-  _dbg: { world, camera, camQ, planet, sunDir, sunLocal, sunLight, sun, moon, wat, field, applyCrater, applyLake, applyLand, coolLava, waterDepth, villages, clouds, makeCloud, makeVillage, V, impact: (d, size) => impact({ d: V(...d).normalize(), size, rock: new THREE.Object3D() }), get vapor() { return vapor; }, set wildT(v) { wildT = v; }, setZoom: (v) => { zoom = zoomTarget = v; }, get zoom() { return zoom; } },
+  _dbg: { world, camera, camQ, planet, sunDir, sunLocal, sunLight, sun, moon, wat, field, applyCrater, applyLake, applyLand, applyLower, ignite, fires, burn, scorch, cellOf, coolLava, waterDepth, villages, clouds, makeCloud, makeVillage, V, impact: (d, size) => impact({ d: V(...d).normalize(), size, rock: new THREE.Object3D() }), get vapor() { return vapor; }, set wildT(v) { wildT = v; }, setZoom: (v) => { zoom = zoomTarget = v; }, get zoom() { return zoom; } },
   get speed() { return speed; }, set speed(v) { speed = clamp(+v || 1, 0.1, 200); },
-  stats: () => ({ trees: standing(), allTrees: trees.length, critters: alive(), births: S.births || 0, deaths: S.deaths || 0, craters: S.craters || 0, volcanoes: volcanoes.length, eruptions: S.eruptions || 0, simT: r3(simT), fps: Math.round(fpsAvg), frames, tris: planetGeo.index.count / 3, villages: villages.filter((v) => !v.ruin).length, ruins: villages.filter((v) => v.ruin).length, houses: villages.reduce((a, v) => a + (v.ruin ? 0 : v.n), 0), clouds: clouds.length, water: Math.round(waterVolume() * 1e4) / 1e4, vapor: Math.round(vapor * 1e4) / 1e4, cloudWater: Math.round(clouds.reduce((a, c) => a + c.w, 0) * 1e4) / 1e4 }),
+  stats: () => ({ trees: standing(), allTrees: trees.length, critters: alive(), births: S.births || 0, deaths: S.deaths || 0, craters: S.craters || 0, volcanoes: volcanoes.length, eruptions: S.eruptions || 0, simT: r3(simT), fps: Math.round(fpsAvg), frames, tris: planetGeo.index.count / 3, fires: fires.length, towns: villages.filter((v) => !v.ruin && v.tier === 1).length, cities: villages.filter((v) => !v.ruin && v.tier === 2).length, villages: villages.filter((v) => !v.ruin).length, ruins: villages.filter((v) => v.ruin).length, houses: villages.reduce((a, v) => a + (v.ruin ? 0 : v.n), 0), clouds: clouds.length, water: Math.round(waterVolume() * 1e4) / 1e4, vapor: Math.round(vapor * 1e4) / 1e4, cloudWater: Math.round(clouds.reduce((a, c) => a + c.w, 0) * 1e4) / 1e4 }),
   spawn(kind, n = 1) {
     for (let i = 0; i < n; i++) {
       const d = landSpot(400, false); if (!d) continue;
@@ -1314,6 +1502,7 @@ function frame(now) {
     debrisI.mesh.setMatrixAt(i, _m.compose(p.p, _q, _s.setScalar(p.sc)));
   }
   debrisI.done();
+  drawFires(dt);
   glow.update(dt); smoke.update(dt);
   for (let i = rings.length - 1; i >= 0; i--) {
     const r = rings[i]; r.t += dt * 1.6;
@@ -1325,7 +1514,8 @@ function frame(now) {
     const night = smooth(0.05, -0.25, v.d.dot(sunLocal));
     const age = t - v.g.userData.born;
     v.g.scale.setScalar(Math.max(0.001, booted && age < 1 ? elastic(age / 0.8) : 1));
-    if (!v.ruin) v.g.children.forEach((h) => { if (h.isSprite) h.visible = night > 0.02; else if (h.children[2]) h.children[2].visible = night > 0.1; });
+    if (v.flooded) v.g.position.copy(v.d).multiplyScalar(-0.03 * Math.min(1, (simT - v.ruinT) / FLOOD_FADE));
+    if (!v.ruin) v.g.children.forEach((h) => { if (h.isSprite) h.visible = night > 0.02; else if (h.userData.win) h.userData.win.visible = night > 0.1; });
   }
   if (t - lastHud > 0.5) { lastHud = t; updateCount(); }
   renderer.render(scene, camera);

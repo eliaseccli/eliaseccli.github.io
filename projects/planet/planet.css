@@ -25,3 +25,9 @@ body { font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, san
   font-size: 12.5px; color: rgba(255,255,255,.7); pointer-events: none; white-space: nowrap; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 @media (max-width: 400px) { .tools { gap: 3px; padding: 5px; } .tools button { width: 42px; height: 42px; font-size: 20px; } }
+.brush { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 80px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px;
+  border-radius: 22px; background: rgba(20,20,34,.45); border: 1px solid rgba(255,255,255,.12); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
+.brush[hidden] { display: none; }
+.brush button { width: 34px; height: 34px; border-radius: 17px; font-size: 17px; padding: 0; line-height: 1; cursor: pointer; color: inherit; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.18); }
+.brush input { width: 96px; height: 24px; margin: 0; accent-color: #d9b77a; touch-action: pan-x; }
+body.brushing .toast { bottom: calc(env(safe-area-inset-bottom) + 130px); }
