@@ -21,31 +21,7 @@ body { font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, san
 .tools button { width: 46px; height: 46px; border-radius: 23px; font-size: 22px; line-height: 1; padding: 0; border-color: transparent; background: transparent; transition: transform .18s cubic-bezier(.3,1.6,.5,1), background .2s; }
 .tools button.on { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.22); transform: translateY(-3px) scale(1.08); }
 .tools button:active { transform: scale(.9); }
-.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 128px); transform: translate(-50%, 6px); opacity: 0; transition: opacity .3s, transform .3s;
+.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 6px); opacity: 0; transition: opacity .3s, transform .3s;
   font-size: 12.5px; color: rgba(255,255,255,.7); pointer-events: none; white-space: nowrap; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-
-
-/* ---------- ecosystem UI ---------- */
-.tools { align-items: center; }
-.tools .sep { width: 1px; height: 26px; background: rgba(255,255,255,.16); margin: 0 2px; }
-.tools button.sp { width: 40px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.ctrl { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 76px); display: flex; gap: 14px; padding: 6px 14px;
-  border-radius: 20px; background: rgba(20,20,34,.4); border: 1px solid rgba(255,255,255,.1); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
-.ctrl label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: rgba(255,255,255,.7); }
-.ctrl input { width: 96px; accent-color: #9fd3ff; }
-.logline { position: fixed; top: calc(env(safe-area-inset-top) + 58px); left: 14px; max-width: min(70vw, 420px); font: inherit; font-size: 11.5px; text-align: left;
-  color: rgba(255,255,255,.62); background: rgba(20,20,34,.35); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 5px 10px; cursor: pointer;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.log, .card { position: fixed; left: 14px; top: calc(env(safe-area-inset-top) + 94px); width: min(84vw, 360px); font-size: 12.5px; line-height: 1.45;
-  border-radius: 16px; padding: 10px 12px; background: rgba(16,16,28,.72); border: 1px solid rgba(255,255,255,.14);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
-.log { max-height: 46vh; overflow-y: auto; -webkit-overflow-scrolling: touch; user-select: text; -webkit-user-select: text; }
-.log p { margin: 4px 0; color: rgba(255,255,255,.78); }
-.log p span { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; margin-right: 4px; }
-.card { top: auto; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 156px); }
-.card hr { border: 0; border-top: 1px solid rgba(255,255,255,.12); margin: 7px 0; }
-.card [data-close] { float: right; font: inherit; font-size: 18px; line-height: 1; color: rgba(255,255,255,.6); background: none; border: 0; padding: 0 0 4px 8px; cursor: pointer; }
-[hidden] { display: none !important; }
-@media (max-width: 400px) { .tools { gap: 2px; padding: 4px; } .tools button { width: 38px; height: 40px; font-size: 18px; } .tools button.sp { width: 34px; font-size: 12.5px; }
-  .ctrl { gap: 8px; padding: 5px 10px; } .ctrl span { display: none; } .ctrl input { width: 110px; } }
+@media (max-width: 400px) { .tools { gap: 3px; padding: 5px; } .tools button { width: 42px; height: 42px; font-size: 20px; } }
