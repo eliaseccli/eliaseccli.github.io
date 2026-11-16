@@ -146,6 +146,130 @@ async function loadCelestrak(flightNo) {
   }
 }
 
+/* ---------------- data: CelesTrak pre-launch (SupGP) ----------------
+   SpaceX-provided pre-launch / supplemental element sets live in CelesTrak's
+   SupGP service (CORS: *). They are looked up by name (STARSHIP-<n>) and in
+   the flight's Starlink pre-launch file (FILE=starlink-g<group>), using only
+   an object whose name is the ship itself. Negative answers are cached too,
+   so CelesTrak is not hammered with failing queries. */
+const SUP = "https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?";
+const PRE_CACHE = "starship.prelaunch.v1";
+const PRE_TTL = 30 * 60 * 1000;
+
+// Rebuild a TLE pair in strict fixed columns (pre-launch sets are often
+// shared with collapsed spacing, e.g. without the international designator).
+function tleChecksum(l) {
+  let c = 0;
+  for (const ch of l.slice(0, 68)) { if (ch >= "0" && ch <= "9") c += +ch; else if (ch === "-") c += 1; }
+  return String(c % 10);
+}
+function normalizeTLE(l1, l2) {
+  l1 = String(l1 || "").trim(); l2 = String(l2 || "").trim();
+  if (l1.length === 69 && l2.length === 69 && l1[18] !== " " && l2[7] === " ") return [l1, l2];
+  const a = l1.split(/\s+/), b = l2.split(/\s+/);
+  if (a[0] !== "1" || b[0] !== "2") return null;
+  const catCls = a[1];
+  const cat = catCls.replace(/[A-Z]$/i, "").padStart(5, "0").slice(-5);
+  const cls = /[A-Z]$/i.test(catCls) ? catCls.slice(-1).toUpperCase() : "U";
+  let i = 2, intdes = "";
+  if (!/^\d{5}\.\d+$/.test(a[i])) intdes = a[i++];
+  const epoch = a[i++], ndot = a[i++], nddot = a[i++], bstar = a[i++], eph = a[i++] || "0";
+  // last token is element-set number + checksum digit
+  const elTok = a[i++] || "9990";
+  const el = (elTok.length > 1 ? elTok.slice(0, -1) : elTok).slice(-4);
+  if (!/^\d{5}\.\d+$/.test(epoch)) return null;
+  const sgnF = (v, w) => (v.startsWith("-") || v.startsWith("+") ? v.replace("+", " ") : " " + v).padStart(w, " ").slice(-w);
+  const f = (x, w, d) => (+x).toFixed(d).padStart(w, " ");
+  let L1 = "1 " + cat + cls + " " + intdes.padEnd(8, " ").slice(0, 8) + " " + epoch.padStart(14, "0").slice(0, 14) + " " +
+    sgnF(ndot.replace(/^(-?)0\./, "$1."), 10) + " " + sgnF(nddot, 8) + " " + sgnF(bstar, 8) + " " + eph.slice(0, 1) + " " + el.padStart(4, " ");
+  L1 = L1.slice(0, 68).padEnd(68, " "); L1 += tleChecksum(L1);
+  const inc = b[2], raan = b[3], ecc = b[4], argp = b[5], ma = b[6];
+  let mm = b[7] || "";
+  // last token is rev number + checksum digit (or glued to the mean motion)
+  let rev = b[8] ? (b[8].length > 1 ? b[8].slice(0, -1) : "0") : "0";
+  if (mm.length > 11) { rev = mm.slice(11, -1) || "0"; mm = mm.slice(0, 11); }
+  let L2 = "2 " + cat + " " + f(inc, 8, 4) + " " + f(raan, 8, 4) + " " + ecc.replace(/^0?\./, "").padStart(7, "0").slice(0, 7) + " " +
+    f(argp, 8, 4) + " " + f(ma, 8, 4) + " " + f(mm, 11, 8) + String(rev.replace(/\D/g, "").slice(0, 5) || "0").padStart(5, " ");
+  L2 = L2.slice(0, 68).padEnd(68, " "); L2 += tleChecksum(L2);
+  return [L1, L2];
+}
+function tleEpochMs(l1) {
+  const yy = +l1.slice(18, 20), doy = +l1.slice(20, 32);
+  const y = yy < 57 ? 2000 + yy : 1900 + yy;
+  return Date.UTC(y, 0, 1) + (doy - 1) * 864e5;
+}
+function parse3LE(txt) {
+  const ln = String(txt || "").split(/\r?\n/).map((x) => x.replace(/\s+$/, "")).filter((x) => x.trim());
+  const out = [];
+  for (let k = 0; k < ln.length; k++) {
+    if (ln[k].startsWith("1 ") && ln[k + 1] && ln[k + 1].startsWith("2 ")) {
+      const name = k > 0 && !ln[k - 1].startsWith("2 ") && !ln[k - 1].startsWith("1 ") ? ln[k - 1].replace(/^0\s+/, "").trim() : "";
+      out.push({ name, l1: ln[k], l2: ln[k + 1] }); k++;
+    }
+  }
+  return out;
+}
+function preFromTLE(name, l1, l2, source) {
+  const n = normalizeTLE(l1, l2);
+  if (!n) return null;
+  return { tle1: n[0], tle2: n[1], name, source, epochMs: tleEpochMs(n[0]), INCLINATION: +n[1].slice(8, 16), MEAN_MOTION: +n[1].slice(52, 63) };
+}
+function starlinkGroupFile(m) {
+  const g = String((m.raw && m.raw.name) || "").match(/starlink group\s*(\d+)-(\d+)/i);
+  return g ? "starlink-g" + g[1] + "-" + g[2] : null;
+}
+async function loadPrelaunch(m) {
+  if (!m.flightNo) return null;
+  // pre-launch sets only exist around launch; skip long-past or far-future flights
+  if (Math.abs(Date.now() - m.net.getTime()) > 10 * DAY * 1000) return null;
+  const key = PRE_CACHE + "." + m.flightNo + "." + m.net.getTime();
+  const c = readCache(key, PRE_TTL);
+  if (c && c.fresh) return c.data;
+  const want = new RegExp("^STARSHIP[\\s-]*(?:FLIGHT[\\s-]*)?" + m.flightNo + "\\b", "i");
+  // NAME= answers 404 when nothing matches (shows up as a console network error),
+  // so it is only asked close to liftoff, when a ship pre-launch set can exist.
+  const dt = Date.now() - m.net.getTime();
+  const tries = [];
+  if (dt > -3 * DAY * 1000 && dt < 2 * DAY * 1000) tries.push("NAME=STARSHIP-" + m.flightNo + "&FORMAT=3LE");
+  const grp = starlinkGroupFile(m);
+  if (grp) tries.push("FILE=" + grp + "&FORMAT=3LE");
+  let found = null, anyOk = false;
+  for (const q of tries) {
+    try {
+      const txt = await fetchText(SUP + q).catch((e) => { if (/404/.test(String(e))) { anyOk = true; return ""; } throw e; });
+      anyOk = true;
+      if (!txt || /^(No SupGP|Invalid query)/i.test(txt.trim())) continue;
+      const sets = parse3LE(txt);
+      // prefer the ship itself; in a Starlink group file fall back to the group's
+      // predicted stack, which rides in the ship's orbit until deployment
+      let hit = sets.find((x) => want.test(x.name)) || (q.startsWith("FILE=") ? sets.find((x) => /^STARSHIP\b/i.test(x.name)) : null);
+      let proxy = null;
+      if (!hit && q.startsWith("FILE=") && sets.length) { hit = sets[0]; proxy = grp.replace(/^starlink-g/i, "Starlink G"); }
+      if (hit) { found = preFromTLE(hit.name, hit.l1, hit.l2, q.split("&")[0]); if (found) { found.proxy = proxy; break; } }
+    } catch (e) {}
+  }
+  if (anyOk) writeCache(key, found);
+  return found || (c ? c.data : null);
+}
+
+// Harmless test fixture: ?fixture=f14-prelaunch (no network for the orbit).
+const FIXTURES = {
+  "f14-prelaunch": {
+    launch: {
+      name: "Starship | Starlink Group 31-1 (Starship Flight 14)", net: "2026-09-28T12:48:59Z", net_precision: "Second",
+      status: { abbrev: "Success" },
+      pad: { name: "Orbital Launch Pad 2", latitude: 25.99677, longitude: -97.15799, location: { name: "SpaceX Starbase, TX, USA" } },
+      mission: { orbit: { abbrev: "LEO" }, description: "The ship is expected to fly at an altitude approximately 275 km above Earth and complete approximately 6 orbits around the planet for nearly 10 hours, with splashdown targeted in the Pacific Ocean west of Chile." }
+    },
+    tle: ["STARSHIP-14",
+      "1 99998U 26271.55155093 .00000000 00000-0 50000-4 0 07",
+      "2 99998 30.5122 340.6000 0001503 0.0000 218.3000 15.99431098 04"]
+  }
+};
+function activeFixture() {
+  try { return FIXTURES[new URLSearchParams(location.search).get("fixture")] || null; } catch (e) { return null; }
+}
+
 /* ---------------- mission model ---------------- */
 function parseMission(l) {
   const name = String(l.name || "Starship");
@@ -194,7 +318,7 @@ function buildTrajectory(m, ct) {
 
   if (ct && ct.gp && window.satellite) {
     source = "celestrak";
-    sourceDetail = "CelesTrak GP · SGP4";
+    sourceDetail = ct.prelaunch ? "CelesTrak pre-launch prediction" + (ct.gp.proxy ? " · " + ct.gp.proxy : "") + (ct.fixture ? " · test fixture" : "") : "CelesTrak GP · SGP4";
     gpRec = ct.gp;
     incl = +ct.gp.INCLINATION;
     const n = +ct.gp.MEAN_MOTION * 2 * Math.PI / DAY;
@@ -733,18 +857,26 @@ function setT(t, fromSlider) {
   el.range.style.setProperty("--p", ((S.t - rangeMin()) / (rangeMax() - rangeMin()) * 100).toFixed(3) + "%");
 }
 
-/* Fine scrubbing (same feel as the Starlink timeline): on the track it is 1:1,
-   the further the finger/pointer moves vertically away, the slower time moves
-   per pixel, easing quadratically down to SCRUB_FINE_S_PER_PX. */
-const SCRUB_FINE_RANGE_PX = 140;
+/* Fine scrubbing (Starlink-style, smoother): on the track it is 1:1; moving
+   the finger/pointer vertically away (above or below) slows time per pixel
+   along a log-scale curve, so every extra pixel slows it by the same small
+   factor, from full speed at the track down to SCRUB_FINE_S_PER_PX at
+   scrubFineRange() px. No steps, no plateau until the far end. */
 const SCRUB_FINE_S_PER_PX = 1;
-function scrubSecPerPx(absDy, trackWidth, span) {
+const SCRUB_DEAD_PX = 6; // finger jitter right on the track stays 1:1
+function scrubFineRange() {
+  const r = el.range.getBoundingClientRect();
+  const room = Math.max(r.top + r.height / 2, window.innerHeight - r.top - r.height / 2);
+  return clamp(room * 0.55, 180, 300);
+}
+function scrubSecPerPx(absDy, trackWidth, span, range) {
   if (!(trackWidth > 0) || !(span > 0)) return 0;
+  const R = range || 280;
   const coarse = span / trackWidth;
   const fine = Math.min(SCRUB_FINE_S_PER_PX, coarse);
-  let t = clamp(Math.abs(absDy) / SCRUB_FINE_RANGE_PX, 0, 1);
-  t = t * t;
-  return coarse + (fine - coarse) * t;
+  const d = Math.max(0, Math.abs(absDy) - SCRUB_DEAD_PX);
+  const t = clamp(d / (R - SCRUB_DEAD_PX), 0, 1);
+  return coarse * Math.pow(fine / coarse, t);
 }
 const sliderEl = $("[data-slider]"), scrubHint = $("[data-scrub-hint]");
 let scrubDrag = null;
@@ -757,8 +889,8 @@ function valueAtClientX(x) {
   return rangeMin() + clamp((x - r.left) / r.width, 0, 1) * (rangeMax() - rangeMin());
 }
 function fmtRate(spp) {
-  if (spp >= 90) return Math.round(spp / 60) + " MIN/PX";
-  if (spp >= 1.5) return Math.round(spp) + " S/PX";
+  if (spp >= 120) return (spp / 60).toFixed(spp >= 600 ? 0 : 1) + " MIN/PX";
+  if (spp >= 10) return Math.round(spp) + " S/PX";
   return spp.toFixed(1) + " S/PX";
 }
 function scrubTo(v) { S.live = false; el.now.classList.remove("is-on"); setT(v); }
@@ -767,13 +899,14 @@ function onScrubMove(e) {
   e.preventDefault();
   const r = trackBox();
   const dy = e.clientY - (r.top + r.height / 2);
-  const spp = scrubSecPerPx(dy, r.width, rangeMax() - rangeMin());
+  const spp = scrubSecPerPx(dy, r.width, rangeMax() - rangeMin(), scrubFineRange());
   scrubDrag.value = clamp(scrubDrag.value + (e.clientX - scrubDrag.lastX) * spp, rangeMin(), rangeMax());
   scrubDrag.lastX = e.clientX;
   scrubTo(scrubDrag.value);
-  const fine = Math.abs(dy) > 24;
+  const fine = Math.abs(dy) > SCRUB_DEAD_PX + 8;
   scrubHint.hidden = !fine;
   if (fine) scrubHint.textContent = "FINE SCRUB · " + fmtRate(spp);
+  sliderEl.dataset.spp = spp.toFixed(3);
 }
 function onScrubUp(e) {
   if (!scrubDrag || e.pointerId !== scrubDrag.id) return;
@@ -800,7 +933,8 @@ sliderEl.addEventListener("pointerdown", (e) => {
   scrubTo(scrubDrag.value);
 });
 sliderEl.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
-window.__starshipScrub = { scrubSecPerPx, SCRUB_FINE_RANGE_PX };
+window.__starshipScrub = { scrubSecPerPx, scrubFineRange };
+window.__starshipDebug = { traj: () => S.traj, normalizeTLE };
 
 el.range.addEventListener("input", () => {
   S.live = false; el.now.classList.remove("is-on");
@@ -899,7 +1033,8 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   if (q.get("mission") === "next" || q.get("mission") === "latest") S.which = q.get("mission");
   syncButtons();
-  S.data = await loadLaunches();
+  const fx = activeFixture();
+  S.data = fx ? { upcoming: [], previous: [fx.launch] } : await loadLaunches();
   await applyMission(q.has("t") ? +q.get("t") : null);
   requestAnimationFrame(frame);
 }
@@ -942,8 +1077,14 @@ async function applyMission(tParam) {
   setSource();
   startTime(tParam, p.which);
 
-  // CelesTrak (async, non-blocking)
-  const ct = await loadCelestrak(m.flightNo);
+  // CelesTrak (async, non-blocking): (a) pre-launch SupGP, (b) SATCAT/GP, (c) nominal
+  let ct = null;
+  const fx = activeFixture();
+  let pre = fx ? preFromTLE(fx.tle[0], fx.tle[1], fx.tle[2], "fixture") : await loadPrelaunch(m);
+  // only use a predicted set that belongs to this liftoff (epoch between T-1h and T+6h)
+  if (pre && !(pre.epochMs > m.net.getTime() - 3600e3 && pre.epochMs < m.net.getTime() + 6 * 3600e3)) pre = null;
+  if (pre) ct = { gp: pre, prelaunch: true, fixture: !!fx };
+  else if (!fx) ct = await loadCelestrak(m.flightNo);
   if (S.mission === m && ct && (ct.gp || ct.rec)) {
     S.traj = buildTrajectory(m, ct);
     buildTrack(S.traj); buildTicks(); setSource(); setT(S.t);
@@ -1054,12 +1195,6 @@ function frame(now) {
   el.marker.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0)`;
   el.marker.classList.toggle("is-behind", !visible);
   markerScreen.x = sx; markerScreen.y = sy; markerScreen.on = visible;
-  // marker icon heading: direction of travel on screen
-  const ahead = tr.sample(Math.min(tc + 30, tr.tEnd));
-  const va = ll2v(ahead.lat, ahead.lon, LIFT, new THREE.Vector3()).project(camera);
-  const hx = (va.x * 0.5 + 0.5) * W - sx, hy = (-va.y * 0.5 + 0.5) * H - sy;
-  const head = (Math.hypot(hx, hy) > 0.5 && S.t > 0 && S.t < tr.tEnd) ? Math.atan2(hx, -hy) / D2R : 0;
-  el.marker.firstElementChild.style.transform = `rotate(${head.toFixed(1)}deg)`;
 
   // faint ring around the globe
   const c0 = new THREE.Vector3(0, 0, 0).project(camera);
