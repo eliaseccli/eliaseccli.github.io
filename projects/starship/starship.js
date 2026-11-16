@@ -406,9 +406,11 @@ const earthTex = loader.load(maxTex >= 4096 ? "./assets/earth-mono-4k.jpg" : "./
 earthTex.colorSpace = THREE.SRGBColorSpace;
 earthTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 
+const nightTex = loader.load(maxTex >= 4096 ? "./assets/earth-night-4k.jpg" : "./assets/earth-night-2k.jpg");
+nightTex.anisotropy = earthTex.anisotropy;
 const uSun = { value: new THREE.Vector3(1, 0, 0) };
 const earthMat = new THREE.ShaderMaterial({
-  uniforms: { map: { value: earthTex }, sun: uSun },
+  uniforms: { map: { value: earthTex }, night: { value: nightTex }, sun: uSun },
   vertexShader: `
     varying vec2 vUv; varying vec3 vN; varying vec3 vView;
     void main() {
@@ -419,7 +421,7 @@ const earthMat = new THREE.ShaderMaterial({
       gl_Position = projectionMatrix * viewMatrix * wp;
     }`,
   fragmentShader: `
-    uniform sampler2D map; uniform vec3 sun;
+    uniform sampler2D map; uniform sampler2D night; uniform vec3 sun;
     varying vec2 vUv; varying vec3 vN; varying vec3 vView;
     void main() {
       vec3 c = texture2D(map, vUv).rgb;
@@ -429,12 +431,18 @@ const earthMat = new THREE.ShaderMaterial({
       float facing = clamp(dot(vN, vView), 0.0, 1.0);
       float limb = 0.5 + 0.5 * pow(facing, 0.5);
       float sd = dot(vN, normalize(sun));
-      float day = 0.6 + 0.4 * smoothstep(-0.2, 0.25, sd);
+      // soft but obvious terminator: ~±7° twilight band, night clearly darker
+      float dayW = smoothstep(-0.12, 0.12, sd);
+      float day = mix(0.13, 1.0, dayW);
       float land = smoothstep(0.03, 0.09, l);
       vec3 col = c * limb * day * mix(1.0, 1.22, land);
       col += vec3(0.010, 0.017, 0.032) * limb * day * (1.0 - land);
+      // faint city lights (NASA Black Marble, desaturated) only on the night side
+      float lights = texture2D(night, vUv).r;
+      float nightW = 1.0 - smoothstep(-0.16, 0.02, sd);
+      col += vec3(0.86, 0.9, 1.0) * pow(lights, 1.6) * nightW * 0.42 * (0.6 + 0.4 * facing);
       float rim = pow(1.0 - facing, 4.0);
-      col += vec3(0.5, 0.62, 0.8) * rim * 0.09;
+      col += vec3(0.5, 0.62, 0.8) * rim * 0.09 * mix(0.25, 1.0, dayW);
       gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
     }`
 });
@@ -446,10 +454,13 @@ const atmo = new THREE.Mesh(
   new THREE.SphereGeometry(1.035, 96, 64),
   new THREE.ShaderMaterial({
     side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: `varying vec3 vN; varying vec3 vV;
-      void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `varying vec3 vN; varying vec3 vV;
-      void main(){ float f = pow(clamp(1.0 + dot(vN, vV) * 1.0, 0.0, 1.0), 5.0); gl_FragColor = vec4(vec3(0.6,0.7,0.88) * f * 0.42, 1.0); }`
+    uniforms: { sun: uSun },
+    vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vW;
+      void main(){ vN = normalize(normalMatrix * normal); vW = normalize(position); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 sun; varying vec3 vN; varying vec3 vV; varying vec3 vW;
+      void main(){ float f = pow(clamp(1.0 + dot(vN, vV) * 1.0, 0.0, 1.0), 5.0);
+        float lit = mix(0.18, 1.0, smoothstep(-0.25, 0.2, dot(vW, normalize(sun))));
+        gl_FragColor = vec4(vec3(0.6,0.7,0.88) * f * 0.42 * lit, 1.0); }`
   })
 );
 scene.add(atmo);
@@ -526,11 +537,15 @@ const ctl = {
   vLat: 0, vLon: 0, follow: true, dragging: false, minD: 1.45, maxD: 9, fitD: 3.6
 };
 const pointers = new Map();
-let pinch0 = null, last = null, lastMoveT = 0;
+let pinch0 = null, last = null, lastMoveT = 0, tapStart = null;
+const markerScreen = { x: -1e4, y: -1e4, on: false };
+const MARKER_HIT = 38; // px, generous for fingers
 
 canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) tapStart = { x: e.clientX, y: e.clientY, t: performance.now(), multi: false };
+  else if (tapStart) tapStart.multi = true;
   ctl.dragging = true; ctl.vLat = ctl.vLon = 0;
   canvas.classList.add("is-drag");
   if (pointers.size === 2) {
@@ -540,7 +555,10 @@ canvas.addEventListener("pointerdown", (e) => {
   last = { x: e.clientX, y: e.clientY, t: performance.now() };
 });
 canvas.addEventListener("pointermove", (e) => {
-  if (!pointers.has(e.pointerId)) return;
+  if (!pointers.has(e.pointerId)) {
+    canvas.classList.toggle("is-hot", markerScreen.on && Math.hypot(e.clientX - markerScreen.x, e.clientY - markerScreen.y) < MARKER_HIT);
+    return;
+  }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size >= 2 && pinch0) {
     const [a, b] = [...pointers.values()];
@@ -552,7 +570,7 @@ canvas.addEventListener("pointermove", (e) => {
   const dx = e.clientX - last.x, dy = e.clientY - last.y;
   const now = performance.now(), dt = Math.max(now - last.t, 1);
   const k = degPerPx();
-  if (Math.abs(dx) + Math.abs(dy) > 2) setFollow(false);
+  if (ctl.follow && (!tapStart || Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 8)) setFollow(false);
   ctl.tLon -= dx * k; ctl.tLat = clamp(ctl.tLat + dy * k, -85, 85);
   ctl.lon = ctl.tLon; ctl.lat = ctl.tLat;
   ctl.vLon = -dx * k / dt * 16; ctl.vLat = dy * k / dt * 16;
@@ -560,6 +578,15 @@ canvas.addEventListener("pointermove", (e) => {
   lastMoveT = now;
 });
 function endPointer(e) {
+  // a short, still tap near the Starship marker turns follow mode on
+  if (e.type === "pointerup" && tapStart && !tapStart.multi && pointers.size === 1 &&
+      Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) < 12 && performance.now() - tapStart.t < 600 &&
+      markerScreen.on && Math.hypot(e.clientX - markerScreen.x, e.clientY - markerScreen.y) < MARKER_HIT) {
+    setFollow(true);
+    ctl.vLat = ctl.vLon = 0;
+    lastMoveT = 0;
+  }
+  if (pointers.size <= 1) tapStart = null;
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinch0 = null;
   if (pointers.size === 0) {
@@ -576,7 +603,17 @@ canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   ctl.tDist = clamp(ctl.tDist * Math.exp(e.deltaY * 0.0012), ctl.minD, ctl.maxD);
 }, { passive: false });
-canvas.addEventListener("dblclick", () => setFollow(true));
+// never let the browser zoom the page (iOS Safari pinch / double-tap); globe zoom is handled above
+["gesturestart", "gesturechange", "gestureend"].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+document.addEventListener("touchmove", (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+document.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener("touchend", (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 320 && !(e.target.closest && e.target.closest("button, a, input"))) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 
 function degPerPx() {
   const h = canvas.clientHeight || 800;
@@ -587,7 +624,10 @@ function degPerPx() {
 const followBtn = $("[data-follow]");
 function setFollow(on) {
   ctl.follow = on;
-  followBtn.hidden = on;
+  followBtn.hidden = false;
+  followBtn.classList.toggle("is-on", on);
+  followBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  followBtn.title = on ? "Following Starship" : "Follow Starship";
 }
 followBtn.addEventListener("click", () => { setFollow(true); ctl.tDist = ctl.fitD; });
 
@@ -693,6 +733,75 @@ function setT(t, fromSlider) {
   el.range.style.setProperty("--p", ((S.t - rangeMin()) / (rangeMax() - rangeMin()) * 100).toFixed(3) + "%");
 }
 
+/* Fine scrubbing (same feel as the Starlink timeline): on the track it is 1:1,
+   the further the finger/pointer moves vertically away, the slower time moves
+   per pixel, easing quadratically down to SCRUB_FINE_S_PER_PX. */
+const SCRUB_FINE_RANGE_PX = 140;
+const SCRUB_FINE_S_PER_PX = 1;
+function scrubSecPerPx(absDy, trackWidth, span) {
+  if (!(trackWidth > 0) || !(span > 0)) return 0;
+  const coarse = span / trackWidth;
+  const fine = Math.min(SCRUB_FINE_S_PER_PX, coarse);
+  let t = clamp(Math.abs(absDy) / SCRUB_FINE_RANGE_PX, 0, 1);
+  t = t * t;
+  return coarse + (fine - coarse) * t;
+}
+const sliderEl = $("[data-slider]"), scrubHint = $("[data-scrub-hint]");
+let scrubDrag = null;
+function trackBox() {
+  const r = el.range.getBoundingClientRect();
+  return { left: r.left + 9, width: Math.max(r.width - 18, 1), top: r.top, height: r.height };
+}
+function valueAtClientX(x) {
+  const r = trackBox();
+  return rangeMin() + clamp((x - r.left) / r.width, 0, 1) * (rangeMax() - rangeMin());
+}
+function fmtRate(spp) {
+  if (spp >= 90) return Math.round(spp / 60) + " MIN/PX";
+  if (spp >= 1.5) return Math.round(spp) + " S/PX";
+  return spp.toFixed(1) + " S/PX";
+}
+function scrubTo(v) { S.live = false; el.now.classList.remove("is-on"); setT(v); }
+function onScrubMove(e) {
+  if (!scrubDrag || e.pointerId !== scrubDrag.id) return;
+  e.preventDefault();
+  const r = trackBox();
+  const dy = e.clientY - (r.top + r.height / 2);
+  const spp = scrubSecPerPx(dy, r.width, rangeMax() - rangeMin());
+  scrubDrag.value = clamp(scrubDrag.value + (e.clientX - scrubDrag.lastX) * spp, rangeMin(), rangeMax());
+  scrubDrag.lastX = e.clientX;
+  scrubTo(scrubDrag.value);
+  const fine = Math.abs(dy) > 24;
+  scrubHint.hidden = !fine;
+  if (fine) scrubHint.textContent = "FINE SCRUB · " + fmtRate(spp);
+}
+function onScrubUp(e) {
+  if (!scrubDrag || e.pointerId !== scrubDrag.id) return;
+  scrubDrag = null;
+  sliderEl.classList.remove("is-scrubbing");
+  scrubHint.hidden = true;
+  window.removeEventListener("pointermove", onScrubMove);
+  window.removeEventListener("pointerup", onScrubUp);
+  window.removeEventListener("pointercancel", onScrubUp);
+  window.removeEventListener("touchmove", onScrubTouchMove);
+}
+function onScrubTouchMove(e) { if (scrubDrag) e.preventDefault(); }
+sliderEl.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  e.preventDefault();
+  try { el.range.focus({ preventScroll: true }); } catch (err) {}
+  try { sliderEl.setPointerCapture(e.pointerId); } catch (err) {}
+  sliderEl.classList.add("is-scrubbing");
+  scrubDrag = { id: e.pointerId, lastX: e.clientX, value: valueAtClientX(e.clientX) };
+  window.addEventListener("pointermove", onScrubMove);
+  window.addEventListener("pointerup", onScrubUp);
+  window.addEventListener("pointercancel", onScrubUp);
+  window.addEventListener("touchmove", onScrubTouchMove, { passive: false });
+  scrubTo(scrubDrag.value);
+});
+sliderEl.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+window.__starshipScrub = { scrubSecPerPx, SCRUB_FINE_RANGE_PX };
+
 el.range.addEventListener("input", () => {
   S.live = false; el.now.classList.remove("is-on");
   setT(rangeMin() + +el.range.value, true);
@@ -702,11 +811,25 @@ el.play.addEventListener("click", () => {
   if (S.playing && S.t >= rangeMax() - 1) setT(rangeMin());
   syncButtons();
 });
-el.rate.addEventListener("click", () => {
-  S.rate = S.rate === 1 ? 60 : 1;
-  if (S.live && S.rate !== 1) { S.live = false; }
+const rateWrap = $("[data-rate-wrap]"), rateMenu = $("[data-rate-menu]");
+function setRateMenu(open) {
+  rateMenu.hidden = !open;
+  el.rate.setAttribute("aria-expanded", open ? "true" : "false");
+  el.rate.classList.toggle("is-open", open);
+}
+el.rate.addEventListener("click", (e) => { e.stopPropagation(); setRateMenu(rateMenu.hidden); });
+rateMenu.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-speed]");
+  if (!b) return;
+  e.stopPropagation();
+  S.rate = +b.dataset.speed;
+  if (S.live && S.rate !== 1) S.live = false;
+  if (!S.playing) { S.playing = true; if (S.t >= rangeMax() - 1) setT(rangeMin()); }
+  setRateMenu(false);
   syncButtons();
 });
+document.addEventListener("pointerdown", (e) => { if (!rateMenu.hidden && !rateWrap.contains(e.target)) setRateMenu(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !rateMenu.hidden) { setRateMenu(false); el.rate.focus(); } });
 el.now.addEventListener("click", () => {
   S.live = true; S.playing = true; S.rate = 1;
   setT(realT());
@@ -737,6 +860,11 @@ function syncButtons() {
   el.play.setAttribute("aria-label", S.playing ? "Pause" : "Play");
   el.rate.textContent = S.rate + "×";
   el.rate.classList.toggle("is-on", S.rate !== 1);
+  rateMenu.querySelectorAll("[data-speed]").forEach((b) => {
+    const on = +b.dataset.speed === S.rate;
+    b.classList.toggle("is-active", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  });
   el.now.classList.toggle("is-on", S.live);
   el.mode.textContent = S.mode === "mission" ? "T+" : "CET";
   el.mode.textContent = S.mode === "mission" ? "T+" : zoneAbbr(new Date());
@@ -853,7 +981,7 @@ let lastSec = -1;
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min((now - S.lastFrame) / 1000, 0.1);
+  const dt = Math.min((now - S.lastFrame) / 1000, 0.25);
   S.lastFrame = now;
 
   // time
@@ -875,7 +1003,7 @@ function frame(now) {
       const decay = Math.pow(0.9, dt * 60);
       ctl.vLon *= decay; ctl.vLat *= decay;
     } else if (ctl.follow) {
-      const wantLat = clamp(s.lat + 4, -70, 70), wantLon = s.lon - 6;
+      const wantLat = clamp(s.lat, -75, 75), wantLon = s.lon;
       const k = 1 - Math.pow(0.04, dt);
       ctl.tLat += (wantLat - ctl.tLat) * k;
       ctl.tLon += wrapLon(wantLon - ctl.tLon) * k;
@@ -925,6 +1053,7 @@ function frame(now) {
   el.marker.hidden = false;
   el.marker.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0)`;
   el.marker.classList.toggle("is-behind", !visible);
+  markerScreen.x = sx; markerScreen.y = sy; markerScreen.on = visible;
   // marker icon heading: direction of travel on screen
   const ahead = tr.sample(Math.min(tc + 30, tr.tEnd));
   const va = ll2v(ahead.lat, ahead.lon, LIFT, new THREE.Vector3()).project(camera);
