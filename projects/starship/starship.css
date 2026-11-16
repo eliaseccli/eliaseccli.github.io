@@ -1,0 +1,490 @@
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("./fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: swap; src: url("./fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("./fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 700; font-display: swap; src: url("./fonts/barlow-700.woff2") format("woff2"); }
+
+:root {
+  --bg: #000;
+  --ink: rgba(255, 255, 255, 0.94);
+  --mute: rgba(255, 255, 255, 0.55);
+  --faint: rgba(255, 255, 255, 0.22);
+  --font: "D-DIN", "Barlow", "DIN Alternate", "DIN Condensed", system-ui, -apple-system, sans-serif;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  height: 100svh;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+}
+
+html:not(.is-open) body { visibility: hidden; }
+
+body {
+  margin: 0;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  z-index: 1;
+}
+.gl.is-drag { cursor: grabbing; }
+
+.rings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.rings circle { fill: none; stroke: rgba(255, 255, 255, 0.13); stroke-width: 1; }
+
+.marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 1.4px solid rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+}
+.marker i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 11px;
+  margin: -5.5px 0 0 -2px;
+  border-radius: 2px 2px 1px 1px;
+  background: #fff;
+}
+.marker.is-behind { opacity: 0.25; }
+
+.nav {
+  position: fixed;
+  top: max(0.9rem, calc(env(safe-area-inset-top) + 0.55rem));
+  left: max(0.9rem, calc(env(safe-area-inset-left) + 0.55rem));
+  z-index: 30;
+}
+
+.nav-btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 2.45rem;
+  height: 2.45rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 0.58rem 0.52rem;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.72rem;
+  background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 10px 28px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.nav-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(22px) saturate(1.55);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  pointer-events: none;
+}
+
+.nav-btn span {
+  display: block;
+  width: 100%;
+  height: 1.5px;
+  flex: 0 0 1.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.82);
+  transform-origin: center;
+  transition: transform 0.22s ease, opacity 0.18s ease;
+}
+
+.nav.is-open .nav-btn span:nth-of-type(1) { transform: translateY(6.5px) rotate(45deg); }
+.nav.is-open .nav-btn span:nth-of-type(2) {
+  opacity: 0;
+  visibility: hidden;
+  transform: scaleX(0);
+}
+.nav.is-open .nav-btn span:nth-of-type(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+.nav-list {
+  position: relative;
+  isolation: isolate;
+  margin: 0.45rem 0 0;
+  padding: 0.32rem;
+  list-style: none;
+  min-width: 10.6rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.85rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 14px 32px rgba(0, 0, 0, 0.34);
+}
+
+.nav-list::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(8, 8, 14, 0.72);
+  backdrop-filter: blur(22px) saturate(1.55);
+  -webkit-backdrop-filter: blur(22px) saturate(1.55);
+  pointer-events: none;
+}
+
+.nav-list a {
+  display: block;
+  padding: 0.55rem 0.72rem;
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  border-radius: 0.58rem;
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+
+.nav-list a:hover {
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn:focus-visible,
+.nav-list a:focus-visible,
+.t-btn:focus-visible, .info-other:focus-visible, .follow:focus-visible {
+  outline: 2px solid rgba(190, 220, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.nav { z-index: 40; }
+
+/* ---------- top-right mission info ---------- */
+.info {
+  position: fixed;
+  top: max(0.95rem, calc(env(safe-area-inset-top) + 0.6rem));
+  right: max(1rem, calc(env(safe-area-inset-right) + 0.6rem));
+  z-index: 20;
+  margin: 0;
+  text-align: right;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mute);
+  max-width: min(60vw, 22rem);
+  pointer-events: none;
+}
+.info p { margin: 0 0 0.28rem; line-height: 1.25; }
+.info-kind { color: var(--ink); font-weight: 600; letter-spacing: 0.2em; }
+.info-src { display: inline-flex; align-items: center; gap: 0.42rem; margin-top: 0.4rem !important; color: rgba(255,255,255,0.75); }
+.info-src .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.5); }
+.info-src .dot.is-live { background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.9); }
+.info-other {
+  pointer-events: auto;
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.32rem 0.6rem;
+  font: inherit;
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.info-other:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
+
+.follow {
+  position: fixed;
+  right: max(1rem, calc(env(safe-area-inset-right) + 0.6rem));
+  z-index: 20;
+  width: 2.3rem;
+  height: 2.3rem;
+  padding: 0.45rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.follow svg { width: 100%; height: 100%; display: block; }
+.follow svg * { stroke: #fff; stroke-width: 1.4; }
+.follow svg circle:first-child { fill: #fff; stroke: none; }
+
+/* ---------- HUD ---------- */
+.hud {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  grid-template-areas:
+    "gauges clock widgets"
+    "timeline timeline timeline";
+  align-items: end;
+  column-gap: 1rem;
+  padding: 0 max(1.6rem, env(safe-area-inset-right)) calc(0.7rem + var(--safe-b)) max(1.6rem, env(safe-area-inset-left));
+  pointer-events: none;
+}
+.hud > * { pointer-events: auto; }
+
+.gauges { grid-area: gauges; display: flex; gap: 0.9rem; align-items: flex-end; }
+.gauge { position: relative; width: 5.6rem; height: 5.6rem; }
+.gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.g-track { fill: none; stroke: rgba(255, 255, 255, 0.22); stroke-width: 1.4; stroke-linecap: round; }
+.g-fill { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; }
+.g-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.g-text small { font-size: 0.5rem; letter-spacing: 0.16em; color: rgba(255,255,255,0.8); font-weight: 500; }
+.g-text b {
+  font-weight: 500;
+  font-size: 1.45rem;
+  letter-spacing: 0.01em;
+  margin: 0.18rem 0 0.14rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock { grid-area: clock; position: relative; text-align: center; padding: 0.9rem 0 0.1rem; min-width: 17rem; }
+.clock .arc { position: absolute; left: -40%; right: -40%; top: -0.6rem; width: 180%; height: 2.2rem; overflow: visible; pointer-events: none; }
+.clock .arc path { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.clock-time {
+  margin: 0;
+  font-size: 2.05rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.clock-sign { font-size: 0.62em; margin-right: 0.3rem; vertical-align: 0.22em; font-weight: 600; }
+.clock-zone { font-size: 0.42em; letter-spacing: 0.16em; margin-left: 0.45rem; vertical-align: 0.5em; color: var(--mute); }
+.clock-name { margin: 0.35rem 0 0; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.22em; color: rgba(255,255,255,0.88); }
+.clock-phase { margin: 0.22rem 0 0; font-size: 0.55rem; letter-spacing: 0.22em; color: var(--mute); min-height: 0.7rem; }
+
+.widgets { grid-area: widgets; display: flex; justify-content: flex-end; align-items: flex-end; gap: 1rem; }
+.attitude { width: 4.2rem; height: 4.2rem; }
+.attitude svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.a-ring { fill: rgba(0,0,0,0.3); stroke: rgba(255,255,255,0.4); stroke-width: 1.2; }
+.a-hz { stroke: rgba(255,255,255,0.3); stroke-width: 1; }
+.a-n { fill: rgba(255,255,255,0.55); font-size: 9px; text-anchor: middle; font-family: var(--font); }
+.a-ship { fill: #fff; }
+.a-fin { fill: rgba(255,255,255,0.75); }
+.a-nose { stroke: rgba(255,255,255,0.6); stroke-width: 1; }
+[data-ship] { transform-origin: 50px 50px; transition: transform 0.25s linear; }
+
+.mini {
+  position: relative;
+  width: 4.4rem;
+  height: 4.4rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+}
+.mini i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25);
+}
+
+.timeline {
+  grid-area: timeline;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.85rem auto 0;
+  width: 100%;
+  max-width: 62rem;
+}
+.t-btn {
+  flex: 0 0 auto;
+  height: 2.1rem;
+  min-width: 2.1rem;
+  padding: 0 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.86);
+  font: 600 0.66rem/1 var(--font);
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.t-btn:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
+.t-btn.is-on { background: rgba(255,255,255,0.9); color: #000; border-color: #fff; }
+.t-btn svg { width: 0.95rem; height: 0.95rem; display: block; margin: 0 auto; fill: currentColor; }
+[data-play] { padding: 0; width: 2.1rem; }
+.t-rate { min-width: 2.7rem; }
+
+.slider { position: relative; flex: 1 1 auto; height: 2.1rem; display: flex; align-items: center; }
+.s-ticks { position: absolute; left: 9px; right: 9px; top: 50%; height: 0; pointer-events: none; }
+.s-ticks span {
+  position: absolute;
+  top: -7px;
+  width: 1px;
+  height: 14px;
+  background: rgba(255,255,255,0.4);
+}
+.s-ticks span em {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-style: normal;
+  font-size: 0.48rem;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.5);
+  white-space: nowrap;
+}
+.slider input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2.1rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+  --p: 0%;
+}
+.slider input::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #fff 0, #fff var(--p), rgba(255,255,255,0.2) var(--p));
+}
+.slider input::-moz-range-track { height: 2px; background: rgba(255,255,255,0.2); }
+.slider input::-moz-range-progress { height: 2px; background: #fff; }
+.slider input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #000;
+  border: 2px solid #fff;
+  box-shadow: 0 0 12px rgba(255,255,255,0.35);
+}
+.slider input::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #000; border: 2px solid #fff; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: max(1rem, calc(env(safe-area-inset-top) + 0.6rem));
+  transform: translateX(-50%);
+  z-index: 30;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.8);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 999px;
+  background: rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+
+/* ---------- phone portrait ---------- */
+@media (max-aspect-ratio: 1/1) {
+  .hud {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "clock clock"
+      "gauges widgets"
+      "timeline timeline";
+    row-gap: 0.7rem;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  .clock { min-width: 0; }
+  .clock .arc { left: 5%; right: 5%; width: 90%; }
+  .gauges { gap: 0.55rem; }
+  .gauge { width: 4.6rem; height: 4.6rem; }
+  .g-text b { font-size: 1.15rem; }
+  .g-text small { font-size: 0.44rem; }
+  .widgets { gap: 0.55rem; }
+  .attitude { width: 3.5rem; height: 3.5rem; }
+  .mini { width: 4rem; height: 4rem; }
+  .clock-time { font-size: 1.85rem; }
+  .info { font-size: 0.6rem; max-width: 70vw; }
+  .timeline { gap: 0.35rem; margin-top: 0.3rem; }
+  .t-btn { padding: 0 0.45rem; font-size: 0.6rem; }
+  .s-ticks span em { display: none; }
+}
+
+/* ---------- short landscape (phones) ---------- */
+@media (min-aspect-ratio: 1/1) and (max-height: 500px) {
+  .hud { padding-bottom: calc(0.4rem + var(--safe-b)); }
+  .gauge { width: 4.2rem; height: 4.2rem; }
+  .g-text b { font-size: 1.05rem; }
+  .g-text small { font-size: 0.42rem; }
+  .attitude { width: 3.2rem; height: 3.2rem; }
+  .mini { width: 3.6rem; height: 3.6rem; }
+  .clock { min-width: 12rem; padding-top: 0.6rem; }
+  .clock-time { font-size: 1.55rem; }
+  .clock-phase { display: none; }
+  .timeline { margin-top: 0.35rem; }
+  .t-btn { height: 1.85rem; min-width: 1.85rem; }
+  [data-play] { width: 1.85rem; }
+  .s-ticks span em { display: none; }
+  .info { font-size: 0.58rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ship] { transition: none; }
+}
