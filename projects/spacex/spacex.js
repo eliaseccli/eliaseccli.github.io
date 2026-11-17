@@ -1,9 +1,10 @@
 import * as THREE from "./vendor/three.module.min.js";
 
 /* ============================================================
-   Starship · flight globe
-   Data: Launch Library 2 (mission) + CelesTrak (orbit when the
-   ship is catalogued), else a clearly labelled nominal profile.
+   SpaceX · flight globe
+   Data: Launch Library 2 (the next / last SpaceX launch, any
+   vehicle) + CelesTrak (pre-launch prediction, or the real orbit
+   of a flown launch), else a clearly labelled nominal profile.
    ============================================================ */
 
 const R_E = 6371;              // km
@@ -32,19 +33,26 @@ const wrapLon = (l) => ((((l + 180) % 360) + 360) % 360) - 180;
 
 /* ---------------- data: Launch Library 2 ---------------- */
 const LL_HOSTS = ["https://ll.thespacedevs.com", "https://lldev.thespacedevs.com"];
-const LL_CACHE = "starship.ll2.v3";
+const LL_CACHE = "spacex.ll2.v1";
 const LL_TTL = 30 * 60 * 1000;
-const CT_CACHE = "starship.celestrak.v1";
+const CT_CACHE = "spacex.celestrak.v1";
 const CT_TTL = 3 * 60 * 60 * 1000;
+const SPACEX_LSP = 121; // Launch Library 2 agency id of SpaceX
 
 // Last-known data so the page still works offline / when rate-limited.
 const BAKED = {
   previous: [{
     name: "Starship | Starlink Group 31-2 (Starship Flight 15)",
-    net: "2026-11-13T22:47:36Z",
-    status: { abbrev: "Success" },
+    net: "2026-11-13T22:47:36Z", net_precision: "Second",
+    status: { abbrev: "Success" }, rocket: { configuration: { name: "Starship" } },
     pad: { name: "Orbital Launch Pad 2", latitude: 25.99677, longitude: -97.15799, location: { name: "SpaceX Starbase, TX, USA" } },
-    mission: { orbit: { abbrev: "LEO" }, description: "The ship is expected to fly at an altitude approximately 275 km above Earth and complete approximately 14 orbits around the planet for more than 22 hours, with the ship expected to attempt returning back to Starbase, Texas on its launch pad by pad arms catching." }
+    mission: { name: "Starlink Group 31-2 (Starship Flight 15)", orbit: { abbrev: "LEO" }, description: "The ship is expected to fly at an altitude approximately 275 km above Earth and complete approximately 14 orbits around the planet for more than 22 hours, with the ship expected to attempt returning back to Starbase, Texas on its launch pad by pad arms catching." }
+  }, {
+    name: "Falcon 9 Block 5 | Starlink Group 15-18",
+    net: "2026-10-31T04:04:34Z", net_precision: "Second",
+    status: { abbrev: "Success" }, rocket: { configuration: { name: "Falcon 9" } },
+    pad: { name: "Space Launch Complex 4E", latitude: 34.632, longitude: -120.611, location: { name: "Vandenberg SFB, CA, USA" } },
+    mission: { name: "Starlink Group 15-18", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "A batch of 27 satellites for the Starlink mega-constellation." }
   }],
   upcoming: []
 };
@@ -88,20 +96,20 @@ async function fetchLL(path) {
   throw err;
 }
 
-const isStarship = (l) => /^starship\b/i.test(l.name || "") ||
-  /starship/i.test(((l.rocket || {}).configuration || {}).name || "");
+// LL2 keeps a launch in "upcoming" for a while after liftoff; one with a final status has flown
+const FLOWN = /^(success|failure|partial failure)$/i;
 
 async function loadLaunches() {
   const c = readCache(LL_CACHE, LL_TTL);
   if (c && c.fresh) return { ...c.data, cached: true };
   try {
     const [up, prev] = await Promise.all([
-      fetchLL("/2.3.0/launches/upcoming/?search=starship&limit=6&mode=normal"),
-      fetchLL("/2.3.0/launches/previous/?search=starship&limit=3&mode=normal")
+      fetchLL("/2.3.0/launches/upcoming/?lsp__id=" + SPACEX_LSP + "&limit=8&mode=normal&ordering=net"),
+      fetchLL("/2.3.0/launches/previous/?lsp__id=" + SPACEX_LSP + "&limit=8&mode=normal&ordering=-net")
     ]);
     const data = {
-      upcoming: (up.results || []).filter(isStarship).map(slim),
-      previous: (prev.results || []).filter(isStarship).map(slim)
+      upcoming: (up.results || []).filter((l) => !FLOWN.test((l.status || {}).abbrev || "")).map(slim),
+      previous: (prev.results || []).map(slim)
     };
     writeCache(LL_CACHE, data);
     return data;
@@ -114,9 +122,11 @@ async function loadLaunches() {
 function slim(l) {
   const pad = l.pad || {};
   const m = l.mission || {};
+  const cfg = (l.rocket || {}).configuration || {};
   return {
     name: l.name, net: l.net, net_precision: (l.net_precision || {}).name || null,
     status: { abbrev: (l.status || {}).abbrev || "" },
+    rocket: { configuration: { name: cfg.name || "" } },
     pad: { name: pad.name, latitude: +pad.latitude, longitude: +pad.longitude, location: { name: (pad.location || {}).name || "" } },
     mission: { name: m.name || "", orbit: { abbrev: (m.orbit || {}).abbrev || "", name: (m.orbit || {}).name || "" }, description: m.description || "" }
   };
@@ -147,6 +157,78 @@ async function loadCelestrak(flightNo) {
   }
 }
 
+/* ---------------- data: CelesTrak, a flown launch ----------------
+   A flown SpaceX launch is looked up in CelesTrak's last-30-days set: SATCAT
+   gives each object's launch date and range (AFWTR = Vandenberg, AFETR =
+   Florida), GP its current elements (JSON: objects launched now have 6-digit
+   catalogue numbers, which the TLE format cannot carry). Matching is by UTC
+   launch date + range (+ "STARLINK" names for Starlink missions). The
+   elements are days or weeks newer than liftoff, so only the orbit itself is
+   used: inclination, altitude and the node, regressed back to T-0 with J2,
+   which picks the branch the rocket flew (no SGP4 phase from a later epoch).
+   Two requests per device, cached 3 h. */
+const RECENT_CACHE = "spacex.recent.v1";
+const RECENT_TTL = 3 * 3600e3;
+const SITE_CODE = { vandenberg: "AFWTR", florida: "AFETR" };
+let recentP = null;
+function loadRecentSet() {
+  if (!recentP) recentP = (async () => {
+    const c = readCache(RECENT_CACHE, RECENT_TTL);
+    if (c && c.fresh) return c.data;
+    try {
+      const [sat, gp] = await Promise.all([
+        fetchJSON("https://celestrak.org/satcat/records.php?GROUP=last-30-days&FORMAT=json", 25000),
+        fetchJSON("https://celestrak.org/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=json", 25000)
+      ]);
+      const els = new Map((Array.isArray(gp) ? gp : []).map((g) => [+g.NORAD_CAT_ID, g]));
+      const data = (Array.isArray(sat) ? sat : []).filter((x) => els.has(+x.NORAD_CAT_ID)).map((x) => {
+        const g = els.get(+x.NORAD_CAT_ID);
+        return { name: x.OBJECT_NAME, id: x.OBJECT_ID, type: x.OBJECT_TYPE, date: x.LAUNCH_DATE, site: x.LAUNCH_SITE, decay: x.DECAY_DATE || "",
+          epoch: g.EPOCH, n: +g.MEAN_MOTION, e: +g.ECCENTRICITY, i: +g.INCLINATION, raan: +g.RA_OF_ASC_NODE };
+      });
+      writeCache(RECENT_CACHE, data);
+      return data;
+    } catch (e) {
+      recentP = null; // try again on the next check
+      return c ? c.data : null;
+    }
+  })();
+  return recentP;
+}
+function gmstRad(ms) {
+  const d = ms / 864e5 - 10957.5;
+  return ((((280.46061837 + 360.98564736629 * d) % 360) + 360) % 360) * D2R;
+}
+// one catalogued object -> the orbit of its launch at T-0
+function flownOrbit(o, m, extra) {
+  const epochMs = Date.parse(/Z$/.test(o.epoch) ? o.epoch : o.epoch + "Z");
+  const n = o.n * 2 * Math.PI / DAY, a = Math.cbrt(MU / (n * n)), Re = 6378.137, J2 = 1.08263e-3;
+  const dOm = -1.5 * n * J2 * Math.pow(Re / a, 2) * Math.cos(o.i * D2R) / Math.pow(1 - o.e * o.e, 2); // rad/s
+  const raan0 = o.raan * D2R + dOm * (m.net.getTime() - epochMs) / 1000;
+  return { name: o.name, intdes: String(o.id || "").slice(0, 8), INCLINATION: o.i, MEAN_MOTION: o.n, nodeLonT0: raan0 - gmstRad(m.net.getTime()), epochMs, ...(extra || {}) };
+}
+async function loadFlown(m) {
+  const age = Date.now() - m.net.getTime();
+  if (age < 0 || age > 31 * DAY * 1000) return null;
+  const set = await loadRecentSet();
+  if (!Array.isArray(set)) return null;
+  const day = new Date(m.net.getTime()).toISOString().slice(0, 10);
+  const code = SITE_CODE[m.site_kind] || null;
+  let objs = set.filter((o) => o.date === day && (!code || o.site === code) && !o.decay && o.n > 1);
+  const named = objs.filter((o) => m.starlinkLike ? /^STARLINK/i.test(o.name) : m.vehicle === "starship" ? /^STARSHIP/i.test(o.name) : true);
+  if (m.starlinkLike || !code) objs = named;          // unknown range: only trust names that fit
+  if (!objs.length) return null;
+  // several launches that day: take the biggest one that fits
+  const groups = new Map();
+  for (const o of objs) { const k = String(o.id).slice(0, 8); groups.set(k, (groups.get(k) || []).concat(o)); }
+  const pool = [...groups.values()].sort((a, b) => b.length - a.length)[0];
+  const pays = pool.filter((o) => o.type === "PAY");
+  const use = (pays.length ? pays : pool).slice().sort((a, b) => a.n - b.n);
+  const o = use[Math.floor(use.length / 2)];
+  if (m.orbital && !(o.n > 11 && o.n < 17.5)) return null; // keep to LEO; anything else stays nominal
+  return flownOrbit(o, m, { objects: pool.length });
+}
+
 /* ---------------- data: CelesTrak pre-launch (SupGP) ----------------
    What sup-gp.php supports (checked with curl, Nov 2026; every answer
    carries Access-Control-Allow-Origin: *):
@@ -165,7 +247,7 @@ async function loadCelestrak(flightNo) {
    and inclination fit this liftoff. Results (hits and misses) are cached
    for hours to stay well within CelesTrak's usage policy. */
 const SUP = "https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?";
-const PRE_CACHE = "starship.prelaunch.v2";
+const PRE_CACHE = "spacex.prelaunch.v1";
 const PRE_HIT_TTL = 3 * 3600e3;    // a found set: keep 3 h
 const PRE_MISS_TTL = 2 * 3600e3;   // nothing yet: ask again after 2 h (6 h when liftoff is > 3 days out)
 
@@ -178,9 +260,9 @@ function prelaunchFiles(m) {
     const g = n.match(/starlink[\s-]*(?:group[\s-]*|g)(\d+)-(\d+)/i);
     if (g) add("starlink-g" + g[1] + "-" + g[2]);
   }
-  if (m.flightNo) { add("starship-flight-" + m.flightNo); add("starship-" + m.flightNo); }
+  if (m.vehicle === "starship" && m.flightNo) { add("starship-flight-" + m.flightNo); add("starship-" + m.flightNo); }
   for (const n of names) {
-    const part = n.split("|").slice(1).join(" ").trim() || n; // "Starship | X (Flight 16)" -> "X"
+    const part = n.split("|").slice(1).join(" ").trim() || n; // "Falcon 9 Block 5 | X" / "Starship | X (Flight 16)" -> "X"
     const base = slugify(part.replace(/^spacex\s+/i, ""));
     if (base && !/^starship(-flight)?-?\d*$/.test(base) && !/^starlink-group-\d+-\d+$/.test(base)) add(base);
   }
@@ -191,6 +273,7 @@ function plausibleIncl(m) {
   const ab = String(m.orbitAbbrev || "").toUpperCase();
   if (m.targetIncl) return [m.targetIncl - 2.5, m.targetIncl + 2.5];
   if (ab === "SSO" || ab === "PO") return [80, 105];
+  if (m.iss) return [50.6, 52.6];
   // anything a vehicle from this pad can reach without a big dogleg
   return [latA - 0.5, Math.max(75, nom.incl + 5)];
 }
@@ -203,10 +286,10 @@ async function loadPrelaunch(m) {
   if (c && Date.now() - c.ts < (c.data ? PRE_HIT_TTL : (dt < -3 * DAY * 1000 ? 3 : 1) * PRE_MISS_TTL)) return c.data;
   const t0 = m.net.getTime();
   const [iLo, iHi] = plausibleIncl(m);
-  const ship = m.flightNo ? new RegExp("^STARSHIP[\\s-]*(?:FLIGHT[\\s-]*|F)?" + m.flightNo + "\\b", "i") : /^STARSHIP\b/i;
+  const ship = m.vehicle !== "starship" ? /(?!)/ : m.flightNo ? new RegExp("^STARSHIP[\\s-]*(?:FLIGHT[\\s-]*|F)?" + m.flightNo + "\\b", "i") : /^STARSHIP\b/i;
   const files = prelaunchFiles(m);
   const tries = files.map((f) => ({ q: "FILE=" + f + "&FORMAT=3LE", file: f }));
-  if (dt > -3 * DAY * 1000 && dt < 2 * DAY * 1000) tries.push({ q: "NAME=STARSHIP&FORMAT=3LE", file: null });
+  if (m.vehicle === "starship" && dt > -3 * DAY * 1000 && dt < 2 * DAY * 1000) tries.push({ q: "NAME=STARSHIP&FORMAT=3LE", file: null });
   let anyOk = false;
   const answers = await Promise.all(tries.map(async (tr) => {
     try {
@@ -222,6 +305,8 @@ async function loadPrelaunch(m) {
     if (!pre) continue;
     const okEpoch = pre.epochMs > t0 - 3600e3 && pre.epochMs < t0 + 6 * 3600e3;
     const okIncl = pre.INCLINATION >= iLo && pre.INCLINATION <= iHi;
+    // LEO only: a GTO / high-orbit set (or a later stage of one) does not fit the
+    // circular model, so those missions keep the nominal parking-orbit profile
     const okMM = pre.MEAN_MOTION > 11 && pre.MEAN_MOTION < 17.5;
     if (!okEpoch || !okIncl || !okMM) continue;
     const isShip = ship.test(x.name);
@@ -300,6 +385,13 @@ function preFromTLE(name, l1, l2, source) {
 //   ?fixture=f14-prelaunch  Starbase flight with a pre-launch element set
 //   ?fixture=florida        Starlink-like flight from LC-39A, nominal 53° NE
 //   ?fixture=florida-hls    non-Starlink LEO flight from SLC-37, nominal 43° SE
+//   ?fixture=f9-vandenberg  Falcon 9 Starlink Group 15 from SLC-4E, nominal 70° SSE
+//   ?fixture=f9-florida     Falcon 9 Starlink Group 10 from SLC-40, nominal 43° SE
+//   ?fixture=f9-iss         Falcon 9 Cargo Dragon from LC-39A, nominal 51.6° NE
+//   ?fixture=last-flight    next launch in 2 days without data -> shows the last
+//                           flight (Starlink 15-18) with its real catalogued orbit
+const VSFB = { name: "Space Launch Complex 4E", latitude: 34.632, longitude: -120.611, location: { name: "Vandenberg SFB, CA, USA" } };
+const F9 = { configuration: { name: "Falcon 9" } };
 const FIXTURES = {
   "f14-prelaunch": {
     launch: {
@@ -327,39 +419,104 @@ const FIXTURES = {
       pad: { name: "Space Launch Complex 37", latitude: 28.5314, longitude: -80.5662, location: { name: "Cape Canaveral SFS, FL, USA" } },
       mission: { name: "Test Mission", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. The ship is expected to fly at an altitude approximately 275 km above Earth and complete approximately 3 orbits around the planet, with splashdown targeted in the Indian Ocean." }
     }
+  },
+  "f9-vandenberg": {
+    launch: {
+      name: "Falcon 9 Block 5 | Starlink Group 15-20", net: "2026-10-20T14:00:00Z", net_precision: "Second",
+      status: { abbrev: "Success" }, rocket: F9, pad: VSFB,
+      mission: { name: "Starlink Group 15-20", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. A batch of Starlink satellites." }
+    }
+  },
+  "f9-florida": {
+    launch: {
+      name: "Falcon 9 Block 5 | Starlink Group 10-30", net: "2026-10-20T14:00:00Z", net_precision: "Second",
+      status: { abbrev: "Success" }, rocket: F9,
+      pad: { name: "Space Launch Complex 40", latitude: 28.56194122, longitude: -80.57735736, location: { name: "Cape Canaveral SFS, FL, USA" } },
+      mission: { name: "Starlink Group 10-30", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. A batch of Starlink satellites." }
+    }
+  },
+  "f9-iss": {
+    launch: {
+      name: "Falcon 9 Block 5 | Dragon CRS-2 SpX-99", net: "2026-10-20T14:00:00Z", net_precision: "Second",
+      status: { abbrev: "Success" }, rocket: F9,
+      pad: { name: "Launch Complex 39A", latitude: 28.60822681, longitude: -80.60428186, location: { name: "Kennedy Space Center, FL, USA" } },
+      mission: { name: "Dragon CRS-2 SpX-99", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. Cargo Dragon resupply mission to the International Space Station." }
+    }
+  },
+  "last-flight": {
+    upcoming: [{
+      name: "Falcon 9 Block 5 | USSF-999", net: null, inDays: 2.3, net_precision: "Minute",
+      status: { abbrev: "Go" }, rocket: F9, pad: VSFB,
+      mission: { name: "USSF-999", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. A classified mission without pre-launch data." }
+    }],
+    previous: [{
+      name: "Falcon 9 Block 5 | Starlink Group 15-18", net: "2026-10-31T04:04:34Z", net_precision: "Second",
+      status: { abbrev: "Success" }, rocket: F9, pad: VSFB,
+      mission: { name: "Starlink Group 15-18", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "A batch of 27 satellites for the Starlink mega-constellation." }
+    }],
+    // CelesTrak GP for 2026-246P (STARLINK-38183), 17 Nov 2026
+    flown: { "Falcon 9 Block 5 | Starlink Group 15-18": { name: "STARLINK-38183", id: "2026-246P", type: "PAY", epoch: "2026-11-17T04:25:57.311040", n: 15.68321874, e: 0.00035336, i: 70.0002, raan: 127.3449 } }
   }
 };
+// every fixture as { upcoming, previous, tle: {launch name: 3LE}, flown: {launch name: GP object} }
 function activeFixture() {
-  try { return FIXTURES[new URLSearchParams(location.search).get("fixture")] || null; } catch (e) { return null; }
+  let f = null;
+  try { f = FIXTURES[new URLSearchParams(location.search).get("fixture")] || null; } catch (e) { f = null; }
+  if (!f) return null;
+  if (f.launch) return { upcoming: [], previous: [f.launch], tle: f.tle ? { [f.launch.name]: f.tle } : {}, flown: {} };
+  const when = (l) => l.net ? l : { ...l, net: new Date(Math.round((Date.now() + l.inDays * DAY * 1000) / 60000) * 60000).toISOString() };
+  return { upcoming: (f.upcoming || []).map(when), previous: (f.previous || []).map(when), tle: f.tle || {}, flown: f.flown || {} };
 }
 
 /* ---------------- mission model ---------------- */
+function vehicleOf(l) {
+  const cfg = String(((l.rocket || {}).configuration || {}).name || "");
+  const name = String(l.name || "");
+  if (/starship/i.test(cfg) || /^starship\b/i.test(name)) return { vehicle: "starship", rocket: "Starship" };
+  if (/falcon\s*heavy/i.test(cfg + " " + name)) return { vehicle: "falcon-heavy", rocket: "Falcon Heavy" };
+  if (/falcon\s*9/i.test(cfg + " " + name)) return { vehicle: "falcon-9", rocket: "Falcon 9" };
+  const r = (cfg || name.split("|")[0]).replace(/\s*block\s*\d+/i, "").trim();
+  return { vehicle: "other", rocket: r || "SpaceX" };
+}
 function parseMission(l) {
-  const name = String(l.name || "Starship");
+  const name = String(l.name || "SpaceX");
+  const { vehicle, rocket } = vehicleOf(l);
+  const ship = vehicle === "starship";
   const after = (name.split("|").slice(1).join("|").trim() || name).replace(/^spacex\s+/i, "");
-  const fm = name.match(/flight\s*(\d+)/i);
+  const fm = ship ? name.match(/flight\s*(\d+)/i) : null;
   const flightNo = fm ? +fm[1] : null;
-  const title = flightNo ? "STARSHIP FLIGHT " + flightNo : ("STARSHIP · " + after).toUpperCase();
+  const short = flightNo ? "Starship Flight " + flightNo : after.replace(/^starlink group\s+/i, "Starlink ");
+  const title = flightNo ? "STARSHIP FLIGHT " + flightNo : (rocket + " · " + short).toUpperCase();
   const desc = (l.mission || {}).description || "";
   const orbitAbbrev = (((l.mission || {}).orbit || {}).abbrev || "").toUpperCase();
-  const altM = desc.match(/altitude (?:of )?(?:approximately |about |around )?(\d{3})\s*km/i);
-  const orbM = desc.match(/(?:approximately |about )?(\d{1,2})\s+orbits/i);
-  const hrsM = desc.match(/for (?:more than |nearly |about |approximately |around )?(\d{1,2}(?:\.\d)?)\s*hours/i);
-  const rtls = /back to (?:starbase|the launch site)|returning (?:the )?.{0,40}?(?:back )?to (?:the )?launch site|pad arms catching|catch(?:ing)? the ship/i.test(desc) && /ship/i.test(desc);
-  const splM = desc.match(/splashdown (?:targeted |planned )?in (?:the )?([A-Za-z ,]+?)(?:\.|,|$)/i);
-  const orbital = orbitAbbrev && orbitAbbrev !== "SUB" ? true : false;
+  const altM = ship ? desc.match(/altitude (?:of )?(?:approximately |about |around )?(\d{3})\s*km/i) : null;
+  const orbM = ship ? desc.match(/(?:approximately |about )?(\d{1,2})\s+orbits/i) : null;
+  const hrsM = ship ? desc.match(/for (?:more than |nearly |about |approximately |around )?(\d{1,2}(?:\.\d)?)\s*hours/i) : null;
+  const rtls = ship && /back to (?:starbase|the launch site)|returning (?:the )?.{0,40}?(?:back )?to (?:the )?launch site|pad arms catching|catch(?:ing)? the ship/i.test(desc) && /ship/i.test(desc);
+  const splM = ship ? desc.match(/splashdown (?:targeted |planned )?in (?:the )?([A-Za-z ,]+?)(?:\.|,|$)/i) : null;
+  // Starship: orbital only with an orbit class (its test flights were suborbital); Falcon: orbital unless SUB
+  const orbital = ship ? !!(orbitAbbrev && orbitAbbrev !== "SUB") : orbitAbbrev !== "SUB";
   const pad = l.pad || {};
   const lat = isFinite(pad.latitude) && pad.latitude !== null ? +pad.latitude : 25.99677;
   const lon = isFinite(pad.longitude) && pad.longitude !== null ? +pad.longitude : -97.15799;
   const inclM = desc.match(/(\d{1,3}(?:\.\d+)?)\s*(?:°|deg(?:rees?)?)\s*(?:orbital\s+)?inclination|inclination (?:of )?(?:approximately |about |around |~)?(\d{1,3}(?:\.\d+)?)\s*(?:°|deg)/i);
   const missionName = String((l.mission || {}).name || "");
+  const all = name + " " + missionName;
+  const sg = all.match(/starlink[\s-]*(?:group[\s-]*|g)(\d+)-(\d+)/i);
+  const iss = /\b(ISS|CRS|Crew-\d+|Ax-\d+|Axiom|Cygnus|Cargo Dragon)\b/i.test(all) || /international space station/i.test(desc);
   return {
     raw: l,
     missionName,
     orbitAbbrev,
+    vehicle,
+    rocket,
+    short,
     site_kind: siteKind(lat, lon, ((pad.location || {}).name || "") + " " + (pad.name || "")),
     targetIncl: inclM ? +(inclM[1] || inclM[2]) : null,
-    starlinkLike: /starlink/i.test(name + " " + missionName),
+    starlinkLike: /starlink/i.test(all),
+    starlinkGroup: sg ? +sg[1] : null,
+    iss,
+    gto: /^(GTO|GSO|GEO|GSTO|SSGTO|MEO|HEO|LO|TLI|HCO|SO|ELL)$/.test(orbitAbbrev),
     name: after,
     title,
     flightNo,
@@ -392,6 +549,13 @@ function parseMission(l) {
      polar/SSO south past Miami.
    - Other Gulf coast pads (e.g. Louisiana): like Starbase, ESE over the Gulf,
      at least 1.5° above the pad latitude.
+   - ISS missions (Dragon, Cygnus, Axiom ...): 51.6°.
+   - Vandenberg SLC-4E (Falcon 9): south over the Pacific (descending branch);
+     Starlink by group (11: 53°, 2/15: 70°, 9/13/17: 97.6°, else 53°), other
+     LEO 70°, SSO 97.6°.
+   - Florida Falcon 9 Starlink: groups 6/10/12 43°, others 53°.
+   - GTO/GEO/beyond: a ~28.5° (pad latitude) due-east parking orbit and the
+     transfer burn ~T+26 min (nominal only).
    - Anywhere else: same orbit-class defaults, descending below 50°.
    Launch azimuth from north: sin(az) = cos(i) / cos(lat); ascending = az,
    descending = 180° − az. */
@@ -399,6 +563,7 @@ function siteKind(lat, lon, label) {
   if (Math.abs(lat - 25.99) < 0.4 && Math.abs(lon + 97.16) < 0.5) return "starbase";
   if (/starbase/i.test(label) && /\bTX\b|texas/i.test(label)) return "starbase";
   if (lat > 27 && lat < 31 && lon > -82.2 && lon < -79.5) return "florida";
+  if ((lat > 34 && lat < 35.2 && lon > -121.2 && lon < -120.2) || /vandenberg/i.test(label)) return "vandenberg";
   if (lat > 24 && lat < 31.5 && lon > -98 && lon < -84) return "gulf";
   return "other";
 }
@@ -409,9 +574,16 @@ function nominalOrbit(m) {
   let incl, why;
   if (m.targetIncl) { incl = m.targetIncl; why = "mission text"; }
   else if (m.site_kind === "starbase") { incl = kind === "orbit" ? 30.5 : 26.5; why = "Starbase fit"; }
-  else if (ab === "SSO") { incl = 97.5; why = "SSO"; }
+  else if (m.iss) { incl = 51.6; why = "ISS"; }
+  else if (ab === "SSO") { incl = m.site_kind === "vandenberg" ? 97.6 : 97.5; why = "SSO"; }
   else if (ab === "PO") { incl = 90; why = "polar"; }
-  else if (/^(GTO|GSO|GEO|GSTO|MEO|HEO|LO|TLI|HCO|SO|ELL)$/.test(ab)) { incl = latA + 0.5; why = "due-east parking orbit"; }
+  else if (m.gto) { incl = Math.max(28.5, latA + 0.4); why = "due-east parking orbit"; }
+  else if (m.site_kind === "vandenberg") {
+    const g = m.starlinkGroup;
+    if (m.starlinkLike) { incl = [9, 13, 17].includes(g) ? 97.6 : [2, 15].includes(g) ? 70 : 53; why = "Vandenberg Starlink"; }
+    else { incl = 70; why = "Vandenberg LEO"; }
+  }
+  else if (m.site_kind === "florida" && m.vehicle !== "starship" && m.starlinkLike) { incl = [6, 10, 12].includes(m.starlinkGroup) ? 43 : 53; why = "Florida Starlink"; }
   else if (m.site_kind === "florida") { incl = m.starlinkLike ? 53 : 43; why = m.starlinkLike ? "Florida Starlink" : "Florida LEO"; }
   else if (m.site_kind === "gulf") { incl = Math.max(30.5, latA + 1.5); why = "Gulf coast"; }
   else { incl = kind === "orbit" ? (m.starlinkLike ? 53 : 43) : latA + 1; why = "default"; }
@@ -434,7 +606,15 @@ function buildTrajectory(m, ct) {
   const T_INS = 510;              // SECO ~T+8:30
   let incl, alt, tEnd, tEntry, kind, source, sourceDetail, gpRec = null;
 
-  if (ct && ct.gp && window.satellite) {
+  const falcon = m.vehicle !== "starship";
+  if (ct && ct.flown) {
+    // a flown launch: its catalogued orbit (plane + altitude), no SGP4 phase
+    source = "celestrak";
+    sourceDetail = "CelesTrak GP · real orbit · " + ct.flown.name + (ct.flown.intdes ? " (" + ct.flown.intdes + ")" : "") + (ct.fixture ? " · test fixture" : "");
+    incl = +ct.flown.INCLINATION;
+    const n = +ct.flown.MEAN_MOTION * 2 * Math.PI / DAY;
+    alt = Math.cbrt(MU / (n * n)) - R_E;
+  } else if (ct && ct.gp && window.satellite) {
     source = "celestrak";
     sourceDetail = ct.prelaunch ? "CelesTrak pre-launch prediction" + (ct.gp.proxy ? " · " + ct.gp.proxy : "") + (ct.fixture ? " · test fixture" : "") : "CelesTrak GP · SGP4";
     gpRec = ct.gp;
@@ -453,7 +633,9 @@ function buildTrajectory(m, ct) {
 
   kind = m.orbital ? "orbit" : "sub";
   const nom = nominalOrbit(m);
-  if (!alt) alt = m.altKm || (kind === "orbit" ? 275 : 190);
+  // Falcon: nominal insertion altitudes (Starlink ~280 km, Dragon ~210 km, GTO parking ~200 km)
+  const falconAlt = m.iss ? 210 : m.gto ? 200 : m.starlinkLike ? 280 : /^(SSO|PO)$/.test(m.orbitAbbrev) ? 500 : 400;
+  if (!alt) alt = m.altKm || (falcon ? falconAlt : kind === "orbit" ? 275 : 190);
   if (!incl) incl = nom.incl;
   incl = Math.max(incl, Math.abs(m.lat) + 0.4);
   let dir = nom.dir;
@@ -462,7 +644,13 @@ function buildTrajectory(m, ct) {
   const vOrb = Math.sqrt(MU / (R_E + alt)); // km/s
   const period = 2 * Math.PI * Math.sqrt(Math.pow(R_E + alt, 3) / MU);
 
-  if (kind === "sub") {
+  // Falcon second stage: payload deploy (Starlink ~T+1:02, Dragon ~T+12 min, GTO ~T+33 min after
+  // the transfer burn at ~T+26 min), then stay in orbit; the clock runs a bit past one orbit
+  const T_GTO = 1560, T_GTO_D = 360;
+  const tDeploy = !falcon ? null : m.iss ? 720 : m.gto ? 1980 : m.starlinkLike ? (m.site_kind === "vandenberg" ? 3540 : 3720) : 3300;
+  if (falcon) {
+    tEnd = Math.round(Math.max(tDeploy + 1500, (kind === "sub" ? 1800 : period * 1.15)));
+  } else if (kind === "sub") {
     tEnd = 3930;      // ~T+1:05:30
   } else {
     let hrs = m.hours || (m.orbits ? m.orbits * period / 3600 : 1.6);
@@ -490,7 +678,7 @@ function buildTrajectory(m, ct) {
   if (gpRec && m.site_kind !== "starbase" && window.satellite) {
     try {
       const sr = window.satellite.twoline2satrec(gpRec.tle1, gpRec.tle2);
-      const s = sgp4At(sr, new Date(m.net.getTime() + T_INS * 1000));
+      const s = ct.prelaunch || Math.abs(+gpRec.epochMs - m.net.getTime()) < DAY * 1000 || !gpRec.epochMs ? sgp4At(sr, new Date(m.net.getTime() + T_INS * 1000)) : null;
       if (s) {
         const dAng = 0.62 * T_INS * Math.sqrt(MU / (R_E + alt)) / (R_E + alt * 0.4); // rough downrange
         const score = (d) => {
@@ -506,11 +694,50 @@ function buildTrajectory(m, ct) {
     u0 = dir === "asc" ? uAsc : Math.PI - uAsc;
     Om = m.lon * D2R - Math.atan2(Math.cos(i) * Math.sin(u0), Math.cos(u0));
   }
+  // flown launch: take the branch whose node (regressed to T-0) matches the catalogued orbit
+  if (ct && ct.flown && isFinite(ct.flown.nodeLonT0)) {
+    const omOf = (d) => { const u = d === "asc" ? uAsc : Math.PI - uAsc; return m.lon * D2R - Math.atan2(Math.cos(i) * Math.sin(u), Math.cos(u)); };
+    const off = (d) => Math.abs(wrapLon((omOf(d) - ct.flown.nodeLonT0) / D2R));
+    dir = off("asc") < off("desc") ? "asc" : "desc";
+    u0 = dir === "asc" ? uAsc : Math.PI - uAsc;
+    Om = omOf(dir);
+  }
   const azimuth = launchAzimuth(m.lat, incl, dir);
 
   // speed (km/s) and altitude (km) by time
   const vCoastSub = 7.33;
+  const deployLabel = m.iss ? (/cygnus/i.test(m.name) ? "CYGNUS SEPARATION" : "DRAGON SEPARATION") : m.starlinkLike ? "STARLINK DEPLOY" : "PAYLOAD DEPLOY";
+  // GTO: transfer orbit from the parking perigee to geostationary altitude (Kepler, nominal)
+  const gtoA = (R_E + alt + 42164) / 2, gtoE = (42164 - R_E - alt) / (42164 + R_E + alt), gtoN = Math.sqrt(MU / Math.pow(gtoA, 3));
+  function gtoAt(t) {
+    const M = gtoN * (t - (T_GTO + T_GTO_D / 2));
+    let E = M;
+    for (let k = 0; k < 8; k++) E = E - (E - gtoE * Math.sin(E) - M) / (1 - gtoE * Math.cos(E));
+    const r = gtoA * (1 - gtoE * Math.cos(E));
+    return [Math.sqrt(MU * (2 / r - 1 / gtoA)), r - R_E];
+  }
+  function falconProfile(t) {
+    if (t <= 0) return [0, 0, "PRE-LAUNCH"];
+    const vO = Math.sqrt(MU / (R_E + alt));
+    if (t < T_INS) {
+      const p = t / T_INS;
+      const ph = t < 155 ? "FIRST STAGE ASCENT" : t < 170 ? "STAGE SEPARATION" : "SECOND STAGE ASCENT";
+      return [vO * Math.pow(p, 1.75), alt * 0.8 * (1 - Math.pow(1 - p, 1.9)), ph];
+    }
+    if (m.gto && t >= T_GTO) {
+      if (t < T_GTO + T_GTO_D) {
+        const q = smooth(T_GTO, T_GTO + T_GTO_D, t), [vg, ag] = gtoAt(T_GTO + T_GTO_D);
+        return [lerp(vO, vg, q), lerp(alt, ag, q), "TRANSFER BURN"];
+      }
+      const [vg, ag] = gtoAt(t);
+      return [vg, ag, Math.abs(t - tDeploy) < 120 ? deployLabel : t < tDeploy ? "TRANSFER ORBIT" : "GTO"];
+    }
+    const a = lerp(alt * 0.8, alt, smooth(T_INS, T_INS + 900, t)) + 1.5 * Math.sin(t / period * 2 * Math.PI);
+    const ph = Math.abs(t - tDeploy) < 120 ? deployLabel : t < tDeploy ? (m.gto ? "PARKING ORBIT" : "COAST") : "ORBIT";
+    return [Math.sqrt(MU / (R_E + a)), a, ph];
+  }
   function profile(t, tEndL) {
+    if (falcon) return falconProfile(t);
     const tE = tEndL - ENTRY_D;
     if (t <= 0) return [0, 0, "PRE-LAUNCH"];
     if (t < T_INS) {
@@ -570,7 +797,8 @@ function buildTrajectory(m, ct) {
     tEnd = best.cand;
     blend = { dLat: m.lat - best.la, dLon: wrapLon(m.lon - best.lo) };
   }
-  tEntry = tEnd - ENTRY_D;
+  tEntry = falcon ? Infinity : tEnd - ENTRY_D;
+  const tBlendEnd = falcon ? tEnd + 1e6 : tEntry; // Falcon: follow the element set to the end
 
   const DT = tEnd > 20000 ? 10 : 2;
   const th = integrate(tEnd, DT);
@@ -591,17 +819,23 @@ function buildTrajectory(m, ct) {
       const w = smooth(tEntry - 2400, tEnd, t);
       la += blend.dLat * w; lo = wrapLon(lo + blend.dLon * w);
     }
-    if (satrec && t >= T_INS && t <= tEntry) {
+    if (satrec && t >= T_INS && t <= tBlendEnd) {
       const s = sgp4At(satrec, new Date(t0ms + t * 1000));
       if (s) {
-        const w = smooth(T_INS, T_INS + 600, t) * (1 - smooth(tEntry - 600, tEntry, t));
+        const w = smooth(T_INS, T_INS + 600, t) * (1 - smooth(tBlendEnd - 600, tBlendEnd, t));
         la = lerp(la, s.lat, w); lo = wrapLon(lo + wrapLon(s.lon - lo) * w); a = lerp(a, s.alt, w); v = lerp(v, s.v, w);
       }
     }
     lat[k] = la; lon[k] = lo; altA[k] = a; spd[k] = v * 3600;
   }
 
-  const events = [
+  const events = falcon ? [
+    { t: 0, label: "LIFTOFF" },
+    { t: 155, label: "MECO" },
+    { t: T_INS, label: "SECO" },
+    ...(m.gto ? [{ t: T_GTO, label: "GTO BURN" }] : []),
+    { t: tDeploy, label: m.iss ? "SEP" : "DEPLOY" }
+  ] : [
     { t: 0, label: "LIFTOFF" },
     { t: T_INS, label: kind === "sub" ? "SECO" : "ORBIT" },
     { t: tEntry, label: "ENTRY" },
@@ -609,11 +843,11 @@ function buildTrajectory(m, ct) {
   ];
 
   return {
-    kind, source, sourceDetail, incl, dir, azimuth, nominalWhy: nom.why, period, altCoast: alt, tEnd, tEntry, DT, N, lat, lon, alt: altA, spd, events,
+    kind, falcon, source, sourceDetail, incl, dir, azimuth, nominalWhy: nom.why, period, altCoast: alt, tEnd, tEntry, DT, N, lat, lon, alt: altA, spd, events,
     maxAlt: Math.max(...altA), phaseAt: (t) => profile(clamp(t, -1, tEnd + 1), tEnd)[2],
     sample(t) {
       if (t <= 0) return { lat: m.lat, lon: m.lon, alt: 0, spd: 0, k: 0 };
-      if (t >= tEnd) return { lat: lat[N - 1], lon: lon[N - 1], alt: 0, spd: 0, k: N - 1 };
+      if (t >= tEnd) return { lat: lat[N - 1], lon: lon[N - 1], alt: falcon ? altA[N - 1] : 0, spd: falcon ? spd[N - 1] : 0, k: N - 1 };
       const f = t / DT, k = Math.floor(f), w = f - k, k2 = Math.min(k + 1, N - 1);
       return {
         lat: lerp(lat[k], lat[k2], w),
@@ -853,7 +1087,7 @@ canvas.addEventListener("pointermove", (e) => {
   lastMoveT = now;
 });
 function endPointer(e) {
-  // a short, still tap near the Starship marker turns follow mode on
+  // a short, still tap near the rocket marker turns follow mode on
   if (e.type === "pointerup" && tapStart && !tapStart.multi && pointers.size === 1 &&
       Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) < 12 && performance.now() - tapStart.t < 600 &&
       markerScreen.on && Math.hypot(e.clientX - markerScreen.x, e.clientY - markerScreen.y) < MARKER_HIT) {
@@ -903,7 +1137,9 @@ function setFollow(on) {
   followBtn.hidden = false;
   followBtn.classList.toggle("is-on", on);
   followBtn.setAttribute("aria-pressed", on ? "true" : "false");
-  followBtn.title = on ? "Following Starship" : "Follow Starship";
+  const who = S.mission ? S.mission.rocket : "the rocket";
+  followBtn.title = on ? "Following " + who : "Follow " + who;
+  followBtn.setAttribute("aria-label", "Follow " + who);
 }
 // the button toggles follow; turning it on also re-centres and resets the zoom
 followBtn.addEventListener("click", () => { if (ctl.follow) { setFollow(false); return; } setFollow(true); ctl.vLat = ctl.vLon = 0; ctl.tDist = ctl.fitD; });
@@ -1086,8 +1322,8 @@ sliderEl.addEventListener("pointerdown", (e) => {
   scrubTo(scrubDrag.value);
 });
 sliderEl.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
-window.__starshipScrub = { scrubSecPerPx, scrubFineRange };
-window.__starshipDebug = { traj: () => S.traj, normalizeTLE };
+window.__spacexScrub = window.__starshipScrub = { scrubSecPerPx, scrubFineRange };
+window.__spacexDebug = window.__starshipDebug = { traj: () => S.traj, normalizeTLE, pick: () => S.pick, flown: (l) => loadFlown(parseMission(l)) };
 
 el.range.addEventListener("input", () => {
   S.live = false; el.now.classList.remove("is-on");
@@ -1128,12 +1364,12 @@ el.now.addEventListener("click", () => {
 });
 el.mode.addEventListener("click", () => {
   S.mode = S.mode === "mission" ? "local" : "mission";
-  try { localStorage.setItem("starship.mode", S.mode); } catch (e) {}
+  try { localStorage.setItem("spacex.mode", S.mode); } catch (e) {}
   syncButtons();
 });
 el.other.addEventListener("click", () => {
   S.which = S.which === "next" || (S.which === "auto" && S.autoPick === "next") ? "latest" : "next";
-  applyMission();
+  applyMission(null, Infinity);
 });
 document.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT" && e.key !== " ") return;
@@ -1179,70 +1415,171 @@ function buildTicks() {
   el.range.max = String(Math.round(b - a));
 }
 
-/* ---------------- mission selection ---------------- */
+/* ---------------- mission selection ----------------
+   Auto: the next SpaceX launch (any vehicle) when there is orbit data for it
+   (an accepted CelesTrak pre-launch set) or it is about to fly / flying;
+   otherwise the most recent flown SpaceX launch with catalogued orbit data,
+   labelled "Last flight", with a line counting down to the next launch.
+   Re-checked every 10 minutes, so the page switches over by itself once the
+   next launch has data. ?mission=next|latest forces one side. */
+const LIVE_BEFORE = 3600, LIVE_AFTER = 3 * 3600; // s around T-0 that count as "flying now"
+const RECHECK_MS = 10 * 60 * 1000;
+const PICK_KEY = "spacex.pick.v1";
+const dataCache = new Map(); // launch -> Promise<ct | null>
+const lkey = (l) => (l ? (l.name || "") + "@" + l.net : "");
+const within = (p, ms) => ms === Infinity ? p : Promise.race([p, new Promise((r) => setTimeout(() => r(undefined), ms))]);
+
 async function boot() {
   layout();
-  try { const m = localStorage.getItem("starship.mode"); if (m === "local" || m === "mission") S.mode = m; } catch (e) {}
+  try { const m = localStorage.getItem("spacex.mode") || localStorage.getItem("starship.mode"); if (m === "local" || m === "mission") S.mode = m; } catch (e) {}
   const q = new URLSearchParams(location.search);
   if (q.get("mission") === "next" || q.get("mission") === "latest") S.which = q.get("mission");
   syncButtons();
   const fx = activeFixture();
-  S.data = fx ? { upcoming: [], previous: [fx.launch] } : await loadLaunches();
-  await applyMission(q.has("t") ? +q.get("t") : null);
+  S.data = fx ? { upcoming: fx.upcoming, previous: fx.previous } : await loadLaunches();
+  // first paint without waiting long on CelesTrak; upgrade once its answers are in
+  await applyMission(q.has("t") ? +q.get("t") : null, 4000);
   requestAnimationFrame(frame);
+  recheck(false);
+  setInterval(() => recheck(true), RECHECK_MS);
 }
 
-function pickLaunch() {
-  const up = (S.data.upcoming || []).filter((l) => new Date(l.net).getTime() > Date.now() - 6 * 3600e3)
+function dataFor(l) {
+  const k = lkey(l);
+  if (!dataCache.has(k)) {
+    dataCache.set(k, (async () => {
+      const m = parseMission(l);
+      const fx = activeFixture();
+      const t0 = m.net.getTime();
+      const fits = (pre) => pre && pre.epochMs > t0 - 3600e3 && pre.epochMs < t0 + 6 * 3600e3;
+      if (fx) {
+        const t = fx.tle[l.name], f = fx.flown[l.name];
+        const pre = t ? preFromTLE(t[0], t[1], t[2], "fixture") : null;
+        if (fits(pre)) return { gp: pre, prelaunch: true, fixture: true };
+        if (f) return { flown: flownOrbit(f, m), fixture: true };
+        return null;
+      }
+      const past = t0 < Date.now();
+      // pre-launch sets: for the next launch always (any mission); for flown ones only where
+      // CelesTrak publishes them (Starlink, Starship), to keep requests low
+      if (!past || m.starlinkLike || m.vehicle === "starship") {
+        const pre = await loadPrelaunch(m).catch(() => null);
+        if (fits(pre)) return { gp: pre, prelaunch: true };
+      }
+      if (past) {
+        const f = await loadFlown(m).catch(() => null);
+        if (f) return { flown: f };
+        if (m.vehicle === "starship" && m.flightNo) {
+          const ct = await loadCelestrak(m.flightNo).catch(() => null);
+          if (ct && (ct.gp || ct.rec)) return ct;
+        }
+      }
+      return null;
+    })().catch(() => null));
+  }
+  return dataCache.get(k);
+}
+
+async function pickLaunch(waitMs) {
+  const now = Date.now();
+  const up = (S.data.upcoming || []).filter((l) => l.net && new Date(l.net).getTime() > now - LIVE_AFTER * 1000)
     .sort((a, b) => new Date(a.net) - new Date(b.net));
-  const prev = (S.data.previous || []).slice().sort((a, b) => new Date(b.net) - new Date(a.net));
-  const next = up[0] || null, latest = prev[0] || null;
-  let auto = "latest";
-  if (next && (!latest || new Date(next.net).getTime() - Date.now() < 45 * DAY * 1000)) auto = "next";
-  if (!latest) auto = "next";
+  const prev = (S.data.previous || []).filter((l) => l.net && new Date(l.net).getTime() <= now && !/^failure$/i.test((l.status || {}).abbrev || ""))
+    .sort((a, b) => new Date(b.net) - new Date(a.net)).slice(0, 6);
+  const next = up[0] || null;
+  let pending = false;
+  const nextP = next ? within(dataFor(next), waitMs) : Promise.resolve(null);
+  let latest = null, latestCt = null;
+  for (const l of prev) {
+    const ct = await within(dataFor(l), waitMs);
+    if (ct === undefined) { pending = true; break; } // not answered yet: decide again later
+    if (ct) { latest = l; latestCt = ct; break; }
+  }
+  let nextCt = await nextP;
+  if (nextCt === undefined) { pending = true; nextCt = null; }
+  if (!latest && prev.length) latest = prev[0];
+  const tNext = next ? (now - new Date(next.net).getTime()) / 1000 : 0;
+  const nextLive = !!next && tNext > -LIVE_BEFORE && tNext < LIVE_AFTER;
+  let auto = next && (nextCt || nextLive || !latest) ? "next" : "latest";
   if (!next) auto = "latest";
   S.autoPick = auto;
+  // still waiting on CelesTrak: stay with what this device showed last time, if it is still a candidate
+  if (pending && S.which === "auto") {
+    let last = null;
+    try { last = localStorage.getItem(PICK_KEY); } catch (e) {}
+    const hit = last && prev.find((l) => lkey(l) === last);
+    if (hit && hit !== latest) { latest = hit; latestCt = null; auto = "latest"; S.autoPick = auto; }
+  }
   const which = S.which === "auto" ? auto : S.which;
   const chosen = which === "next" ? (next || latest) : (latest || next);
-  return { chosen, which: chosen === next ? "next" : "latest", next, latest };
+  const side = chosen === next ? "next" : "latest";
+  const other = side === "next" ? latest : next;
+  return {
+    chosen, ct: side === "next" ? nextCt : latestCt, which: side, next, latest, pending,
+    other, om: other ? parseMission(other) : null, nextLive
+  };
 }
 
-async function applyMission(tParam) {
-  const p = pickLaunch();
-  if (!p.chosen) { el.kind.textContent = "No Starship data"; return; }
+async function applyMission(tParam, waitMs = Infinity) {
+  const p = await pickLaunch(waitMs);
+  if (!p.chosen) { el.kind.textContent = "No SpaceX data"; return; }
+  showPick(p, tParam);
+}
+
+function showPick(p, tParam, keepTime) {
   const m = parseMission(p.chosen);
-  S.mission = m;
-  el.kind.textContent = (p.which === "next" ? "Next launch" : "Latest flight") + (m.status && p.which === "next" ? " · " + m.status : "");
+  S.mission = m; S.pick = p;
+  if (S.which === "auto" && !p.pending) { try { localStorage.setItem(PICK_KEY, lkey(p.chosen)); } catch (e) {} }
+  el.kind.textContent = p.which === "next" ? "Next launch" + (m.status ? " · " + m.status : "") : "Last flight";
   el.mission.textContent = m.title;
   el.net.textContent = fmtNet(m);
-  el.pad.textContent = (m.site && /starbase/i.test(m.site) ? "Starbase" : (m.site || "")) + (m.padName ? " · " + m.padName : "");
-  const other = p.which === "next" ? p.latest : p.next;
-  if (other) {
-    const om = parseMission(other);
-    el.other.hidden = false;
-    el.other.textContent = (p.which === "next" ? "Latest: " : "Next: ") + (om.flightNo ? "Flight " + om.flightNo : om.name.replace(/^spacex\s+/i, "")) + " · " + (p.which === "next" ? fmtDate.format(om.net) : fmtNet(om).replace(/^NET /, "NET "));
-  } else el.other.hidden = true;
-
-  el.src.textContent = "Nominal profile";
-  S.traj = buildTrajectory(m, null);
+  const padShort = String(m.padName || "").replace(/^Space Launch Complex\s*/i, "SLC-").replace(/^Launch Complex\s*/i, "LC-");
+  el.pad.textContent = (m.site && /starbase/i.test(m.site) ? "Starbase" : (m.site || "")) + (padShort ? " · " + padShort : "");
+  updateOther();
+  S.traj = buildTrajectory(m, p.ct);
   buildTrack(S.traj); buildTicks();
   ll2v(m.lat, m.lon, 1.0008, padDot.position); padDot.lookAt(padDot.position.clone().multiplyScalar(2));
-  window.__starship = () => ({ site: m.site_kind, incl: S.traj.incl, dir: S.traj.dir, azimuth: S.traj.azimuth, why: S.traj.nominalWhy, source: S.traj.sourceDetail, lat0: S.traj.lat[0], lon0: S.traj.lon[0], latIns: S.traj.sample(510).lat, lonIns: S.traj.sample(510).lon });
+  window.__spacex = window.__starship = () => ({
+    which: S.pick.which, autoPick: S.autoPick, launch: m.raw.name, rocket: m.rocket, vehicle: m.vehicle, net: m.net.toISOString(),
+    other: S.pick.other ? S.pick.other.name : null, otherText: el.other.hidden ? null : el.other.textContent,
+    site: m.site_kind, incl: S.traj.incl, dir: S.traj.dir, azimuth: S.traj.azimuth, why: S.traj.nominalWhy,
+    source: S.traj.source, sourceDetail: S.traj.sourceDetail, srcText: el.src.textContent, tEnd: S.traj.tEnd,
+    lat0: S.traj.lat[0], lon0: S.traj.lon[0], latIns: S.traj.sample(510).lat, lonIns: S.traj.sample(510).lon
+  });
   setSource();
-  startTime(tParam, p.which);
+  setFollow(ctl.follow);
+  if (keepTime) setT(S.live ? realT() : S.t);
+  else startTime(tParam, p.which);
+}
 
-  // CelesTrak (async, non-blocking): (a) pre-launch SupGP, (b) SATCAT/GP, (c) nominal
-  let ct = null;
-  const fx = activeFixture();
-  let pre = fx ? (fx.tle ? preFromTLE(fx.tle[0], fx.tle[1], fx.tle[2], "fixture") : null) : await loadPrelaunch(m);
-  // only use a predicted set that belongs to this liftoff (epoch between T-1h and T+6h)
-  if (pre && !(pre.epochMs > m.net.getTime() - 3600e3 && pre.epochMs < m.net.getTime() + 6 * 3600e3)) pre = null;
-  if (pre) ct = { gp: pre, prelaunch: true, fixture: !!fx };
-  else if (!fx) ct = await loadCelestrak(m.flightNo);
-  if (S.mission === m && ct && (ct.gp || ct.rec)) {
-    S.traj = buildTrajectory(m, ct);
-    buildTrack(S.traj); buildTicks(); setSource(); setT(S.t);
+// the small line under the mission: the other side, with a live countdown to the next launch
+function updateOther() {
+  const p = S.pick;
+  if (!p || !p.other) { el.other.hidden = true; return; }
+  const om = p.om;
+  el.other.hidden = false;
+  if (p.which === "next") { el.other.textContent = "Last: " + om.short + " · " + fmtDate.format(om.net); return; }
+  const coarse = /MONTH|QUARTER|HALF|YEAR|DAY/i.test(om.netPrecision || "");
+  const dt = (om.net.getTime() - Date.now()) / 1000;
+  const when = coarse ? fmtNet(om) : (dt >= 0 ? "T−" : "T+") + fmtDur(dt);
+  el.other.textContent = "Next: " + om.rocket + " · " + om.short + " · " + when;
+}
+
+// pick again (after CelesTrak answered, and every 10 min); switch only if the answer changed
+async function recheck(refresh) {
+  if (refresh) {
+    for (const [k, v] of [...dataCache]) { const r = await within(v, 0); if (!r) dataCache.delete(k); }
+    if (!activeFixture()) { try { S.data = await loadLaunches(); } catch (e) {} }
   }
+  const p = await pickLaunch(Infinity);
+  if (!p.chosen) return;
+  const cur = S.pick;
+  if (cur && lkey(cur.chosen) === lkey(p.chosen) && !!cur.ct === !!p.ct) {
+    S.pick = { ...p }; updateOther();
+    return;
+  }
+  if (cur && lkey(cur.chosen) === lkey(p.chosen)) showPick(p, null, true); // same launch, data arrived: keep the clock
+  else showPick(p, null);
 }
 
 function setSource() {
@@ -1390,6 +1727,7 @@ function frame(now) {
       el.zone.textContent = zoneAbbr(d);
     }
     const phase = S.t < 0 ? (S.live && dispT < rangeMin() ? "COUNTDOWN" : "PRE-LAUNCH") : tr.phaseAt(S.t);
+    if (S.pick && S.pick.which === "latest") updateOther();
     el.phase.textContent = S.mode === "local" ? (phase + " · " + (dispT < 0 ? "T−" : "T+") + fmtDur(dispT) + " · " + fmtDate.format(new Date(m.net.getTime() + dispT * 1000)).toUpperCase()) : phase;
   }
   // attitude (nose-up degrees): ascent pitches over, coast level, entry belly-first, flip to land

@@ -2,125 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#000000">
-  <meta name="color-scheme" content="dark">
   <meta name="robots" content="noindex, nofollow">
-  <title>Starship · Elias</title>
-  <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<script src="/projects/unlock.js?v=1"></script>
-  <script>
-    (function () {
-      var ok = false;
-      try { ok = !!window.ProjectsUnlock.get(); } catch (e) {}
-      if (!ok) {
-        try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
-        location.replace("../?next=" + encodeURIComponent(location.pathname));
-      } else {
-        document.documentElement.classList.add("is-open");
-      }
-    })();
-  </script>
-  <link rel="preload" href="./fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="./starship.css?v=ss13">
+  <title>SpaceX · Elias</title>
+  <script>location.replace("/projects/spacex/" + location.search + location.hash);</script>
+  <meta http-equiv="refresh" content="0; url=/projects/spacex/">
+  <link rel="canonical" href="/projects/spacex/">
+  <style>html{background:#000;color:#888;font:14px system-ui,sans-serif}a{color:#ccc}</style>
 </head>
 <body>
-  <canvas class="gl" data-gl aria-label="Interactive globe showing the Starship flight path"></canvas>
-
-  <svg class="rings" data-rings aria-hidden="true">
-    <circle data-ring cx="0" cy="0" r="0"></circle>
-  </svg>
-
-  <div class="marker" data-marker hidden aria-hidden="true"><i></i></div>
-
-  <nav class="nav" data-nav>
-    <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
-      <span></span><span></span><span></span>
-    </button>
-    <ul class="nav-list" id="nav-list" hidden>
-      <li><a href="../../">HOME</a></li>
-      <li><a href="../../teslastores/">Tesla-Stores</a></li>
-      <li><a href="../../starlink/">Starlink</a></li>
-      <li><a href="../">Projects</a></li>
-      <li><a href="../../about/">About</a></li>
-    </ul>
-  </nav>
-
-  <aside class="info" data-info>
-    <p class="info-kind" data-kind>Loading mission</p>
-    <p class="info-net" data-net>&nbsp;</p>
-    <p class="info-pad" data-pad>&nbsp;</p>
-    <p class="info-src"><span class="dot" data-src-dot></span><span data-src>…</span></p>
-    <button class="info-other" type="button" data-other hidden></button>
-  </aside>
-
-  <button class="follow is-on" type="button" data-follow aria-label="Follow Starship" aria-pressed="true" title="Following Starship">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><circle cx="12" cy="12" r="8" fill="none"></circle><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"></path></svg>
-  </button>
-
-  <section class="hud" data-hud>
-    <div class="gauges">
-      <div class="gauge" data-gauge="speed">
-        <svg viewBox="0 0 100 100" aria-hidden="true"><path class="g-track" d=""></path><path class="g-fill" d=""></path></svg>
-        <div class="g-text"><small>SPEED</small><b data-speed>0</b><small>KM/H</small></div>
-      </div>
-      <div class="gauge" data-gauge="alt">
-        <svg viewBox="0 0 100 100" aria-hidden="true"><path class="g-track" d=""></path><path class="g-fill" d=""></path></svg>
-        <div class="g-text"><small>ALTITUDE</small><b data-alt>0</b><small>KM</small></div>
-      </div>
-    </div>
-
-    <div class="clock">
-      <svg class="arc" viewBox="0 0 400 40" preserveAspectRatio="none" aria-hidden="true"><path d="M2 38 Q200 -14 398 38"></path></svg>
-      <p class="clock-time"><span class="clock-sign" data-sign>T−</span><span data-clock>00:00:00</span><span class="clock-zone" data-zone hidden></span></p>
-      <p class="clock-name" data-mission>STARSHIP</p>
-      <p class="clock-phase" data-phase>&nbsp;</p>
-    </div>
-
-    <div class="widgets">
-      <div class="attitude" aria-hidden="true">
-        <svg viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="46" class="a-ring"></circle>
-          <line x1="8" y1="50" x2="92" y2="50" class="a-hz"></line>
-          <text x="50" y="16" class="a-n">N</text>
-          <g data-ship><rect x="18" y="46.5" width="64" height="7" rx="3.5" class="a-ship"></rect><path d="M18 50 L10 50" class="a-nose"></path><rect x="74" y="44" width="6" height="12" rx="1" class="a-fin"></rect></g>
-        </svg>
-      </div>
-      <div class="mini" data-mini aria-hidden="true"><i></i></div>
-    </div>
-
-    <div class="timeline">
-      <button class="t-btn" type="button" data-play aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-play-icon d="M8 5.5v13l11-6.5z"></path></svg></button>
-      <div class="rate-wrap" data-rate-wrap>
-        <button class="t-btn t-rate" type="button" data-rate aria-label="Playback speed" aria-haspopup="true" aria-expanded="false" aria-controls="rate-menu">1×</button>
-        <ul class="rate-menu" id="rate-menu" data-rate-menu role="menu" hidden>
-          <li><button type="button" role="menuitemradio" data-speed="480">480×</button></li>
-          <li><button type="button" role="menuitemradio" data-speed="240">240×</button></li>
-          <li><button type="button" role="menuitemradio" data-speed="120">120×</button></li>
-          <li><button type="button" role="menuitemradio" data-speed="60">60×</button></li>
-          <li><button type="button" role="menuitemradio" data-speed="30">30×</button></li>
-          <li><button type="button" role="menuitemradio" data-speed="10">10×</button></li>
-          <li><button type="button" role="menuitemradio" data-speed="1">1×</button></li>
-        </ul>
-      </div>
-      <div class="slider" data-slider>
-        <div class="s-ticks" data-ticks></div>
-        <p class="scrub-hint" data-scrub-hint hidden></p>
-        <input type="range" data-range min="0" max="1000" step="1" value="0" aria-label="Mission time">
-      </div>
-      <button class="t-btn t-now" type="button" data-now>NOW</button>
-      <button class="t-btn t-mode" type="button" data-mode aria-label="Switch between mission time and Vienna time">T+</button>
-    </div>
-  </section>
-
-  <p class="toast" data-toast hidden></p>
-
-  <script src="./vendor/satellite.min.js"></script>
-  <script type="module" src="./starship.js?v=ss13"></script>
-<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
+  <p>Moved to <a href="/projects/spacex/">/projects/spacex/</a>.</p>
 </body>
 </html>

@@ -216,17 +216,28 @@
     try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
-  function ensureStarshipCard(root) {
+  function ensureSpacexCard(root) {
     if (!root) return;
-    if (root.querySelector('a[href*="starship"]')) return;
+    var TITLE = "SpaceX", TEXT = "The next SpaceX launch on a globe. Scrub the mission clock.";
+    if (root.querySelector('a[href*="spacex"]')) return;
+    var old = root.querySelector('a[href*="starship"]');
+    if (old) {
+      // the saved shelf still links the old Starship page: point it at /spacex/
+      old.href = "./spacex/";
+      var os = old.querySelector("strong"), op = old.querySelector("span");
+      if (os) os.textContent = TITLE;
+      if (op) op.textContent = TEXT;
+      try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
+      return;
+    }
     var shelf = root.querySelector(".shelf") || root;
     var card = document.createElement("a");
     card.className = "card";
-    card.href = "./starship/";
+    card.href = "./spacex/";
     var strong = document.createElement("strong");
-    strong.textContent = "Starship";
+    strong.textContent = TITLE;
     var span = document.createElement("span");
-    span.textContent = "The next Starship flight on a globe. Scrub the mission clock.";
+    span.textContent = TEXT;
     card.appendChild(strong);
     card.appendChild(span);
     var after = shelf.querySelector('a[href*="muse"]');
@@ -243,7 +254,7 @@
     ensurePlanetCard(panel);
     ensurePlopCard(panel);
     ensureMuseCard(panel);
-    ensureStarshipCard(panel);
+    ensureSpacexCard(panel);
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");
