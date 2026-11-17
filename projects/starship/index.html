@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="preload" href="./fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="./starship.css?v=ss6">
+  <link rel="stylesheet" href="./starship.css?v=ss7">
 </head>
 <body>
   <canvas class="gl" data-gl aria-label="Interactive globe showing the Starship flight path"></canvas>
@@ -98,6 +98,7 @@
       <div class="rate-wrap" data-rate-wrap>
         <button class="t-btn t-rate" type="button" data-rate aria-label="Playback speed" aria-haspopup="true" aria-expanded="false" aria-controls="rate-menu">1×</button>
         <ul class="rate-menu" id="rate-menu" data-rate-menu role="menu" hidden>
+          <li><button type="button" role="menuitemradio" data-speed="480">480×</button></li>
           <li><button type="button" role="menuitemradio" data-speed="240">240×</button></li>
           <li><button type="button" role="menuitemradio" data-speed="120">120×</button></li>
           <li><button type="button" role="menuitemradio" data-speed="60">60×</button></li>
@@ -119,7 +120,7 @@
   <p class="toast" data-toast hidden></p>
 
   <script src="./vendor/satellite.min.js"></script>
-  <script type="module" src="./starship.js?v=ss6"></script>
+  <script type="module" src="./starship.js?v=ss7"></script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
