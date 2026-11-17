@@ -803,7 +803,7 @@ scene.add(padDot);
 
 /* ---------------- camera controls ---------------- */
 const ctl = {
-  lat: 10, lon: 10, dist: 3.6, tLat: 10, tLon: 10, tDist: 3.6,
+  lat: 10, lon: 10, dist: 3.6, followT: 0, tLat: 10, tLon: 10, tDist: 3.6,
   vLat: 0, vLon: 0, follow: true, dragging: false, minD: 1.45, maxD: 9, fitD: 3.6
 };
 const pointers = new Map();
@@ -897,6 +897,7 @@ function degPerPx() {
 
 const followBtn = $("[data-follow]");
 function setFollow(on) {
+  if (on && !ctl.follow) ctl.followT = performance.now();
   ctl.follow = on;
   followBtn.hidden = false;
   followBtn.classList.toggle("is-on", on);
@@ -1298,10 +1299,12 @@ function frame(now) {
       const decay = Math.pow(0.9, dt * 60);
       ctl.vLon *= decay; ctl.vLat *= decay;
     } else if (ctl.follow) {
+      // ease onto the ship for ~0.8 s after follow turns on, then lock exactly so it stays centred at any speed
       const wantLat = clamp(s.lat, -75, 75), wantLon = s.lon;
-      const k = 1 - Math.pow(0.04, dt);
-      ctl.tLat += (wantLat - ctl.tLat) * k;
-      ctl.tLon += wrapLon(wantLon - ctl.tLon) * k;
+      const ramp = clamp((performance.now() - ctl.followT) / 800, 0, 1);
+      const k = Math.max(1 - Math.pow(0.0005, dt), ramp * ramp);
+      ctl.lat += (wantLat - ctl.lat) * k; ctl.lon += wrapLon(wantLon - ctl.lon) * k;
+      ctl.tLat = ctl.lat; ctl.tLon = ctl.lon;
     }
   }
   const kz = 1 - Math.pow(0.0005, dt);
