@@ -1293,9 +1293,13 @@ function frame(now) {
   const tc = clamp(S.t, 0, tr.tEnd);
   const s = tr.sample(tc);
 
-  // camera
-  if (!ctl.dragging) {
-    if (Math.abs(ctl.vLon) + Math.abs(ctl.vLat) > 0.001) {
+  // camera: a pinch keeps following (it only zooms); a one-finger hold pauses follow, and when it
+  // resumes the camera glides back instead of snapping
+  const pinching = ctl.dragging && multiGesture;
+  if (ctl.follow && ctl.dragging && !pinching) ctl.followHeld = true;
+  if (!ctl.dragging || pinching) {
+    if (ctl.follow && ctl.followHeld) { ctl.followHeld = false; ctl.followT = performance.now(); ctl.followOff = null; }
+    if (!pinching && Math.abs(ctl.vLon) + Math.abs(ctl.vLat) > 0.001) {
       ctl.tLon += ctl.vLon; ctl.tLat = clamp(ctl.tLat + ctl.vLat, -85, 85);
       const decay = Math.pow(0.9, dt * 60);
       ctl.vLon *= decay; ctl.vLat *= decay;
