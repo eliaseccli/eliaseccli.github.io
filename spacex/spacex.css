@@ -25,7 +25,6 @@ html {
   background: var(--bg);
 }
 
-html:not(.is-open) body { visibility: hidden; }
 
 body {
   margin: 0;

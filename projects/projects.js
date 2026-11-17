@@ -216,33 +216,12 @@
     try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
-  function ensureSpacexCard(root) {
+  // SpaceX moved to the main menu (/spacex/): drop any saved shelf card for it
+  function dropSpacexCard(root) {
     if (!root) return;
-    var TITLE = "SpaceX", TEXT = "The next SpaceX launch on a globe. Scrub the mission clock.";
-    if (root.querySelector('a[href*="spacex"]')) return;
-    var old = root.querySelector('a[href*="starship"]');
-    if (old) {
-      // the saved shelf still links the old Starship page: point it at /spacex/
-      old.href = "./spacex/";
-      var os = old.querySelector("strong"), op = old.querySelector("span");
-      if (os) os.textContent = TITLE;
-      if (op) op.textContent = TEXT;
-      try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
-      return;
-    }
-    var shelf = root.querySelector(".shelf") || root;
-    var card = document.createElement("a");
-    card.className = "card";
-    card.href = "./spacex/";
-    var strong = document.createElement("strong");
-    strong.textContent = TITLE;
-    var span = document.createElement("span");
-    span.textContent = TEXT;
-    card.appendChild(strong);
-    card.appendChild(span);
-    var after = shelf.querySelector('a[href*="muse"]');
-    if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
-    else shelf.appendChild(card);
+    var cards = root.querySelectorAll('a[href*="spacex"], a[href*="starship"]');
+    if (!cards.length) return;
+    for (var i = 0; i < cards.length; i++) cards[i].parentNode.removeChild(cards[i]);
     try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
@@ -254,7 +233,7 @@
     ensurePlanetCard(panel);
     ensurePlopCard(panel);
     ensureMuseCard(panel);
-    ensureSpacexCard(panel);
+    dropSpacexCard(panel);
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");
