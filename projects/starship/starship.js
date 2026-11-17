@@ -808,6 +808,8 @@ const ctl = {
 };
 const pointers = new Map();
 let pinch0 = null, last = null, lastMoveT = 0, tapStart = null;
+// set once a second finger lands; the leftover finger of a pinch must not pan (or drop follow mode)
+let multiGesture = false;
 const markerScreen = { x: -1e4, y: -1e4, on: false };
 const MARKER_HIT = 38; // px, generous for fingers
 
@@ -818,6 +820,7 @@ canvas.addEventListener("pointerdown", (e) => {
   else if (tapStart) tapStart.multi = true;
   ctl.dragging = true; ctl.vLat = ctl.vLon = 0;
   canvas.classList.add("is-drag");
+  if (pointers.size >= 2) multiGesture = true;
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), dist: ctl.tDist };
@@ -837,6 +840,7 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
   if (!last) return;
+  if (multiGesture) { last = { x: e.clientX, y: e.clientY, t: performance.now() }; return; }
   const dx = e.clientX - last.x, dy = e.clientY - last.y;
   const now = performance.now(), dt = Math.max(now - last.t, 1);
   const k = degPerPx();
@@ -860,7 +864,7 @@ function endPointer(e) {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinch0 = null;
   if (pointers.size === 0) {
-    ctl.dragging = false; canvas.classList.remove("is-drag");
+    ctl.dragging = false; canvas.classList.remove("is-drag"); multiGesture = false;
     if (performance.now() - lastMoveT > 80) ctl.vLat = ctl.vLon = 0;
     last = null;
   } else {
@@ -899,7 +903,8 @@ function setFollow(on) {
   followBtn.setAttribute("aria-pressed", on ? "true" : "false");
   followBtn.title = on ? "Following Starship" : "Follow Starship";
 }
-followBtn.addEventListener("click", () => { setFollow(true); ctl.tDist = ctl.fitD; });
+// the button toggles follow; turning it on also re-centres and resets the zoom
+followBtn.addEventListener("click", () => { if (ctl.follow) { setFollow(false); return; } setFollow(true); ctl.vLat = ctl.vLon = 0; ctl.tDist = ctl.fitD; });
 
 /* ---------------- layout ---------------- */
 const hud = $("[data-hud]");
