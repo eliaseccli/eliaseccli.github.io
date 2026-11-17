@@ -443,6 +443,23 @@ const FIXTURES = {
       mission: { name: "Dragon CRS-2 SpX-99", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. Cargo Dragon resupply mission to the International Space Station." }
     }
   },
+  "two-flying": {
+    upcoming: [{
+      name: "Falcon 9 Block 5 | Starlink Group 10-99", net: null, inDays: -0.02, net_precision: "Minute",
+      status: { abbrev: "In Flight" }, rocket: F9,
+      pad: { name: "Space Launch Complex 40", latitude: 28.56194122, longitude: -80.57735736, location: { name: "Cape Canaveral SFS, FL, USA" } },
+      mission: { name: "Starlink Group 10-99", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. Second of two launches in flight at once." }
+    }, {
+      name: "Falcon 9 Block 5 | USSF-999", net: null, inDays: 2.3, net_precision: "Minute",
+      status: { abbrev: "Go" }, rocket: F9, pad: VSFB,
+      mission: { name: "USSF-999", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. The next launch after the two in flight." }
+    }],
+    previous: [{
+      name: "Falcon 9 Block 5 | Starlink Group 17-99", net: null, inDays: -0.06, net_precision: "Minute",
+      status: { abbrev: "Success" }, rocket: F9, pad: VSFB,
+      mission: { name: "Starlink Group 17-99", orbit: { abbrev: "LEO", name: "Low Earth Orbit" }, description: "Test fixture. First of two launches in flight at once." }
+    }]
+  },
   "last-flight": {
     upcoming: [{
       name: "Falcon 9 Block 5 | USSF-999", net: null, inDays: 2.3, net_precision: "Minute",
@@ -1409,7 +1426,7 @@ const el = {
   speed: $("[data-speed]"), alt: $("[data-alt]"),
   sign: $("[data-sign]"), clock: $("[data-clock]"), zone: $("[data-zone]"),
   mission: $("[data-mission]"), phase: $("[data-phase]"),
-  kind: $("[data-kind]"), net: $("[data-net]"), pad: $("[data-pad]"), src: $("[data-src]"), other: $("[data-other]"),
+  kind: $("[data-kind]"), net: $("[data-net]"), pad: $("[data-pad]"), src: $("[data-src]"), other: $("[data-other]"), flying: $("[data-flying]"),
   range: $("[data-range]"), ticks: $("[data-ticks]"), play: $("[data-play]"), playIcon: $("[data-play-icon]"), rate: $("[data-rate]"),
   now: $("[data-now]"), mode: $("[data-mode]"), marker: $("[data-marker]"), ring: $("[data-ring]"), ship: $("[data-ship]"), toast: $("[data-toast]")
 };
@@ -1708,11 +1725,22 @@ function dataFor(l) {
 
 async function pickLaunch(waitMs) {
   const now = Date.now();
-  const up = (S.data.upcoming || []).filter((l) => l.net && new Date(l.net).getTime() > now - LIVE_AFTER * 1000)
-    .sort((a, b) => new Date(a.net) - new Date(b.net));
-  const prev = (S.data.previous || []).filter((l) => l.net && new Date(l.net).getTime() <= now && !/^failure$/i.test((l.status || {}).abbrev || ""))
-    .sort((a, b) => new Date(b.net) - new Date(a.net)).slice(0, 6);
-  const next = up[0] || null;
+  const tOf = (l) => new Date(l.net).getTime();
+  const failed = (l) => /^failure$/i.test((l.status || {}).abbrev || "");
+  // in flight: lifted off within LIVE_AFTER, whether LL2 still lists it as upcoming or already as previous
+  const seen = new Set(), flying = [];
+  for (const l of [...(S.data.upcoming || []), ...(S.data.previous || [])]) {
+    if (!l.net || failed(l) || seen.has(lkey(l))) continue;
+    seen.add(lkey(l));
+    if (tOf(l) <= now && tOf(l) > now - LIVE_AFTER * 1000) flying.push(l);
+  }
+  flying.sort((a, b) => tOf(b) - tOf(a)); // newest liftoff first
+  const flyKeys = new Set(flying.map(lkey));
+  const up = (S.data.upcoming || []).filter((l) => l.net && tOf(l) > now && !flyKeys.has(lkey(l))).sort((a, b) => tOf(a) - tOf(b));
+  const prev = (S.data.previous || []).filter((l) => l.net && tOf(l) <= now && !failed(l) && !flyKeys.has(lkey(l)))
+    .sort((a, b) => tOf(b) - tOf(a)).slice(0, 6);
+  // "next" = the launch in flight (the one picked in the in-flight chips, else the newest), else the next one up
+  const next = (S.pin && flying.find((l) => lkey(l) === S.pin)) || flying[0] || up[0] || null;
   let pending = false;
   const nextP = next ? within(dataFor(next), waitMs) : Promise.resolve(null);
   let latest = null, latestCt = null;
@@ -1735,7 +1763,7 @@ async function pickLaunch(waitMs) {
   const side = chosen === next ? "next" : "latest";
   const other = side === "next" ? latest : next;
   return {
-    chosen, ct: side === "next" ? nextCt : latestCt, which: side, next, latest, pending,
+    chosen, ct: side === "next" ? nextCt : latestCt, which: side, next, latest, pending, flying,
     other, om: other ? parseMission(other) : null, nextLive
   };
 }
@@ -1749,7 +1777,8 @@ async function applyMission(tParam, waitMs = Infinity) {
 function showPick(p, tParam, keepTime) {
   const m = parseMission(p.chosen);
   S.mission = m; S.pick = p;
-  el.kind.textContent = p.which === "next" ? "Next launch" + (m.status ? " · " + m.status : "") : "Last flight";
+  const inFlight = p.which === "next" && (p.flying || []).includes(p.chosen);
+  el.kind.textContent = inFlight ? "In flight" : p.which === "next" ? "Next launch" + (m.status ? " · " + m.status : "") : "Last flight";
   el.mission.textContent = m.title;
   el.net.textContent = fmtNet(m);
   const padShort = String(m.padName || "").replace(/^Space Launch Complex\s*/i, "SLC-").replace(/^Launch Complex\s*/i, "LC-");
@@ -1772,7 +1801,30 @@ function showPick(p, tParam, keepTime) {
 }
 
 // the small line under the mission: the other side, with a live countdown to the next launch
+// two or more launches in flight at once: a chip per launch to switch between them
+function updateFlying() {
+  const p = S.pick, fl = (p && p.flying) || [];
+  if (fl.length < 2) { el.flying.hidden = true; el.flying.textContent = ""; return; }
+  el.flying.hidden = false;
+  const cur = p.which === "next" ? lkey(p.chosen) : "";
+  const sig = fl.map(lkey).join("|") + "#" + cur;
+  if (el.flying.dataset.sig === sig) return;
+  el.flying.dataset.sig = sig;
+  el.flying.textContent = "";
+  const lab = document.createElement("span"); lab.className = "info-flying-label"; lab.textContent = fl.length + " in flight";
+  el.flying.appendChild(lab);
+  for (const l of fl) {
+    const m = parseMission(l), b = document.createElement("button");
+    b.type = "button"; b.className = "info-chip" + (lkey(l) === cur ? " is-on" : "");
+    b.textContent = m.short; b.title = m.title;
+    b.setAttribute("aria-pressed", lkey(l) === cur ? "true" : "false");
+    b.addEventListener("click", () => { S.pin = lkey(l); S.which = "next"; applyMission(null, Infinity); });
+    el.flying.appendChild(b);
+  }
+}
+
 function updateOther() {
+  updateFlying();
   const p = S.pick;
   if (!p || !p.other) { el.other.hidden = true; return; }
   const om = p.om;

@@ -236,6 +236,17 @@ html, body { touch-action: none; -webkit-text-size-adjust: 100%; text-size-adjus
   border-radius: 999px;
   cursor: pointer;
 }
+.info-flying { pointer-events: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.3rem; margin-top: 0.4rem; }
+.info-flying[hidden] { display: none; }
+.info-flying-label { font-size: 0.6rem; letter-spacing: 0.16em; color: rgba(255,255,255,0.55); margin-right: 0.15rem; }
+.info-chip {
+  font: inherit; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 0.28rem 0.55rem; border-radius: 999px; cursor: pointer;
+  color: rgba(255,255,255,0.72); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.16);
+}
+.info-chip:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
+.info-chip.is-on { color: #000; background: #fff; border-color: #fff; }
+.info-chip:focus-visible { outline: 1px solid #fff; outline-offset: 2px; }
 .info-other:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
 
 .follow {
