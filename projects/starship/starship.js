@@ -17,7 +17,8 @@ const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-const wrapLon = (l) => ((l + 540) % 360) - 180;
+// signed difference in (-180, 180]; JS % keeps the sign, so normalise twice
+const wrapLon = (l) => ((((l + 180) % 360) + 360) % 360) - 180;
 
 /* ---------------- nav (same as every inner page) ---------------- */
 (function () {
@@ -1302,6 +1303,7 @@ function frame(now) {
   ctl.dist += (ctl.tDist - ctl.dist) * kz;
   ctl.lat += (ctl.tLat - ctl.lat) * (ctl.dragging ? 1 : kz);
   ctl.lon += wrapLon(ctl.tLon - ctl.lon) * (ctl.dragging ? 1 : kz);
+  ctl.lon = wrapLon(ctl.lon); ctl.tLon = ctl.lon + wrapLon(ctl.tLon - ctl.lon);
   ll2v(ctl.lat, ctl.lon, ctl.dist, camera.position);
   camera.up.set(0, 1, 0);
   camera.lookAt(0, 0, 0);
