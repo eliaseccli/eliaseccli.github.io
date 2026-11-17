@@ -259,6 +259,34 @@ html, body { touch-action: none; -webkit-text-size-adjust: 100%; text-size-adjus
 .follow.is-on svg * { stroke: #000; }
 .follow.is-on svg circle:first-child { fill: #000; }
 
+/* ---------- camera views + long-press buttons ---------- */
+.follow { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.follow:not(.vis) svg g { display: none; }
+.follow[data-view="earth"] g[data-ic="earth"], .follow[data-view="close"] g[data-ic="close"], .follow[data-view="sky"] g[data-ic="sky"] { display: inline; }
+.view-pill {
+  position: fixed; z-index: 21; margin: 0;
+  right: calc(max(1rem, calc(env(safe-area-inset-right) + 0.6rem)) + 2.3rem + 0.5rem);
+  padding: 0.38rem 0.7rem; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap;
+  color: #fff; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.22); border-radius: 999px;
+  pointer-events: none; opacity: 0; transform: translateX(6px); transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.view-pill.is-show { opacity: 1; transform: none; }
+.sheet { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 1.2rem; background: rgba(0,0,0,0.45); }
+.sheet[hidden] { display: none; }
+.sheet-card {
+  max-width: 21rem; padding: 1.1rem 1.15rem 1rem; border-radius: 1rem;
+  background: rgba(10,10,12,0.94); border: 1px solid rgba(255,255,255,0.18); box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  color: rgba(255,255,255,0.78); font-size: 0.78rem; line-height: 1.45; letter-spacing: 0.02em;
+}
+.sheet-t { margin: 0 0 0.55rem; color: #fff; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+.sheet-p { margin: 0 0 0.55rem; }
+.sheet-b { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.85rem; }
+.sheet-b button {
+  font: inherit; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer;
+  padding: 0.5rem 0.85rem; border-radius: 999px; color: rgba(255,255,255,0.8); background: transparent; border: 1px solid rgba(255,255,255,0.25);
+}
+.sheet-b button.is-main { color: #000; background: #fff; border-color: #fff; }
+
 /* ---------- visibility circle ---------- */
 .follow.vis.is-busy { opacity: 0.55; }
 .info-vis { display: block; margin-top: 0.35rem !important; color: rgba(255,255,255,0.6); }

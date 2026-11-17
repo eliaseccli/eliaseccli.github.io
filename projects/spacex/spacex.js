@@ -1059,6 +1059,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), dist: ctl.tDist };
+    ctl.zoomAuto = false; // a pinch takes over the zoom (the view mode and lock-on stay)
   }
   last = { x: e.clientX, y: e.clientY, t: performance.now() };
 });
@@ -1110,6 +1111,7 @@ canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
+  ctl.zoomAuto = false;
   ctl.tDist = clamp(ctl.tDist * Math.exp(e.deltaY * 0.0012), ctl.minD, ctl.maxD);
 }, { passive: false });
 // never let the browser zoom the page (iOS Safari pinch / double-tap); globe zoom is handled above
@@ -1132,17 +1134,75 @@ function degPerPx() {
 
 const followBtn = $("[data-follow]");
 function setFollow(on) {
-  if (on && !ctl.follow) { ctl.followT = performance.now(); ctl.followOff = null; }
+  if (on && !ctl.follow) { ctl.followT = performance.now(); ctl.followOff = null; if (ctl.view === "sky") ctl.view = "earth"; }
   ctl.follow = on;
   followBtn.hidden = false;
   followBtn.classList.toggle("is-on", on);
   followBtn.setAttribute("aria-pressed", on ? "true" : "false");
-  const who = S.mission ? S.mission.rocket : "the rocket";
-  followBtn.title = on ? "Following " + who : "Follow " + who;
-  followBtn.setAttribute("aria-label", "Follow " + who);
+  const v = on ? ctl.view : "earth";
+  followBtn.dataset.view = v;
+  const name = on ? VIEW_NAMES[v] : "Follow off";
+  followBtn.title = name + " · tap: " + (on ? "next view" : "follow") + " · long-press: stop following";
+  followBtn.setAttribute("aria-label", "Camera view: " + name + ". Tap for the " + (on ? "next view" : "Earth view") + ", long-press to stop following");
 }
-// the button toggles follow; turning it on also re-centres and resets the zoom
-followBtn.addEventListener("click", () => { if (ctl.follow) { setFollow(false); return; } setFollow(true); ctl.vLat = ctl.vLon = 0; ctl.tDist = ctl.fitD; });
+
+/* Camera views (one button): Earth view (whole globe, locked on the ship) -> Close follow (locked
+   on the ship, zoomed so a full 0° visibility circle fits) -> Your sky (centred on your location,
+   same circle zoom; only with a saved location) -> Earth view. A drag still turns following off,
+   a long-press on the button too; pinch/wheel keep the view and take over the zoom. Rotation and
+   zoom glide with the same ease-in-out as the follow glide. */
+const VIEW_NAMES = { earth: "Earth view", close: "Close follow", sky: "Your sky" };
+ctl.view = "earth"; ctl.zoomAuto = false; ctl.zoomT = 0; ctl.zoomFrom = ctl.dist; ctl.hNow = 0;
+const pillEl = $("[data-view-pill]");
+let pillTimer = 0;
+function pill(txt) {
+  pillEl.textContent = txt;
+  pillEl.classList.add("is-show");
+  clearTimeout(pillTimer); pillTimer = setTimeout(() => pillEl.classList.remove("is-show"), 1700);
+}
+// camera distance at which a circle of angular radius lam (rad) around the view centre fits the globe area
+function fitCircleD(lam) {
+  const amax = Math.atan(globeArea.rPx / globeArea.f);
+  return clamp(Math.cos(lam) + Math.sin(lam) / Math.tan(amax), ctl.minD, ctl.fitD);
+}
+function viewDist(v) {
+  if (v !== "close" && v !== "sky") return ctl.fitD;
+  const h = Math.max(ctl.hNow || 0, (S.traj && S.traj.altCoast) || 300);
+  return fitCircleD(visLam(h, 0) * (v === "close" ? 1.2 : 1.12));
+}
+function setView(v) {
+  if (!ctl.follow) setFollow(true);
+  else { ctl.followT = performance.now(); ctl.followOff = null; }
+  ctl.view = v;
+  setFollow(true); // labels + icon for the new view
+  ctl.vLat = ctl.vLon = 0;
+  ctl.zoomAuto = true; ctl.zoomFrom = ctl.dist; ctl.zoomT = performance.now();
+  if (v === "sky" && !vis.on) setVis(true);
+  pill(VIEW_NAMES[v]);
+}
+const followLong = longPress(followBtn, () => { if (ctl.follow) { setFollow(false); pill("Follow off"); } });
+followBtn.addEventListener("click", () => {
+  if (!ctl.follow) return setView("earth");
+  if (ctl.view === "earth") return setView("close");
+  if (ctl.view === "close") return setView(vis.obs ? "sky" : "earth"); // no location yet: the rings button is the way in
+  setView("earth");
+});
+
+// long-press (~600 ms) for touch and mouse, right-click as a desktop fallback; the click that
+// ends a long press is swallowed so it never also toggles
+function longPress(btn, onLong, ms = 600) {
+  let t = 0, x0 = 0, y0 = 0, fired = -1e9;
+  const clear = () => { clearTimeout(t); t = 0; };
+  const fire = () => { clear(); fired = performance.now(); try { navigator.vibrate && navigator.vibrate(12); } catch (e) {} onLong(); };
+  btn.addEventListener("pointerdown", (e) => { if (e.button > 0) return; x0 = e.clientX; y0 = e.clientY; clear(); t = setTimeout(fire, ms); });
+  btn.addEventListener("pointermove", (e) => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) clear(); });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) btn.addEventListener(ev, clear);
+  btn.addEventListener("contextmenu", (e) => { e.preventDefault(); if (performance.now() - fired < 1500) return; fire(); });
+  btn.addEventListener("click", (e) => {
+    if (performance.now() - fired < 1500) { e.stopImmediatePropagation(); e.preventDefault(); fired = -1e9; }
+  }, true);
+  return () => performance.now() - fired < 1500;
+}
 
 /* ---------------- visibility circle ----------------
    Rings on the ground around the viewer: the ship (at its current altitude h)
@@ -1217,8 +1277,8 @@ function setVis(on) {
   vis.h = -1;
   try { localStorage.setItem(VIS_ON, vis.on ? "1" : "0"); } catch (e) {}
 }
-visBtn.addEventListener("click", () => {
-  if (vis.obs) { setVis(!vis.on); return; }
+// ask the browser for the location (only from the sheet, or a long-press once one is saved)
+function askLocation(update) {
   if (vis.asking) return;
   if (!navigator.geolocation) { toast("Location not available"); return; }
   vis.asking = true; visBtn.classList.add("is-busy");
@@ -1226,11 +1286,33 @@ visBtn.addEventListener("click", () => {
     vis.asking = false; visBtn.classList.remove("is-busy");
     vis.obs = { lat: +p.coords.latitude.toFixed(3), lon: +p.coords.longitude.toFixed(3) }; // ~100 m is plenty
     try { localStorage.setItem(VIS_KEY, JSON.stringify(vis.obs)); } catch (e) {}
-    setVis(true);
+    vis.h = -1; // rebuild the rings around the new spot
+    if (ctl.follow && ctl.view === "sky") { ctl.followT = performance.now(); ctl.followOff = null; }
+    if (update) toast("Location updated");
+    else {
+      setVis(true);
+      let seen = false;
+      try { seen = localStorage.getItem("spacex.vis.hint") === "1"; localStorage.setItem("spacex.vis.hint", "1"); } catch (e) {}
+      if (!seen) toast("Long-press the button to update your location");
+    }
   }, (err) => {
     vis.asking = false; visBtn.classList.remove("is-busy");
     toast(err && err.code === 1 ? "Location permission denied" : "Could not get your location");
-  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 });
+  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: update ? 0 : 10 * 60 * 1000 });
+}
+const sheet = $("[data-vis-sheet]");
+function openSheet(open) {
+  sheet.hidden = !open;
+  if (open) { try { sheet.querySelector("[data-sheet-yes]").focus({ preventScroll: true }); } catch (e) {} }
+}
+sheet.querySelector("[data-sheet-yes]").addEventListener("click", () => { openSheet(false); askLocation(false); });
+sheet.querySelector("[data-sheet-no]").addEventListener("click", () => openSheet(false));
+sheet.addEventListener("click", (e) => { if (e.target === sheet) openSheet(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) openSheet(false); });
+longPress(visBtn, () => { if (vis.obs) askLocation(true); else openSheet(true); });
+visBtn.addEventListener("click", () => {
+  if (vis.obs) { setVis(!vis.on); return; }
+  openSheet(true); // first time: say what it does and why it needs the location, before the browser asks
 });
 try { if (vis.obs && localStorage.getItem(VIS_ON) === "1") setVis(true); } catch (e) {}
 
@@ -1306,16 +1388,18 @@ function layout() {
   // distance so that the globe has radius rPx
   const f = H / 2 / Math.tan(camera.fov * D2R / 2);
   const ang = Math.atan(rPx / f);
+  globeArea.rPx = rPx; globeArea.f = f;
   ctl.fitD = 1 / Math.sin(ang);
   if (!layout.done) { ctl.dist = ctl.tDist = ctl.fitD; layout.done = true; }
   ctl.maxD = ctl.fitD * 2.4;
   camera.updateProjectionMatrix();
-  globeArea = { cx: W / 2, cy, top, areaH };
+  globeArea = { cx: W / 2, cy, top, areaH, rPx, f };
   followBtn.style.top = (top + 8) + "px";
   followBtn.style.top = "auto";
   followBtn.style.bottom = (H - hudTop + 12) + "px";
   visBtn.style.top = "auto";
   visBtn.style.bottom = (H - hudTop + 12 + (followBtn.offsetHeight || 37) + 10) + "px";
+  pillEl.style.bottom = (H - hudTop + 12 + ((followBtn.offsetHeight || 37) - (pillEl.offsetHeight || 26)) / 2) + "px";
 }
 window.addEventListener("resize", layout);
 window.addEventListener("orientationchange", () => setTimeout(layout, 250));
@@ -1789,13 +1873,22 @@ function frame(now) {
       // glide onto the ship: the offset captured when follow starts shrinks to zero along an
       // ease-in-out curve over FOLLOW_EASE_MS, so the camera stays locked to the ship (centred at any
       // speed) while the leftover offset fades out smoothly
-      const wantLat = clamp(s.lat, -75, 75), wantLon = s.lon;
+      const sky = ctl.view === "sky" && vis.obs;
+      const wantLat = clamp(sky ? vis.obs.lat : s.lat, -75, 75), wantLon = sky ? vis.obs.lon : s.lon;
       if (!ctl.followOff) ctl.followOff = { lat: ctl.lat - wantLat, lon: wrapLon(ctl.lon - wantLon) };
       const u = clamp((performance.now() - ctl.followT) / FOLLOW_EASE_MS, 0, 1);
       const left = 1 - (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
       ctl.lat = wantLat + ctl.followOff.lat * left; ctl.lon = wrapLon(wantLon + ctl.followOff.lon * left);
       ctl.tLat = ctl.lat; ctl.tLon = ctl.lon;
     }
+  }
+  // view zoom: glide (same ease-in-out) to the view's distance, then track it as the altitude changes
+  ctl.hNow = s.alt;
+  if (ctl.follow && ctl.zoomAuto) {
+    const target = viewDist(ctl.view);
+    const u = clamp((performance.now() - ctl.zoomT) / FOLLOW_EASE_MS, 0, 1);
+    if (u < 1) { const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; ctl.tDist = ctl.dist = lerp(ctl.zoomFrom, target, e); }
+    else ctl.tDist = target;
   }
   const kz = 1 - Math.pow(0.0005, dt);
   ctl.dist += (ctl.tDist - ctl.dist) * kz;
@@ -1845,6 +1938,20 @@ function frame(now) {
   markerScreen.x = sx; markerScreen.y = sy; markerScreen.on = visible;
 
   visFrame(s, tr, camDir, dt);
+  window.__spacexCam = () => {
+    const v = new THREE.Vector3(), box = { minX: 1e9, maxX: -1e9, minY: 1e9, maxY: -1e9, front: 0, n: 0 };
+    const pos = vis.rings[0].line.geometry.attributes.position;
+    if (vis.obs) for (let k = 0; k < pos.count; k++) {
+      v.fromBufferAttribute(pos, k);
+      const f = v.clone().normalize().dot(camDir) > 1 / ctl.dist; v.project(camera);
+      const x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
+      box.minX = Math.min(box.minX, x); box.maxX = Math.max(box.maxX, x); box.minY = Math.min(box.minY, y); box.maxY = Math.max(box.maxY, y);
+      box.front += f ? 1 : 0; box.n++;
+    }
+    return { view: ctl.view, follow: ctl.follow, zoomAuto: ctl.zoomAuto, dist: ctl.dist, tDist: ctl.tDist, fitD: ctl.fitD, minD: ctl.minD,
+      lat: ctl.lat, lon: ctl.lon, ship: [s.lat, s.lon], obs: vis.obs, closeD: viewDist("close"), skyD: viewDist("sky"),
+      area: { cx: globeArea.cx, cy: globeArea.cy, rPx: globeArea.rPx, W, H }, ring0: box };
+  };
 
   // faint ring around the globe
   const c0 = new THREE.Vector3(0, 0, 0).project(camera);

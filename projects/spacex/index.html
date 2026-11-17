@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="preload" href="./fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="./spacex.css?v=sx3">
+  <link rel="stylesheet" href="./spacex.css?v=sx4">
 </head>
 <body>
   <canvas class="gl" data-gl aria-label="Interactive globe showing the SpaceX flight path"></canvas>
@@ -59,14 +59,28 @@
     <button class="info-other" type="button" data-other hidden></button>
   </aside>
 
-  <button class="follow is-on" type="button" data-follow aria-label="Follow the rocket" aria-pressed="true" title="Following the rocket">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><circle cx="12" cy="12" r="8" fill="none"></circle><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"></path></svg>
+  <button class="follow is-on" type="button" data-follow data-view="earth" aria-label="Camera view: Earth view. Tap for the next view, long-press to stop following" aria-pressed="true" title="Earth view · tap: next view · long-press: stop following">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <g data-ic="earth"><circle cx="12" cy="12" r="3.2"></circle><circle cx="12" cy="12" r="8" fill="none"></circle><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4" fill="none"></path></g>
+      <g data-ic="close"><circle cx="12" cy="12" r="3.2"></circle><circle cx="12" cy="12" r="6.4" fill="none"></circle><path d="M2.5 7.5v-5h5M16.5 2.5h5v5M21.5 16.5v5h-5M7.5 21.5h-5v-5" fill="none"></path></g>
+      <g data-ic="sky"><circle cx="12" cy="9.6" r="2.3"></circle><path d="M12 21.5s-6.6-6.3-6.6-11.6a6.6 6.6 0 0 1 13.2 0c0 5.3-6.6 11.6-6.6 11.6z" fill="none"></path></g>
+    </svg>
   </button>
+  <p class="view-pill" data-view-pill aria-live="polite"></p>
 
-  <button class="follow vis" type="button" data-vis aria-label="Show where the rocket is visible from you" aria-pressed="false" title="Visibility circle">
+  <button class="follow vis" type="button" data-vis aria-label="Can I see it from here? Shows where the rocket is above your horizon. Long-press to update your location" aria-pressed="false" title="Can I see it from here? · long-press: update location">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="5.6" fill="none"></circle><circle cx="12" cy="12" r="9.4" fill="none" stroke-dasharray="2.2 2.2"></circle></svg>
   </button>
   <div class="vis-layer" data-vis-layer aria-hidden="true" hidden><i class="vis-me" data-vis-me></i></div>
+
+  <div class="sheet" data-vis-sheet role="dialog" aria-modal="true" aria-labelledby="vis-sheet-t" hidden>
+    <div class="sheet-card">
+      <p class="sheet-t" id="vis-sheet-t">Can I see it from here?</p>
+      <p class="sheet-p">This draws a ring around your location: while the rocket is inside it, it is above your horizon. Zoom in for rings at 10–75° above the horizon and N, E, S, W.</p>
+      <p class="sheet-p">Your location is asked once and stays on this device only. It is never sent anywhere. Long-press the button to update it.</p>
+      <div class="sheet-b"><button type="button" data-sheet-no>Not now</button><button type="button" class="is-main" data-sheet-yes>Use my location</button></div>
+    </div>
+  </div>
 
   <section class="hud" data-hud>
     <div class="gauges">
@@ -126,7 +140,7 @@
   <p class="toast" data-toast hidden></p>
 
   <script src="./vendor/satellite.min.js"></script>
-  <script type="module" src="./spacex.js?v=sx3"></script>
+  <script type="module" src="./spacex.js?v=sx4"></script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
