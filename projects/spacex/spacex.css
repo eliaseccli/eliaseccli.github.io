@@ -219,8 +219,8 @@ html, body { touch-action: none; -webkit-text-size-adjust: 100%; text-size-adjus
 }
 .info p { margin: 0 0 0.28rem; line-height: 1.25; }
 .info-kind { color: var(--ink); font-weight: 600; letter-spacing: 0.2em; }
-.info-src { display: inline-flex; align-items: center; gap: 0.42rem; margin-top: 0.4rem !important; color: rgba(255,255,255,0.75); }
-.info-src .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.5); }
+.info-src { display: block; margin-top: 0.4rem !important; color: rgba(255,255,255,0.75); }
+.info-src .dot { display: inline-block; vertical-align: 0.08em; margin-right: 0.42rem; width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.5); }
 .info-src .dot.is-live { background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.9); }
 .info-other {
   pointer-events: auto;
