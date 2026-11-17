@@ -1409,7 +1409,7 @@ const el = {
   speed: $("[data-speed]"), alt: $("[data-alt]"),
   sign: $("[data-sign]"), clock: $("[data-clock]"), zone: $("[data-zone]"),
   mission: $("[data-mission]"), phase: $("[data-phase]"),
-  kind: $("[data-kind]"), net: $("[data-net]"), pad: $("[data-pad]"), src: $("[data-src]"), srcDot: $("[data-src-dot]"), other: $("[data-other]"),
+  kind: $("[data-kind]"), net: $("[data-net]"), pad: $("[data-pad]"), src: $("[data-src]"), other: $("[data-other]"),
   range: $("[data-range]"), ticks: $("[data-ticks]"), play: $("[data-play]"), playIcon: $("[data-play-icon]"), rate: $("[data-rate]"),
   now: $("[data-now]"), mode: $("[data-mode]"), marker: $("[data-marker]"), ring: $("[data-ring]"), ship: $("[data-ship]"), toast: $("[data-toast]")
 };
@@ -1816,7 +1816,6 @@ function setSource() {
   // away from Starbase the nominal plane is a guess from the pad, so say which
   const nomTxt = S.mission && S.mission.site_kind !== "starbase" ? "Nominal profile · " + Math.round(tr.incl) + "° · not live data" : "Nominal profile · not live data";
   el.src.textContent = tr.source === "celestrak" ? tr.sourceDetail : nomTxt;
-  el.srcDot.classList.toggle("is-live", tr.source === "celestrak");
 }
 
 function startTime(tParam, which) {
