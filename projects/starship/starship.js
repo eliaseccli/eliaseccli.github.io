@@ -811,6 +811,7 @@ let pinch0 = null, last = null, lastMoveT = 0, tapStart = null;
 // set once a second finger lands; the leftover finger of a pinch must not pan (or drop follow mode)
 let multiGesture = false;
 const markerScreen = { x: -1e4, y: -1e4, on: false };
+const FOLLOW_EASE_MS = 2200; // glide time onto the ship when follow turns on
 const MARKER_HIT = 38; // px, generous for fingers
 
 canvas.addEventListener("pointerdown", (e) => {
@@ -897,7 +898,7 @@ function degPerPx() {
 
 const followBtn = $("[data-follow]");
 function setFollow(on) {
-  if (on && !ctl.follow) ctl.followT = performance.now();
+  if (on && !ctl.follow) { ctl.followT = performance.now(); ctl.followOff = null; }
   ctl.follow = on;
   followBtn.hidden = false;
   followBtn.classList.toggle("is-on", on);
@@ -1299,11 +1300,14 @@ function frame(now) {
       const decay = Math.pow(0.9, dt * 60);
       ctl.vLon *= decay; ctl.vLat *= decay;
     } else if (ctl.follow) {
-      // ease onto the ship for ~0.8 s after follow turns on, then lock exactly so it stays centred at any speed
+      // glide onto the ship: the offset captured when follow starts shrinks to zero along an
+      // ease-in-out curve over FOLLOW_EASE_MS, so the camera stays locked to the ship (centred at any
+      // speed) while the leftover offset fades out smoothly
       const wantLat = clamp(s.lat, -75, 75), wantLon = s.lon;
-      const ramp = clamp((performance.now() - ctl.followT) / 800, 0, 1);
-      const k = Math.max(1 - Math.pow(0.0005, dt), ramp * ramp);
-      ctl.lat += (wantLat - ctl.lat) * k; ctl.lon += wrapLon(wantLon - ctl.lon) * k;
+      if (!ctl.followOff) ctl.followOff = { lat: ctl.lat - wantLat, lon: wrapLon(ctl.lon - wantLon) };
+      const u = clamp((performance.now() - ctl.followT) / FOLLOW_EASE_MS, 0, 1);
+      const left = 1 - (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
+      ctl.lat = wantLat + ctl.followOff.lat * left; ctl.lon = wrapLon(wantLon + ctl.followOff.lon * left);
       ctl.tLat = ctl.lat; ctl.tLon = ctl.lon;
     }
   }
