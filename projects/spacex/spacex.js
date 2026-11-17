@@ -1144,6 +1144,149 @@ function setFollow(on) {
 // the button toggles follow; turning it on also re-centres and resets the zoom
 followBtn.addEventListener("click", () => { if (ctl.follow) { setFollow(false); return; } setFollow(true); ctl.vLat = ctl.vLon = 0; ctl.tDist = ctl.fitD; });
 
+/* ---------------- visibility circle ----------------
+   Rings on the ground around the viewer: the ship (at its current altitude h)
+   stands e degrees above the viewer's horizon anywhere within the central
+   angle  lambda = acos(R / (R + h) * cos e) - e.  0° always; the higher rings
+   and N/E/S/W fade in as the camera zooms in. The location is asked once
+   (navigator.geolocation) and kept in localStorage, so toggles never ask again. */
+const VIS_KEY = "spacex.observer.v1", VIS_ON = "spacex.vis.v1";
+const VIS_RINGS = [ // elevation, zoom level where it fades in (0 = whole globe, 1 = closest)
+  { e: 0, z: -1 }, { e: 10, z: 0.12 }, { e: 20, z: 0.26 }, { e: 30, z: 0.38 }, { e: 45, z: 0.5 }, { e: 60, z: 0.62 }, { e: 75, z: 0.74 }
+];
+const VIS_SEG = 160, VIS_LIFT = 1.0018;
+const visBtn = $("[data-vis]"), visLayer = $("[data-vis-layer]"), visMe = $("[data-vis-me]"), visInfo = $("[data-vis-info]");
+const vis = { on: false, obs: null, asking: false, h: -1, rings: [], labels: [] };
+try { const o = JSON.parse(localStorage.getItem(VIS_KEY) || "null"); if (o && isFinite(o.lat) && isFinite(o.lon)) vis.obs = { lat: +o.lat, lon: +o.lon }; } catch (e) {}
+for (const r of VIS_RINGS) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(VIS_SEG * 3), 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  const line = new THREE.LineLoop(g, mat);
+  line.renderOrder = 3; line.frustumCulled = false; line.visible = false;
+  line.layers.set(1); // main view only, not the mini globe
+  scene.add(line);
+  const lab = document.createElement("span"); lab.textContent = r.e + "°";
+  visLayer.appendChild(lab);
+  vis.rings.push({ ...r, line, lab, lam: 0, a: 0 });
+}
+for (const [txt, brg] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]]) {
+  const lab = document.createElement("span"); lab.textContent = txt; lab.className = "is-dir";
+  visLayer.appendChild(lab);
+  vis.labels.push({ lab, brg, a: 0 });
+}
+// point at angular distance d (rad) and bearing b (rad) from (lat, lon) in degrees
+function destPoint(lat, lon, d, b) {
+  const p1 = lat * D2R, l1 = lon * D2R;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+  const l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return [p2 / D2R, wrapLon(l2 / D2R)];
+}
+const visLam = (h, e) => Math.max(0, Math.acos(clamp(R_E / (R_E + h) * Math.cos(e * D2R), -1, 1)) - e * D2R);
+function visRebuild(h) {
+  vis.h = h;
+  const v = new THREE.Vector3();
+  for (const r of vis.rings) {
+    r.lam = visLam(h, r.e);
+    const pos = r.line.geometry.attributes.position;
+    for (let k = 0; k < VIS_SEG; k++) {
+      const [la, lo] = destPoint(vis.obs.lat, vis.obs.lon, r.lam, k / VIS_SEG * 2 * Math.PI);
+      ll2v(la, lo, VIS_LIFT, v); pos.setXYZ(k, v.x, v.y, v.z);
+    }
+    pos.needsUpdate = true;
+  }
+}
+// elevation / azimuth of the ship seen from the viewer (spherical Earth)
+function visLook(s) {
+  const o = ll2v(vis.obs.lat, vis.obs.lon, R_E, new THREE.Vector3());
+  const p = ll2v(s.lat, s.lon, R_E + Math.max(s.alt, 0), new THREE.Vector3());
+  const up = o.clone().normalize(), d = p.sub(o);
+  const el = Math.asin(clamp(d.dot(up) / Math.max(d.length(), 1e-6), -1, 1)) / D2R;
+  const p1 = vis.obs.lat * D2R, p2 = s.lat * D2R, dl = (s.lon - vis.obs.lon) * D2R;
+  const az = (Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) / D2R + 360) % 360;
+  return { el, az };
+}
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+function setVis(on) {
+  vis.on = on && !!vis.obs;
+  visBtn.classList.toggle("is-on", vis.on);
+  visBtn.setAttribute("aria-pressed", vis.on ? "true" : "false");
+  visLayer.hidden = !vis.on;
+  visInfo.hidden = !vis.on;
+  if (!vis.on) for (const r of vis.rings) { r.line.visible = false; r.a = 0; }
+  vis.h = -1;
+  try { localStorage.setItem(VIS_ON, vis.on ? "1" : "0"); } catch (e) {}
+}
+visBtn.addEventListener("click", () => {
+  if (vis.obs) { setVis(!vis.on); return; }
+  if (vis.asking) return;
+  if (!navigator.geolocation) { toast("Location not available"); return; }
+  vis.asking = true; visBtn.classList.add("is-busy");
+  navigator.geolocation.getCurrentPosition((p) => {
+    vis.asking = false; visBtn.classList.remove("is-busy");
+    vis.obs = { lat: +p.coords.latitude.toFixed(3), lon: +p.coords.longitude.toFixed(3) }; // ~100 m is plenty
+    try { localStorage.setItem(VIS_KEY, JSON.stringify(vis.obs)); } catch (e) {}
+    setVis(true);
+  }, (err) => {
+    vis.asking = false; visBtn.classList.remove("is-busy");
+    toast(err && err.code === 1 ? "Location permission denied" : "Could not get your location");
+  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 });
+});
+try { if (vis.obs && localStorage.getItem(VIS_ON) === "1") setVis(true); } catch (e) {}
+
+// per frame, after the camera is set
+const visV = new THREE.Vector3(), visW = new THREE.Vector3();
+function visFrame(s, tr, camDirN, dt) {
+  if (!vis.on || !vis.obs) return;
+  // before liftoff / after landing the ship sits at ~0 km: use the orbit altitude instead
+  const h = s.alt > 40 ? s.alt : (tr.altCoast || 300);
+  if (Math.abs(h - vis.h) > 2) visRebuild(h);
+  const z = clamp((ctl.fitD - ctl.dist) / Math.max(ctl.fitD - ctl.minD, 1e-3), 0, 1);
+  const look = visLook({ lat: s.lat, lon: s.lon, alt: h });
+  const up = look.el >= 0;
+  const k = 1 - Math.pow(0.002, dt); // smooth fades, no popping
+  const lim = 1 / ctl.dist;
+  const toScreen = (la, lo, el2) => {
+    ll2v(la, lo, VIS_LIFT, visV);
+    const facing = visW.copy(visV).normalize().dot(camDirN);
+    visV.project(camera);
+    const x = (visV.x * 0.5 + 0.5) * W, y = (-visV.y * 0.5 + 0.5) * H;
+    const f = smooth(lim - 0.01, lim + 0.06, facing);
+    el2.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+    return f;
+  };
+  for (const r of vis.rings) {
+    const want = r.e === 0 ? (up ? 0.85 : 0.42) : 0.26 * smooth(r.z, r.z + 0.1, z);
+    r.a += (want - r.a) * k;
+    r.line.visible = r.a > 0.004 && r.lam > 0.0005;
+    r.line.material.opacity = r.a;
+    // degree label on the south-east side of its ring
+    const la = r.e === 0 ? 0.9 * smooth(0.05, 0.15, z) : r.a / 0.26;
+    if (la > 0.01 && r.lam > 0.0005) {
+      const [pla, plo] = destPoint(vis.obs.lat, vis.obs.lon, r.lam, 135 * D2R);
+      const f = toScreen(pla, plo, r.lab);
+      r.lab.style.opacity = (la * f).toFixed(3);
+    } else r.lab.style.opacity = "0";
+  }
+  const r0 = vis.rings[0], dA = 0.9 * smooth(0.04, 0.14, z);
+  for (const l of vis.labels) {
+    l.a += (dA - l.a) * k;
+    if (l.a > 0.01) {
+      const [pla, plo] = destPoint(vis.obs.lat, vis.obs.lon, r0.lam + 0.9 * D2R / Math.max(0.35, 1 - z * 0.6), l.brg * D2R);
+      l.lab.style.opacity = (l.a * toScreen(pla, plo, l.lab)).toFixed(3);
+    } else l.lab.style.opacity = "0";
+  }
+  visMe.style.opacity = toScreen(vis.obs.lat, vis.obs.lon, visMe).toFixed(3);
+  const txt = s.alt <= 40 ? "Your visibility circle · at " + Math.round(h) + " km" : up
+    ? "Visible from you · " + Math.round(look.el) + "° high, " + COMPASS[Math.round(look.az / 45) % 8]
+    : "Below your horizon";
+  if (visInfo.textContent !== txt) visInfo.textContent = txt;
+  visInfo.classList.toggle("is-up", up && s.alt > 40);
+  window.__spacexVis = () => ({ on: vis.on, obs: vis.obs, h, z, el: look.el, az: look.az, up,
+    rings: vis.rings.map((r) => ({ e: r.e, lamDeg: r.lam / D2R, a: +r.a.toFixed(3), label: +r.lab.style.opacity })),
+    dirs: vis.labels.map((l) => [l.lab.textContent, +l.lab.style.opacity]) });
+}
+
 /* ---------------- layout ---------------- */
 const hud = $("[data-hud]");
 const miniEl = $("[data-mini]");
@@ -1171,6 +1314,8 @@ function layout() {
   followBtn.style.top = (top + 8) + "px";
   followBtn.style.top = "auto";
   followBtn.style.bottom = (H - hudTop + 12) + "px";
+  visBtn.style.top = "auto";
+  visBtn.style.bottom = (H - hudTop + 12 + (followBtn.offsetHeight || 37) + 10) + "px";
 }
 window.addEventListener("resize", layout);
 window.addEventListener("orientationchange", () => setTimeout(layout, 250));
@@ -1698,6 +1843,8 @@ function frame(now) {
   el.marker.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0)`;
   el.marker.classList.toggle("is-behind", !visible);
   markerScreen.x = sx; markerScreen.y = sy; markerScreen.on = visible;
+
+  visFrame(s, tr, camDir, dt);
 
   // faint ring around the globe
   const c0 = new THREE.Vector3(0, 0, 0).project(camera);

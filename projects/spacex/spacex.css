@@ -259,6 +259,25 @@ html, body { touch-action: none; -webkit-text-size-adjust: 100%; text-size-adjus
 .follow.is-on svg * { stroke: #000; }
 .follow.is-on svg circle:first-child { fill: #000; }
 
+/* ---------- visibility circle ---------- */
+.follow.vis.is-busy { opacity: 0.55; }
+.info-vis { display: block; margin-top: 0.35rem !important; color: rgba(255,255,255,0.6); }
+.info-vis.is-up { color: #fff; }
+.vis-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+.vis-layer span {
+  position: absolute; left: 0; top: 0;
+  font-size: 0.56rem; letter-spacing: 0.12em; line-height: 1;
+  color: rgba(255,255,255,0.85);
+  text-shadow: 0 0 4px #000, 0 0 2px #000;
+  white-space: nowrap; will-change: transform, opacity; opacity: 0;
+}
+.vis-layer span.is-dir { font-size: 0.66rem; font-weight: 600; color: #fff; }
+.vis-me {
+  position: absolute; left: 0; top: 0; width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.6), 0 0 8px rgba(255,255,255,0.6);
+  will-change: transform, opacity;
+}
+
 /* ---------- HUD ---------- */
 .hud {
   position: fixed;
