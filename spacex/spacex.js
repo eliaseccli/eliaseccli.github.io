@@ -1645,15 +1645,12 @@ function buildTicks() {
 }
 
 /* ---------------- mission selection ----------------
-   Auto: the next SpaceX launch (any vehicle) when there is orbit data for it
-   (an accepted CelesTrak pre-launch set) or it is about to fly / flying;
-   otherwise the most recent flown SpaceX launch with catalogued orbit data,
-   labelled "Last flight", with a line counting down to the next launch.
-   Re-checked every 10 minutes, so the page switches over by itself once the
-   next launch has data. ?mission=next|latest forces one side. */
+   Auto (every open/refresh): the next SpaceX launch (any vehicle), or the one
+   flying right now; nominal orbit until CelesTrak has a pre-launch set. The
+   most recent flown launch ("Last flight") only when there is no next launch
+   or when tapped. Re-checked every 10 minutes for new data. ?mission=next|latest forces one side. */
 const LIVE_BEFORE = 3600, LIVE_AFTER = 3 * 3600; // s around T-0 that count as "flying now"
 const RECHECK_MS = 10 * 60 * 1000;
-const PICK_KEY = "spacex.pick.v1";
 const dataCache = new Map(); // launch -> Promise<ct | null>
 const lkey = (l) => (l ? (l.name || "") + "@" + l.net : "");
 const within = (p, ms) => ms === Infinity ? p : Promise.race([p, new Promise((r) => setTimeout(() => r(undefined), ms))]);
@@ -1729,16 +1726,10 @@ async function pickLaunch(waitMs) {
   if (!latest && prev.length) latest = prev[0];
   const tNext = next ? (now - new Date(next.net).getTime()) / 1000 : 0;
   const nextLive = !!next && tNext > -LIVE_BEFORE && tNext < LIVE_AFTER;
-  let auto = next && (nextCt || nextLive || !latest) ? "next" : "latest";
-  if (!next) auto = "latest";
+  // default is always the next launch, or the one flying right now (it stays in "upcoming"
+  // until LIVE_AFTER past T-0); "Last flight" only when there is no next launch or when tapped
+  const auto = next ? "next" : "latest";
   S.autoPick = auto;
-  // still waiting on CelesTrak: stay with what this device showed last time, if it is still a candidate
-  if (pending && S.which === "auto") {
-    let last = null;
-    try { last = localStorage.getItem(PICK_KEY); } catch (e) {}
-    const hit = last && prev.find((l) => lkey(l) === last);
-    if (hit && hit !== latest) { latest = hit; latestCt = null; auto = "latest"; S.autoPick = auto; }
-  }
   const which = S.which === "auto" ? auto : S.which;
   const chosen = which === "next" ? (next || latest) : (latest || next);
   const side = chosen === next ? "next" : "latest";
@@ -1758,7 +1749,6 @@ async function applyMission(tParam, waitMs = Infinity) {
 function showPick(p, tParam, keepTime) {
   const m = parseMission(p.chosen);
   S.mission = m; S.pick = p;
-  if (S.which === "auto" && !p.pending) { try { localStorage.setItem(PICK_KEY, lkey(p.chosen)); } catch (e) {} }
   el.kind.textContent = p.which === "next" ? "Next launch" + (m.status ? " · " + m.status : "") : "Last flight";
   el.mission.textContent = m.title;
   el.net.textContent = fmtNet(m);
