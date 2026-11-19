@@ -1346,7 +1346,10 @@ function visFrame(s, tr, camDirN, dt) {
   // sunlit? outside Earth's cylindrical shadow (sun direction is in the same Earth-fixed frame)
   const sp = ll2v(s.lat, s.lon, R_E + h, visW), sd = sp.dot(uSun.value);
   const lit = sd > 0 || Math.sqrt(Math.max(sp.lengthSq() - sd * sd, 0)) > R_E;
-  const shine = up && lit;
+  // your sky dark enough? sun at least 6° below your horizon (end of civil twilight, the usual ISS rule)
+  const sunEl = Math.asin(clamp(ll2v(vis.obs.lat, vis.obs.lon, 1, visW).dot(uSun.value), -1, 1)) / D2R;
+  const dark = sunEl <= -6;
+  const shine = up && lit && dark;
   const k = 1 - Math.pow(0.002, dt); // smooth fades, no popping
   const lim = 1 / ctl.dist;
   const toScreen = (la, lo, el2) => {
@@ -1383,11 +1386,12 @@ function visFrame(s, tr, camDirN, dt) {
   const where = Math.round(look.el) + "° high, " + COMPASS[Math.round(look.az / 45) % 8];
   const txt = s.alt <= 40 ? "Your visibility circle · at " + Math.round(h) + " km"
     : shine ? "Visible from you · " + where
-    : up ? "In Earth's shadow · " + where
+    : up && !lit ? "In Earth's shadow · " + where
+    : up ? "Sky too bright · " + where
     : "Below your horizon";
   if (visInfo.textContent !== txt) visInfo.textContent = txt;
   visInfo.classList.toggle("is-up", shine && s.alt > 40);
-  window.__spacexVis = () => ({ on: vis.on, obs: vis.obs, h, z, el: look.el, az: look.az, up, lit, shine,
+  window.__spacexVis = () => ({ on: vis.on, obs: vis.obs, h, z, el: look.el, az: look.az, up, lit, dark, sunEl, shine,
     rings: vis.rings.map((r) => ({ e: r.e, lamDeg: r.lam / D2R, a: +r.a.toFixed(3), label: +r.lab.style.opacity })),
     dirs: vis.labels.map((l) => [l.lab.textContent, +l.lab.style.opacity]) });
 }
