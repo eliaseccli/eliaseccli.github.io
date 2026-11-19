@@ -1343,6 +1343,10 @@ function visFrame(s, tr, camDirN, dt) {
   const z = clamp((ctl.fitD - ctl.dist) / Math.max(ctl.fitD - ctl.minD, 1e-3), 0, 1);
   const look = visLook({ lat: s.lat, lon: s.lon, alt: h });
   const up = look.el >= 0;
+  // sunlit? outside Earth's cylindrical shadow (sun direction is in the same Earth-fixed frame)
+  const sp = ll2v(s.lat, s.lon, R_E + h, visW), sd = sp.dot(uSun.value);
+  const lit = sd > 0 || Math.sqrt(Math.max(sp.lengthSq() - sd * sd, 0)) > R_E;
+  const shine = up && lit;
   const k = 1 - Math.pow(0.002, dt); // smooth fades, no popping
   const lim = 1 / ctl.dist;
   const toScreen = (la, lo, el2) => {
@@ -1355,7 +1359,7 @@ function visFrame(s, tr, camDirN, dt) {
     return f;
   };
   for (const r of vis.rings) {
-    const want = r.e === 0 ? (up ? 0.85 : 0.42) : 0.26 * smooth(r.z, r.z + 0.1, z);
+    const want = r.e === 0 ? (shine ? 0.85 : 0.42) : 0.26 * smooth(r.z, r.z + 0.1, z);
     r.a += (want - r.a) * k;
     r.line.visible = r.a > 0.004 && r.lam > 0.0005;
     r.line.material.opacity = r.a;
@@ -1376,12 +1380,14 @@ function visFrame(s, tr, camDirN, dt) {
     } else l.lab.style.opacity = "0";
   }
   visMe.style.opacity = toScreen(vis.obs.lat, vis.obs.lon, visMe).toFixed(3);
-  const txt = s.alt <= 40 ? "Your visibility circle · at " + Math.round(h) + " km" : up
-    ? "Visible from you · " + Math.round(look.el) + "° high, " + COMPASS[Math.round(look.az / 45) % 8]
+  const where = Math.round(look.el) + "° high, " + COMPASS[Math.round(look.az / 45) % 8];
+  const txt = s.alt <= 40 ? "Your visibility circle · at " + Math.round(h) + " km"
+    : shine ? "Visible from you · " + where
+    : up ? "In Earth's shadow · " + where
     : "Below your horizon";
   if (visInfo.textContent !== txt) visInfo.textContent = txt;
-  visInfo.classList.toggle("is-up", up && s.alt > 40);
-  window.__spacexVis = () => ({ on: vis.on, obs: vis.obs, h, z, el: look.el, az: look.az, up,
+  visInfo.classList.toggle("is-up", shine && s.alt > 40);
+  window.__spacexVis = () => ({ on: vis.on, obs: vis.obs, h, z, el: look.el, az: look.az, up, lit, shine,
     rings: vis.rings.map((r) => ({ e: r.e, lamDeg: r.lam / D2R, a: +r.a.toFixed(3), label: +r.lab.style.opacity })),
     dirs: vis.labels.map((l) => [l.lab.textContent, +l.lab.style.opacity]) });
 }
