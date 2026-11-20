@@ -422,8 +422,9 @@ canvas.drag { cursor: grabbing; }
 .tabs a:focus-visible { outline: 2px solid rgba(190, 220, 255, 0.7); outline-offset: 2px; }
 
 /* ---------- globe tab ---------- */
-body.is-globe { overflow: hidden; height: 100svh; height: 100dvh; overscroll-behavior: none; }
-body.is-globe .page { display: none; }
+html.is-globe body { overflow: hidden; height: 100svh; height: 100dvh; overscroll-behavior: none; }
+html.is-globe .page { display: none; }
+html:not(.is-globe) .globe { display: none; }
 .globe[hidden] { display: none; }
 .globe { position: fixed; inset: 0; z-index: 1; background: #000; }
 canvas.globe-gl {

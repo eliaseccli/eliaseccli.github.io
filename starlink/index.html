@@ -24,8 +24,14 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png?v=2">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-<link rel="stylesheet" href="./starlink.css?v=tl8">
+<link rel="stylesheet" href="./starlink.css?v=tl9">
+  <link rel="modulepreload" href="./globe.js?v=sg8">
+  <link rel="modulepreload" href="../spacex/globe-core.js?v=g1">
+  <link rel="modulepreload" href="../spacex/vendor/three.module.min.js">
+  <link rel="preload" href="../spacex/vendor/satellite.min.js" as="script">
   <script>
+    // Globe is the default view; #chart opens the Chart (old #globe links still work)
+    document.documentElement.classList.toggle("is-globe", location.hash !== "#chart");
     // shared Colors on/off for Chart and Globe (off = every satellite grey)
     (function () {
       var KEY = "starlink.colors.v1", subs = [];
@@ -79,10 +85,10 @@
     </ul>
   </nav>
   <div class="tabs" role="tablist" aria-label="View">
-    <a href="#chart" role="tab" data-tab="chart" aria-selected="true">Chart</a>
-    <a href="#globe" role="tab" data-tab="globe" aria-selected="false">Globe</a>
+    <a href="./" role="tab" data-tab="globe" aria-selected="true">Globe</a>
+    <a href="#chart" role="tab" data-tab="chart" aria-selected="false">Chart</a>
   </div>
-  <section class="globe" data-globe hidden aria-label="Globe of all Starlink satellites">
+  <section class="globe" data-globe aria-label="Globe of all Starlink satellites">
     <canvas class="globe-gl" data-globe-gl aria-label="Interactive globe showing every Starlink satellite in orbit"></canvas>
     <p class="globe-pick" data-globe-pick hidden aria-live="polite"></p>
     <div class="globe-hud" data-globe-hud>
@@ -722,15 +728,15 @@
       var globe = null, globeP = null;
       var sec = document.querySelector("[data-globe]");
       function apply() {
-        var g = location.hash === "#globe";
-        document.body.classList.toggle("is-globe", g);
+        var g = location.hash !== "#chart";
+        document.documentElement.classList.toggle("is-globe", g);
         sec.hidden = !g;
         document.querySelectorAll("[data-tab]").forEach(function (t) {
           t.setAttribute("aria-selected", (t.getAttribute("data-tab") === "globe") === g ? "true" : "false");
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg7").then(function (m) {
+            globeP = import("./globe.js?v=sg8").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
@@ -740,7 +746,7 @@
               return globe;
             });
           }
-          globeP.then(function (gl) { if (location.hash === "#globe") gl.show(); });
+          globeP.then(function (gl) { if (location.hash !== "#chart") gl.show(); });
         } else {
           if (globe) globe.hide();
           window.dispatchEvent(new Event("resize"));
@@ -749,8 +755,8 @@
       document.querySelectorAll("[data-tab]").forEach(function (t) {
         t.addEventListener("click", function (e) {
           e.preventDefault();
-          var want = t.getAttribute("data-tab") === "globe" ? "#globe" : "";
-          if (location.hash === want || (!want && !location.hash)) return;
+          var want = t.getAttribute("data-tab") === "chart" ? "#chart" : "";
+          if (location.hash === want) return;
           history.replaceState(null, "", want || location.pathname + location.search);
           apply();
         });
