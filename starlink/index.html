@@ -44,6 +44,25 @@
         sub: function (f) { subs.push(f); }
       };
     })();
+    // launch dates by NORAD id (ranges from ./launches.json); "" when unknown, never a guess
+    (function () {
+      var R = null, MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      fetch("./launches.json?v=l1").then(function (r) { return r.json(); }).then(function (j) { R = j.ranges || []; }, function () { R = []; });
+      window.StarlinkLaunch = function (norad) {
+        if (!R || !R.length) return "";
+        var lo = 0, hi = R.length - 1, n = +norad;
+        while (lo <= hi) {
+          var mid = (lo + hi) >> 1, r = R[mid];
+          if (n < r[0]) hi = mid - 1; else if (n > r[1]) lo = mid + 1;
+          else {
+            var p = String(r[2]).split("-");
+            if (p.length === 3) return "Launched " + (+p[2]) + " " + MON[+p[1] - 1] + " " + p[0];
+            return /^\d{4}$/.test(p[0]) ? "Launched " + p[0] : "";
+          }
+        }
+        return "";
+      };
+    })();
   </script>
 </head>
 <body>
@@ -119,7 +138,7 @@
     </div>
     </div>
   </main>
-  <script src="./timeline.js?v=9"></script>
+  <script src="./timeline.js?v=10"></script>
   <script>
     (function () {
       var nav = document.querySelector("[data-nav]");
@@ -406,7 +425,8 @@
         var sat = data.sats[i];
         var sh = data.shells.find(function (s) { return s.id === sat.s; });
         el.innerHTML = "<strong><a class=\"sat-link\" href=\"https://satellitemap.space/sat/" + sat.id + "\" target=\"_blank\" rel=\"noopener\">" + sat.name + "<span class=\"ext\" aria-hidden=\"true\">↗</span></a></strong>" +
-          sat.alt.toFixed(2) + " km · " + (sh ? String(sh.label).replace(/· raising$/, "· orbit raising") : sat.s) + " · NORAD " + sat.id;
+          sat.alt.toFixed(2) + " km · " + (sh ? String(sh.label).replace(/· raising$/, "· orbit raising") : sat.s) +
+          (window.StarlinkLaunch(sat.id) ? " · " + window.StarlinkLaunch(sat.id) : "");
       }
 
       function eventCss(e) {
@@ -710,7 +730,7 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg6").then(function (m) {
+            globeP = import("./globe.js?v=sg7").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set

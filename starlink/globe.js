@@ -358,7 +358,8 @@ export function mountGlobe(opts) {
       pickEl.dataset.id = String(ids[sel]);
       pickEl.innerHTML = `<strong><a class="sat-link" href="https://satellitemap.space/sat/${ids[sel]}" target="_blank" rel="noopener">${esc(names[sel])}<span class="ext" aria-hidden="true">↗</span></a></strong><span data-pick-info></span>`;
     }
-    pickEl.querySelector("[data-pick-info]").textContent = alt.toFixed(2) + " km · " + shells[satShell[sel]].label + " · NORAD " + ids[sel];
+    pickEl.querySelector("[data-pick-info]").textContent = alt.toFixed(2) + " km · " + shells[satShell[sel]].label +
+      (window.StarlinkLaunch && window.StarlinkLaunch(ids[sel]) ? " · " + window.StarlinkLaunch(ids[sel]) : "");
   }
 
   async function load() {
