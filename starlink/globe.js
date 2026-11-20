@@ -14,7 +14,6 @@ import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g1";
 const STEP = 10000;               // ms between SGP4 keyframes
 const MAX_AGE_D = 30;             // elements older than this: treat as gone
 const MIN_ALT = 150;              // km; below this it is re-entering
-const OFF_KEY = "starlink.globe.off.v2";
 const OPEN_KEY = "starlink.globe.open.v1";
 const GREY = "#a3abb8";
 const RAISING = "other";
@@ -204,8 +203,10 @@ export function mountGlobe(opts) {
 
   let names = [], ids = [], satShell = [], sel = -1;
   let N = 0, recs = [], P0, P1, PN, a0, a1, t0 = 0, t1 = 0, tN = 0, cursor = 0, points = null;
-  let shells = [], counts = [], off = new Set();
-  try { (JSON.parse(localStorage.getItem(OFF_KEY) || "[]") || []).forEach((k) => off.add(k)); } catch (e) { /* ignore */ }
+  let shells = [], counts = [];
+  // shell visibility is shared with the Chart (and the URL), see StarlinkShells in index.html
+  const SS = window.StarlinkShells;
+  const off = { has: (id) => !SS.isOn(id) };
 
   function propInto(arr, i, date, fallback) {
     let pv = null;
@@ -236,7 +237,6 @@ export function mountGlobe(opts) {
     metaEl.textContent = (shown === N ? fmt(N) + " Starlink satellites in orbit" : fmt(shown) + " of " + fmt(N) + " satellites shown") + " · " + dataNote;
     root.dataset.shown = String(shown);
     root.dataset.total = String(N);
-    try { localStorage.setItem(OFF_KEY, JSON.stringify([...off])); } catch (e) { /* ignore */ }
   }
   let dataNote = "";
 
@@ -274,10 +274,9 @@ export function mountGlobe(opts) {
     shellsEl.addEventListener("change", (e) => {
       const b = e.target;
       if (b.hasAttribute("data-colors")) { opts.setColors(b.checked); return; }
-      if (b.hasAttribute("data-gshell")) { const id = b.getAttribute("data-gshell"); b.checked ? off.delete(id) : off.add(id); }
-      else if (b.hasAttribute("data-ginc")) incOf(+b.getAttribute("data-ginc")).forEach((s) => (b.checked ? off.delete(s.id) : off.add(s.id)));
-      else if (b.hasAttribute("data-gall")) { if (b.checked) off.clear(); else shells.forEach((s) => off.add(s.id)); }
-      applyMask();
+      if (b.hasAttribute("data-gshell")) SS.set([b.getAttribute("data-gshell")], b.checked);
+      else if (b.hasAttribute("data-ginc")) SS.set(incOf(+b.getAttribute("data-ginc")).map((s) => s.id), b.checked);
+      else if (b.hasAttribute("data-gall")) SS.set(shells.map((s) => s.id), b.checked);
     });
     syncColors();
   }
@@ -331,8 +330,9 @@ export function mountGlobe(opts) {
   hi.frustumCulled = false; hi.renderOrder = 4; hi.visible = false;
   scene.add(hi);
   let pickT = 0;
-  function select(i) {
+  function select(i, quiet) {
     sel = i;
+    if (!quiet && window.StarlinkSel) window.StarlinkSel.set(i >= 0 ? ids[i] : null, i >= 0 ? names[i] : "");
     hi.visible = i >= 0;
     pickEl.hidden = i < 0;
     root.dataset.picked = i >= 0 ? String(ids[i]) : "";
@@ -419,6 +419,8 @@ export function mountGlobe(opts) {
     const fetched = gp.fetched ? new Date(gp.fetched) : null;
     dataNote = fetched ? "elements " + new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Vienna", day: "numeric", month: "short" }).format(fetched) + ", SGP4 live" : "SGP4 live";
     // drop empty shells from the chips (keeps the list honest when the chart file is newer or older)
+    SS.known(shells.map((s) => s.id));
+    SS.sub(() => applyMask());
     buildChips();
     applyMask();
     layout();
@@ -485,6 +487,22 @@ export function mountGlobe(opts) {
       if (!loaded) loaded = load().catch((e) => { metaEl.textContent = "Could not load satellites."; console.error(e); });
     },
     hide() { running = false; },
+    ready() { return loaded || Promise.resolve(); },
+    // adopt the shared selection (from the URL or the Chart); centre the globe on it
+    syncSel() {
+      const s = window.StarlinkSel ? window.StarlinkSel.get() : { id: null };
+      if (!N) return;
+      if (s.id == null) { if (sel >= 0) select(-1, true); return; }
+      const i = ids.indexOf(s.id);
+      if (i < 0) { if (sel >= 0) select(-1, true); return; }
+      if (!SS.isOn(shells[satShell[i]].id)) { if (sel >= 0) select(-1, true); return; }
+      select(i, true);
+      worldOf(i, wv);
+      const r = wv.length();
+      ctl.vLat = ctl.vLon = 0;
+      ctl.tLat = clamp(Math.asin(wv.y / r) / D2R, -75, 75);
+      ctl.tLon = Math.atan2(-wv.z, wv.x) / D2R;
+    },
     colors() { syncColors(); },
     debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0, sel: sel >= 0 ? { name: names[sel], id: ids[sel] } : null }; },
     pickAt(x, y) { return pickAt(x, y); },
