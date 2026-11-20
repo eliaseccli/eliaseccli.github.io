@@ -459,3 +459,14 @@ canvas.globe-gl:active { cursor: grabbing; }
 .globe-shells .g-top { padding-bottom: 0.15rem; }
 .chk.colors input { accent-color: #f97316; }
 html.sl-grey .swatch { background: #a3abb8 !important; }
+
+/* ---------- globe: tapped satellite ---------- */
+.globe-pick {
+  position: absolute;
+  top: calc(max(0.9rem, calc(env(safe-area-inset-top) + 0.55rem)) + 3rem);
+  left: max(1rem, env(safe-area-inset-left)); right: max(1rem, env(safe-area-inset-right));
+  margin: 0; color: var(--ink); font-size: 0.9rem; line-height: 1.4;
+  pointer-events: none; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+.globe-pick[hidden] { display: none; }
+.globe-pick strong { display: block; font-size: 1.05rem; margin-bottom: 0.1rem; }

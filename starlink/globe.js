@@ -94,7 +94,7 @@ export function mountGlobe(opts) {
   /* ---------- camera controls (drag / inertia / pinch / wheel, as on /spacex/) ---------- */
   const ctl = { lat: 25, lon: 15, tLat: 25, tLon: 15, dist: 3.6, tDist: 3.6, vLat: 0, vLon: 0, dragging: false, minD: 1.25, maxD: 9, fitD: 3.6 };
   const pointers = new Map();
-  let pinch0 = null, last = null, lastMoveT = 0, multi = false;
+  let pinch0 = null, last = null, lastMoveT = 0, multi = false, tap0 = null;
   const degPerPx = () => (ctl.dist - 1) / ctl.fitD * 120 / (canvas.clientHeight || 800) * 1.15 + 0.01;
   canvas.addEventListener("pointerdown", (e) => {
     canvas.setPointerCapture(e.pointerId);
@@ -103,10 +103,13 @@ export function mountGlobe(opts) {
     if (pointers.size >= 2) multi = true;
     if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), dist: ctl.tDist }; }
     last = { x: e.clientX, y: e.clientY, t: performance.now() };
+    if (pointers.size === 1) tap0 = { x: e.clientX, y: e.clientY, t: performance.now(), ok: true };
+    else if (tap0) tap0.ok = false;
   });
   canvas.addEventListener("pointermove", (e) => {
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tap0 && Math.hypot(e.clientX - tap0.x, e.clientY - tap0.y) > 8) tap0.ok = false;
     if (pointers.size >= 2 && pinch0) {
       const [a, b] = [...pointers.values()];
       ctl.tDist = clamp(pinch0.dist * pinch0.d / Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1), ctl.minD, ctl.maxD);
@@ -121,6 +124,13 @@ export function mountGlobe(opts) {
     last = { x: e.clientX, y: e.clientY, t: now }; lastMoveT = now;
   });
   function endPointer(e) {
+    // a short, still, one-finger tap picks the nearest satellite (or clears the pick)
+    if (e.type === "pointerup" && tap0 && tap0.ok && pointers.size === 1 && performance.now() - tap0.t < 600 &&
+        Math.hypot(e.clientX - tap0.x, e.clientY - tap0.y) < 10) {
+      ctl.vLat = ctl.vLon = 0; lastMoveT = 0;
+      select(pickAt(e.clientX, e.clientY));
+    }
+    if (pointers.size <= 1) tap0 = null;
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch0 = null;
     if (pointers.size === 0) {
@@ -192,6 +202,7 @@ export function mountGlobe(opts) {
       }`
   });
 
+  let names = [], ids = [], satShell = [], sel = -1;
   let N = 0, recs = [], P0, P1, PN, a0, a1, t0 = 0, t1 = 0, tN = 0, cursor = 0, points = null;
   let shells = [], counts = [], off = new Set();
   try { (JSON.parse(localStorage.getItem(OFF_KEY) || "[]") || []).forEach((k) => off.add(k)); } catch (e) { /* ignore */ }
@@ -277,6 +288,74 @@ export function mountGlobe(opts) {
     if (box) box.checked = on;
   }
 
+  /* ---------- tap a satellite (same info as the Chart tab) ---------- */
+  const pickEl = root.querySelector("[data-globe-pick]");
+  const PICK_PX = 28;
+  const wv = new THREE.Vector3(), pv3 = new THREE.Vector3();
+  // current scene-frame position of sat i (same math as the vertex shader)
+  function worldOf(i, out) {
+    const u = uni.u.value, g = uni.gmst.value, c = Math.cos(g), s = Math.sin(g), k = i * 3;
+    const x = P0[k] + (P1[k] - P0[k]) * u, y = P0[k + 1] + (P1[k + 1] - P0[k + 1]) * u, z = P0[k + 2] + (P1[k + 2] - P0[k + 2]) * u;
+    return out.set(x * c + y * s, z, -(-x * s + y * c));
+  }
+  function hiddenByEarth(w) {
+    const cam = camera.position, dx = w.x - cam.x, dy = w.y - cam.y, dz = w.z - cam.z, L = Math.hypot(dx, dy, dz);
+    const b = (cam.x * dx + cam.y * dy + cam.z * dz) / L, c = cam.lengthSq() - 1, disc = b * b - c;
+    if (disc <= 0) return false;
+    const t = -b - Math.sqrt(disc);
+    return t > 0 && t < L;
+  }
+  function pickAt(cx, cy) {
+    if (!N) return -1;
+    camera.updateMatrixWorld();
+    let best = -1, bd = PICK_PX * PICK_PX;
+    for (let i = 0; i < N; i++) {
+      if (uMask.value[satShell[i]] < 0.5) continue;
+      worldOf(i, wv);
+      pv3.copy(wv).project(camera);
+      if (pv3.z > 1) continue;
+      const sx = (pv3.x * 0.5 + 0.5) * W, sy = (-pv3.y * 0.5 + 0.5) * H, d = (sx - cx) * (sx - cx) + (sy - cy) * (sy - cy);
+      if (d < bd && !hiddenByEarth(wv)) { bd = d; best = i; }
+    }
+    return best;
+  }
+  const hiGeo = new THREE.BufferGeometry();
+  hiGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3), 3));
+  const hiMat = new THREE.ShaderMaterial({
+    uniforms: { size: { value: 22 * dpr } }, transparent: true, depthWrite: false, depthTest: true,
+    vertexShader: `uniform float size; void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_PointSize = size; }`,
+    fragmentShader: `void main(){ float r = length(gl_PointCoord - 0.5) * 2.0; float a = smoothstep(0.62, 0.72, r) * (1.0 - smoothstep(0.86, 0.96, r)) + (1.0 - smoothstep(0.18, 0.26, r));
+      if (a < 0.01) discard; gl_FragColor = vec4(1.0, 1.0, 1.0, a); }`
+  });
+  const hi = new THREE.Points(hiGeo, hiMat);
+  hi.frustumCulled = false; hi.renderOrder = 4; hi.visible = false;
+  scene.add(hi);
+  let pickT = 0;
+  function select(i) {
+    sel = i;
+    hi.visible = i >= 0;
+    pickEl.hidden = i < 0;
+    root.dataset.pick = i >= 0 ? String(ids[i]) : "";
+    pickT = 0;
+    updatePick(true);
+  }
+  function updatePick(force) {
+    if (sel < 0) return;
+    if (uMask.value[satShell[sel]] < 0.5) { select(-1); return; }
+    worldOf(sel, wv);
+    hiGeo.attributes.position.setXYZ(0, wv.x, wv.y, wv.z); hiGeo.attributes.position.needsUpdate = true;
+    const t = performance.now();
+    if (!force && t - pickT < 1000) return;
+    pickT = t;
+    let alt = wv.length() * R_E - R_E;
+    try {
+      const d = new Date(), q = window.satellite.propagate(recs[sel], d);
+      if (q && q.position) alt = window.satellite.eciToGeodetic(q.position, window.satellite.gstime(d)).height;
+    } catch (e) { /* keep spherical altitude */ }
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    pickEl.innerHTML = "<strong>" + esc(names[sel]) + "</strong>" + alt.toFixed(2) + " km · " + esc(shells[satShell[sel]].label) + " · NORAD " + ids[sel];
+  }
+
   async function load() {
     metaEl.textContent = "Loading satellites…";
     const [gp, sats] = await Promise.all([
@@ -287,8 +366,8 @@ export function mountGlobe(opts) {
     // shells: the chart's listed shells, plus one bucket for raising / lowering / unassigned
     const shellOf = new Map();
     const all = sats && sats.shells ? sats.shells : [];
-    shells = all.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, km: s.listed !== false ? s.km : null, color: s.listed !== false && s.km != null ? s.color : RAISING_COLOR }));
-    shells.push({ id: RAISING, inc: null, km: null, color: RAISING_COLOR });
+    shells = all.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, label: s.label || s.id, km: s.listed !== false ? s.km : null, color: s.listed !== false && s.km != null ? s.color : RAISING_COLOR }));
+    shells.push({ id: RAISING, label: "Other / deorbiting", inc: null, km: null, color: RAISING_COLOR });
     const idx = new Map(shells.map((s, i) => [s.id, i]));
     if (sats && sats.sats) sats.sats.forEach((r) => shellOf.set(r.id, r.s));
     counts = shells.map(() => 0);
@@ -309,10 +388,10 @@ export function mountGlobe(opts) {
       const p = pv && pv.position;
       if (!p || !isFinite(p.x) || Math.hypot(p.x, p.y, p.z) - R_E < MIN_ALT) { dropped++; continue; }
       const si = idx.has(shellOf.get(r[1])) ? idx.get(shellOf.get(r[1])) : idx.get(RAISING);
-      keep.push(rec); shIdx.push(si); counts[si]++;
+      keep.push(rec); shIdx.push(si); counts[si]++; names.push(String(r[0] || "")); ids.push(r[1]);
       tmp.set(shells[si].color); colors.push(tmp.r, tmp.g, tmp.b);
     }
-    recs = keep; N = recs.length;
+    recs = keep; N = recs.length; satShell = shIdx;
     P0 = new Float32Array(N * 3); P1 = new Float32Array(N * 3); PN = new Float32Array(N * 3);
     t0 = now; t1 = now + STEP;
     for (let i = 0; i < N; i++) { if (i % 1500 === 0) await idle(); propInto(P0, i, new Date(t0), null); }
@@ -387,6 +466,7 @@ export function mountGlobe(opts) {
     uni.gmst.value = window.satellite ? window.satellite.gstime(d) : 0;
     uni.u.value = t1 > t0 ? clamp((now - t0) / (t1 - t0), 0, 1.5) : 0;
     uni.size.value = dpr * clamp(1.9 * (ctl.fitD - 1) / Math.max(ctl.dist - 1, 0.05), 1.9, 5);
+    updatePick(false);
     renderer.render(scene, camera);
   }
 
@@ -400,6 +480,9 @@ export function mountGlobe(opts) {
     },
     hide() { running = false; },
     colors() { syncColors(); },
-    debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0 }; }
+    debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0, sel: sel >= 0 ? { name: names[sel], id: ids[sel] } : null }; },
+    pickAt(x, y) { return pickAt(x, y); },
+    selectAt(x, y) { select(pickAt(x, y)); return sel >= 0 ? ids[sel] : null; },
+    screenOf(i) { worldOf(i, wv); camera.updateMatrixWorld(); pv3.copy(wv).project(camera); return { x: (pv3.x * 0.5 + 0.5) * W, y: (-pv3.y * 0.5 + 0.5) * H, hidden: hiddenByEarth(wv), shellOn: uMask.value[satShell[i]] > 0.5 }; }
   };
 }
