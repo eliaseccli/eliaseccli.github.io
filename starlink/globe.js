@@ -255,14 +255,14 @@ export function mountGlobe(opts) {
       group.forEach((s) => {
         const i = shells.indexOf(s);
         html += `<label class="chk"><input type="checkbox" data-gshell="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.color)}"></span>` +
-          `${s.km != null ? s.km + " km" : "raising / lowering"} <em>${fmt(counts[i])} satellites</em></label>`;
+          `${s.km != null ? s.km + " km" : "orbit raising"} <em>${fmt(counts[i])} satellites</em></label>`;
       });
       html += `</div></details>`;
     });
     const oi = shells.findIndex((s) => s.id === RAISING);
     if (oi >= 0 && counts[oi]) {
       html += `<div class="g-other"><label class="chk"><input type="checkbox" data-gshell="${RAISING}" checked><span class="swatch" style="background:${RAISING_COLOR}"></span>` +
-        `Other / deorbiting <em>${fmt(counts[oi])} satellites</em></label></div>`;
+        `Orbit raising / deorbiting <em>${fmt(counts[oi])} satellites</em></label></div>`;
     }
     shellsEl.innerHTML = html;
     shellsEl.querySelectorAll("summary label").forEach((l) => l.addEventListener("click", (e) => e.stopPropagation()));
@@ -371,8 +371,8 @@ export function mountGlobe(opts) {
     // shells: the chart's listed shells, plus one bucket for raising / lowering / unassigned
     const shellOf = new Map();
     const all = sats && sats.shells ? sats.shells : [];
-    shells = all.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, label: s.label || s.id, km: s.listed !== false ? s.km : null, color: s.listed !== false && s.km != null ? s.color : RAISING_COLOR }));
-    shells.push({ id: RAISING, label: "Other / deorbiting", inc: null, km: null, color: RAISING_COLOR });
+    shells = all.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, label: String(s.label || s.id).replace(/· raising$/, "· orbit raising"), km: s.listed !== false ? s.km : null, color: s.listed !== false && s.km != null ? s.color : RAISING_COLOR }));
+    shells.push({ id: RAISING, label: "Orbit raising / deorbiting", inc: null, km: null, color: RAISING_COLOR });
     const idx = new Map(shells.map((s, i) => [s.id, i]));
     if (sats && sats.sats) sats.sats.forEach((r) => shellOf.set(r.id, r.s));
     counts = shells.map(() => 0);

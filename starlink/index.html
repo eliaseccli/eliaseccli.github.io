@@ -406,7 +406,7 @@
         var sat = data.sats[i];
         var sh = data.shells.find(function (s) { return s.id === sat.s; });
         el.innerHTML = "<strong><a class=\"sat-link\" href=\"https://satellitemap.space/sat/" + sat.id + "\" target=\"_blank\" rel=\"noopener\">" + sat.name + "<span class=\"ext\" aria-hidden=\"true\">↗</span></a></strong>" +
-          sat.alt.toFixed(2) + " km · " + (sh ? sh.label : sat.s) + " · NORAD " + sat.id;
+          sat.alt.toFixed(2) + " km · " + (sh ? String(sh.label).replace(/· raising$/, "· orbit raising") : sat.s) + " · NORAD " + sat.id;
       }
 
       function eventCss(e) {
@@ -588,6 +588,15 @@
               sh.km + " km <em>" + sh.n + " satellites</em>";
             heights.appendChild(lab);
           });
+          // satellites still raising (or lowering) in this inclination: last row, like on the Globe
+          shellsOf(inc).filter(function (sh) { return !isListed(sh) && sh.n > 0; }).forEach(function (sh) {
+            var lab = document.createElement("label");
+            lab.className = "chk";
+            lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
+              "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
+              "orbit raising <em>" + sh.n + " satellites</em>";
+            heights.appendChild(lab);
+          });
           det.appendChild(heights);
           root.appendChild(det);
         });
@@ -701,7 +710,7 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg5").then(function (m) {
+            globeP = import("./globe.js?v=sg6").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
