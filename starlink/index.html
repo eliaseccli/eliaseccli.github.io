@@ -24,7 +24,27 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png?v=2">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-<link rel="stylesheet" href="./starlink.css?v=tl5">
+<link rel="stylesheet" href="./starlink.css?v=tl6">
+  <script>
+    // shared Colors on/off for Chart and Globe (off = every satellite grey)
+    (function () {
+      var KEY = "starlink.colors.v1", subs = [];
+      var on = true;
+      try { on = localStorage.getItem(KEY) !== "0"; } catch (e) {}
+      document.documentElement.classList.toggle("sl-grey", !on);
+      window.StarlinkColors = {
+        GREY: "#a3abb8",
+        on: function () { return on; },
+        set: function (v) {
+          on = !!v;
+          try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e) {}
+          document.documentElement.classList.toggle("sl-grey", !on);
+          subs.forEach(function (f) { f(on); });
+        },
+        sub: function (f) { subs.push(f); }
+      };
+    })();
+  </script>
 </head>
 <body>
   <nav class="nav" data-nav>
@@ -85,7 +105,7 @@
       </div>
       <div class="side">
         <div class="filters" data-filters>
-          <label class="chk all"><input type="checkbox" data-all checked> All</label>
+          <div class="g-top"><label class="chk all"><input type="checkbox" data-all checked> All</label><label class="chk all colors"><input type="checkbox" data-colors checked> Colors</label></div>
         </div>
         <div class="hint">
           <p>Scroll or pinch to zoom. Drag to pan. Double-click to reset.</p>
@@ -98,7 +118,7 @@
     </div>
     </div>
   </main>
-  <script src="./timeline.js?v=7"></script>
+  <script src="./timeline.js?v=8"></script>
   <script>
     (function () {
       var nav = document.querySelector("[data-nav]");
@@ -233,6 +253,7 @@
         return "rgba(" + r + ", " + g + ", " + b + ", " + a.toFixed(3) + ")";
       }
       function colorOf(sid) {
+        if (!window.StarlinkColors.on()) return window.StarlinkColors.GREY;
         for (var i = 0; i < data.shells.length; i++) {
           if (data.shells[i].id === sid) return data.shells[i].color;
         }
@@ -607,6 +628,10 @@
         return !all || all.checked || all.indeterminate;
       }
 
+      var colorsBox = document.querySelector("[data-colors]");
+      colorsBox.checked = window.StarlinkColors.on();
+      colorsBox.addEventListener("change", function () { window.StarlinkColors.set(this.checked); });
+      window.StarlinkColors.sub(function (v) { colorsBox.checked = v; draw(); });
       var tl = null;
       if (window.StarlinkTimeline) {
         tl = window.StarlinkTimeline.mount({
@@ -675,8 +700,12 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg1").then(function (m) {
-              globe = m.mountGlobe({ root: sec, satsP: window.__starlinkSatsP });
+            globeP = import("./globe.js?v=sg2").then(function (m) {
+              globe = m.mountGlobe({
+                root: sec, satsP: window.__starlinkSatsP,
+                colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
+              });
+              window.StarlinkColors.sub(function () { globe.colors(); });
               window.__starlinkGlobe = globe;
               return globe;
             });

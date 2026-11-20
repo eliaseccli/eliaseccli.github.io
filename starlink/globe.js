@@ -14,8 +14,10 @@ import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g1";
 const STEP = 10000;               // ms between SGP4 keyframes
 const MAX_AGE_D = 30;             // elements older than this: treat as gone
 const MIN_ALT = 150;              // km; below this it is re-entering
-const OFF_KEY = "starlink.globe.off.v1";
-const RAISING = "x";
+const OFF_KEY = "starlink.globe.off.v2";
+const OPEN_KEY = "starlink.globe.open.v1";
+const GREY = "#a3abb8";
+const RAISING = "other";
 const RAISING_COLOR = "#8a94a6";
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -160,12 +162,12 @@ export function mountGlobe(opts) {
   /* ---------- satellites ---------- */
   const MAXSH = 32;
   const uMask = { value: new Float32Array(MAXSH).fill(1) };
-  const uni = { u: { value: 0 }, gmst: { value: 0 }, sun: uSun, size: { value: 2 * dpr }, mask: uMask };
+  const uni = { u: { value: 0 }, gmst: { value: 0 }, sun: uSun, size: { value: 2 * dpr }, mask: uMask, grey: { value: 0 }, greyCol: { value: new THREE.Color(GREY) } };
   const satMat = new THREE.ShaderMaterial({
     uniforms: uni, transparent: true, depthWrite: false, depthTest: true,
     vertexShader: `
       attribute vec3 p0; attribute vec3 p1; attribute vec3 tint; attribute float shell;
-      uniform float u; uniform float gmst; uniform vec3 sun; uniform float size; uniform float mask[${MAXSH}];
+      uniform float u; uniform float gmst; uniform vec3 sun; uniform float size; uniform float mask[${MAXSH}]; uniform float grey; uniform vec3 greyCol;
       varying vec3 vC; varying float vA;
       void main() {
         float on = mask[int(shell + 0.5)];
@@ -178,7 +180,8 @@ export function mountGlobe(opts) {
         float sd = dot(w, sn);
         float lit = (sd > 0.0 || length(w - sd * sn) > 1.0) ? 1.0 : 0.0;
         vA = mix(0.6, 1.0, lit);
-        vC = mix(tint * 0.7, tint, lit);
+        vec3 tc = mix(tint, greyCol, grey);
+        vC = mix(tc * 0.7, tc, lit);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(w, 1.0);
         gl_PointSize = size;
       }`,
@@ -204,55 +207,77 @@ export function mountGlobe(opts) {
     else if (fallback) { arr[i * 3] = fallback[i * 3]; arr[i * 3 + 1] = fallback[i * 3 + 1]; arr[i * 3 + 2] = fallback[i * 3 + 2]; }
   }
 
+  const INC_LABEL = { 43: "43°", 53: "53°", 70: "70°", 97: "97.6°" };
+  const fmt = (n) => n.toLocaleString("en-US");
+  const incOf = (inc) => shells.filter((s) => s.inc === inc && counts[shells.indexOf(s)] > 0);
+  let openIncs = new Set();
+  try { (JSON.parse(localStorage.getItem(OPEN_KEY) || "[]") || []).forEach((k) => openIncs.add(k)); } catch (e) { /* ignore */ }
+
   function applyMask() {
     shells.forEach((s, i) => { uMask.value[i] = off.has(s.id) ? 0 : 1; });
     let shown = 0;
     shells.forEach((s, i) => { if (!off.has(s.id)) shown += counts[i]; });
-    shellsEl.querySelectorAll("[data-sh]").forEach((b) => b.setAttribute("aria-pressed", off.has(b.getAttribute("data-sh")) ? "false" : "true"));
-    shellsEl.querySelectorAll("[data-inc]").forEach((b) => {
-      const ids = shells.filter((s) => String(s.inc) === b.getAttribute("data-inc") && s.id !== RAISING).map((s) => s.id);
+    shellsEl.querySelectorAll("[data-gshell]").forEach((b) => { b.checked = !off.has(b.getAttribute("data-gshell")); });
+    const tri = (box, ids) => {
       const n = ids.filter((id) => !off.has(id)).length;
-      b.setAttribute("aria-pressed", n === ids.length ? "true" : n ? "mixed" : "false");
-    });
-    const all = shellsEl.querySelector("[data-all]");
-    if (all) all.setAttribute("aria-pressed", off.size === 0 ? "true" : shown ? "mixed" : "false");
-    metaEl.textContent = (shown === N ? N.toLocaleString("en-US") + " Starlink satellites in orbit" : shown.toLocaleString("en-US") + " of " + N.toLocaleString("en-US") + " satellites shown") + " · " + dataNote;
+      box.checked = n === ids.length && n > 0; box.indeterminate = n > 0 && n < ids.length;
+    };
+    shellsEl.querySelectorAll("[data-ginc]").forEach((b) => tri(b, incOf(+b.getAttribute("data-ginc")).map((s) => s.id)));
+    const all = shellsEl.querySelector("[data-gall]");
+    if (all) tri(all, shells.filter((s, i) => counts[i] > 0).map((s) => s.id));
+    metaEl.textContent = (shown === N ? fmt(N) + " Starlink satellites in orbit" : fmt(shown) + " of " + fmt(N) + " satellites shown") + " · " + dataNote;
     root.dataset.shown = String(shown);
     root.dataset.total = String(N);
     try { localStorage.setItem(OFF_KEY, JSON.stringify([...off])); } catch (e) { /* ignore */ }
   }
   let dataNote = "";
 
+  // same pattern as the Chart tab: All, then one collapsible block per inclination
   function buildChips() {
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-    const incs = [...new Set(shells.filter((s) => s.id !== RAISING).map((s) => s.inc))];
-    let html = "";
+    const incs = [...new Set(shells.filter((s) => s.inc != null).map((s) => s.inc))];
+    let html = `<div class="g-top"><label class="chk all"><input type="checkbox" data-gall checked> All</label>` +
+      `<label class="chk all colors"><input type="checkbox" data-colors checked> Colors</label></div>`;
     incs.forEach((inc) => {
-      html += `<div class="gs-row"><button type="button" class="gs-inc" data-inc="${inc}" aria-pressed="true">${inc === 97 ? "97.6" : inc}°</button>`;
-      shells.forEach((s, i) => {
-        if (s.inc !== inc || s.id === RAISING) return;
-        html += `<button type="button" class="gs-chip" data-sh="${esc(s.id)}" aria-pressed="true" style="--c:${esc(s.color)}"><i></i>${s.km} km <em>${counts[i].toLocaleString("en-US")}</em></button>`;
+      const group = incOf(inc);
+      if (!group.length) return;
+      const n = group.reduce((a, s) => a + counts[shells.indexOf(s)], 0);
+      html += `<details class="inc-block" data-gdet="${inc}"${openIncs.has(String(inc)) ? " open" : ""}><summary>` +
+        `<label class="chk inc"><input type="checkbox" data-ginc="${inc}" checked> ${INC_LABEL[inc] || inc + "°"} <em>${fmt(n)} satellites</em></label></summary><div class="heights">`;
+      group.forEach((s) => {
+        const i = shells.indexOf(s);
+        html += `<label class="chk"><input type="checkbox" data-gshell="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.color)}"></span>` +
+          `${s.km != null ? s.km + " km" : "raising / lowering"} <em>${fmt(counts[i])} satellites</em></label>`;
       });
-      html += `</div>`;
+      html += `</div></details>`;
     });
-    const ri = shells.findIndex((s) => s.id === RAISING);
-    html += `<div class="gs-row"><button type="button" class="gs-inc" data-all aria-pressed="true">All</button>`;
-    if (ri >= 0) html += `<button type="button" class="gs-chip" data-sh="${RAISING}" aria-pressed="true" style="--c:${RAISING_COLOR}"><i></i>Raising / deorbiting <em>${counts[ri].toLocaleString("en-US")}</em></button>`;
-    html += `</div>`;
+    const oi = shells.findIndex((s) => s.id === RAISING);
+    if (oi >= 0 && counts[oi]) {
+      html += `<div class="g-other"><label class="chk"><input type="checkbox" data-gshell="${RAISING}" checked><span class="swatch" style="background:${RAISING_COLOR}"></span>` +
+        `Other / deorbiting <em>${fmt(counts[oi])} satellites</em></label></div>`;
+    }
     shellsEl.innerHTML = html;
-    shellsEl.addEventListener("click", (e) => {
-      const b = e.target.closest("button"); if (!b) return;
-      if (b.hasAttribute("data-sh")) { const id = b.getAttribute("data-sh"); off.has(id) ? off.delete(id) : off.add(id); }
-      else if (b.hasAttribute("data-inc")) {
-        const ids = shells.filter((s) => String(s.inc) === b.getAttribute("data-inc") && s.id !== RAISING).map((s) => s.id);
-        const allOn = ids.every((id) => !off.has(id));
-        ids.forEach((id) => (allOn ? off.add(id) : off.delete(id)));
-      } else if (b.hasAttribute("data-all")) {
-        if (off.size === 0) shells.forEach((s) => off.add(s.id)); else off.clear();
-      }
-      applyMask();
+    shellsEl.querySelectorAll("summary label").forEach((l) => l.addEventListener("click", (e) => e.stopPropagation()));
+    shellsEl.querySelectorAll("[data-gdet]").forEach((d) => d.addEventListener("toggle", () => {
+      d.open ? openIncs.add(d.getAttribute("data-gdet")) : openIncs.delete(d.getAttribute("data-gdet"));
+      try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openIncs])); } catch (e) { /* ignore */ }
       layout();
+    }));
+    shellsEl.addEventListener("change", (e) => {
+      const b = e.target;
+      if (b.hasAttribute("data-colors")) { opts.setColors(b.checked); return; }
+      if (b.hasAttribute("data-gshell")) { const id = b.getAttribute("data-gshell"); b.checked ? off.delete(id) : off.add(id); }
+      else if (b.hasAttribute("data-ginc")) incOf(+b.getAttribute("data-ginc")).forEach((s) => (b.checked ? off.delete(s.id) : off.add(s.id)));
+      else if (b.hasAttribute("data-gall")) { if (b.checked) off.clear(); else shells.forEach((s) => off.add(s.id)); }
+      applyMask();
     });
+    syncColors();
+  }
+  function syncColors() {
+    const on = opts.colorsOn();
+    uni.grey.value = on ? 0 : 1;
+    const box = shellsEl.querySelector("[data-colors]");
+    if (box) box.checked = on;
   }
 
   async function load() {
@@ -264,8 +289,8 @@ export function mountGlobe(opts) {
     ]);
     // shells: the chart's listed shells, plus one bucket for raising / lowering / unassigned
     const shellOf = new Map();
-    const listed = sats && sats.shells ? sats.shells.filter((s) => s.listed !== false && s.km != null) : [];
-    shells = listed.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, km: s.km, color: s.color }));
+    const all = sats && sats.shells ? sats.shells : [];
+    shells = all.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, km: s.listed !== false ? s.km : null, color: s.listed !== false && s.km != null ? s.color : RAISING_COLOR }));
     shells.push({ id: RAISING, inc: null, km: null, color: RAISING_COLOR });
     const idx = new Map(shells.map((s, i) => [s.id, i]));
     if (sats && sats.sats) sats.sats.forEach((r) => shellOf.set(r.id, r.s));
@@ -313,7 +338,6 @@ export function mountGlobe(opts) {
     dataNote = fetched ? "elements " + new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Vienna", day: "numeric", month: "short" }).format(fetched) + ", SGP4 live" : "SGP4 live";
     // drop empty shells from the chips (keeps the list honest when the chart file is newer or older)
     buildChips();
-    shellsEl.querySelectorAll("[data-sh]").forEach((b) => { const i = idx.get(b.getAttribute("data-sh")); if (i != null && !counts[i]) b.remove(); });
     applyMask();
     layout();
     root.dataset.ready = "1";
@@ -378,6 +402,7 @@ export function mountGlobe(opts) {
       if (!loaded) loaded = load().catch((e) => { metaEl.textContent = "Could not load satellites."; console.error(e); });
     },
     hide() { running = false; },
+    colors() { syncColors(); },
     debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0 }; }
   };
 }

@@ -5,6 +5,11 @@
 })(typeof self !== "undefined" ? self : this, function () {
   var INC_COLOR = { 43: "#34d399", 53: "#fb923c", 70: "#22d3ee", 97: "#8b5cf6" };
   var INC_OTHER = "#64748b";
+  function incHex(inc) {
+    var c = window.StarlinkColors;
+    if (c && !c.on()) return c.GREY;
+    return INC_COLOR[inc] || INC_OTHER;
+  }
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var MAGIC = "STLK";
   var PACK_ID = "w10sm";
@@ -547,7 +552,7 @@
           inc = sat ? sat.inc : 0;
           if (!incOn(inc)) continue;
           if (showPick && frame.slot[i] === selected) continue;
-          hex = INC_COLOR[inc] || INC_OTHER;
+          hex = incHex(inc);
           xy = toPix(frame.x[i], frame.y[i]);
           ctx.fillStyle = dim ? hexToRgba(hex, 0.3) : hex;
           ctx.strokeStyle = dim ? hexToRgba(hex, 0.3) : hex;
@@ -563,7 +568,7 @@
             sat = catalog && catalog.sats ? catalog.sats[frame.slot[i]] : null;
             inc = sat ? sat.inc : 0;
             if (!incOn(inc)) break;
-            hex = INC_COLOR[inc] || INC_OTHER;
+            hex = incHex(inc);
             xy = toPix(frame.x[i], frame.y[i]);
             ctx.fillStyle = hex;
             ctx.strokeStyle = hex;
