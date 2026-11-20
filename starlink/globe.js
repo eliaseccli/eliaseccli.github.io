@@ -162,12 +162,12 @@ export function mountGlobe(opts) {
   /* ---------- satellites ---------- */
   const MAXSH = 32;
   const uMask = { value: new Float32Array(MAXSH).fill(1) };
-  const uni = { u: { value: 0 }, gmst: { value: 0 }, sun: uSun, size: { value: 2 * dpr }, mask: uMask, grey: { value: 0 }, greyCol: { value: new THREE.Color(GREY) } };
+  const uni = { u: { value: 0 }, gmst: { value: 0 }, size: { value: 2 * dpr }, mask: uMask, grey: { value: 0 }, greyCol: { value: new THREE.Color(GREY) } };
   const satMat = new THREE.ShaderMaterial({
     uniforms: uni, transparent: true, depthWrite: false, depthTest: true,
     vertexShader: `
       attribute vec3 p0; attribute vec3 p1; attribute vec3 tint; attribute float shell;
-      uniform float u; uniform float gmst; uniform vec3 sun; uniform float size; uniform float mask[${MAXSH}]; uniform float grey; uniform vec3 greyCol;
+      uniform float u; uniform float gmst; uniform float size; uniform float mask[${MAXSH}]; uniform float grey; uniform vec3 greyCol;
       varying vec3 vC; varying float vA;
       void main() {
         float on = mask[int(shell + 0.5)];
@@ -176,12 +176,9 @@ export function mountGlobe(opts) {
         float c = cos(gmst), s = sin(gmst);
         vec3 f = vec3(e.x * c + e.y * s, -e.x * s + e.y * c, e.z); // Earth-fixed
         vec3 w = vec3(f.x, f.z, -f.y);                 // scene frame (see ll2v)
-        vec3 sn = normalize(sun);
-        float sd = dot(w, sn);
-        float lit = (sd > 0.0 || length(w - sd * sn) > 1.0) ? 1.0 : 0.0;
-        vA = mix(0.6, 1.0, lit);
-        vec3 tc = mix(tint, greyCol, grey);
-        vC = mix(tc * 0.7, tc, lit);
+        // always full brightness: no Earth-shadow or day/night dimming
+        vA = 1.0;
+        vC = mix(tint, greyCol, grey);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(w, 1.0);
         gl_PointSize = size;
       }`,
@@ -191,7 +188,7 @@ export function mountGlobe(opts) {
         vec2 q = gl_PointCoord - 0.5;
         float r = dot(q, q) * 4.0;
         if (r > 1.0) discard;
-        gl_FragColor = vec4(vC, vA * (1.0 - smoothstep(0.55, 1.0, r)));
+        gl_FragColor = vec4(pow(vC, vec3(1.0 / 2.2)), vA * (1.0 - smoothstep(0.7, 1.0, r))); // linear -> sRGB, unlit
       }`
   });
 
@@ -237,7 +234,7 @@ export function mountGlobe(opts) {
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const incs = [...new Set(shells.filter((s) => s.inc != null).map((s) => s.inc))];
     let html = `<div class="g-top"><label class="chk all"><input type="checkbox" data-gall checked> All</label>` +
-      `<label class="chk all colors"><input type="checkbox" data-colors checked> Colors</label></div>`;
+      `<label class="chk all colors"><input type="checkbox" data-colors> Colors</label></div>`;
     incs.forEach((inc) => {
       const group = incOf(inc);
       if (!group.length) return;

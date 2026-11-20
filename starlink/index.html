@@ -29,8 +29,8 @@
     // shared Colors on/off for Chart and Globe (off = every satellite grey)
     (function () {
       var KEY = "starlink.colors.v1", subs = [];
-      var on = true;
-      try { on = localStorage.getItem(KEY) !== "0"; } catch (e) {}
+      var on = false; // default: grey (no colors) unless the visitor turned colors on
+      try { on = localStorage.getItem(KEY) === "1"; } catch (e) {}
       document.documentElement.classList.toggle("sl-grey", !on);
       window.StarlinkColors = {
         GREY: "#a3abb8",
@@ -105,7 +105,7 @@
       </div>
       <div class="side">
         <div class="filters" data-filters>
-          <div class="g-top"><label class="chk all"><input type="checkbox" data-all checked> All</label><label class="chk all colors"><input type="checkbox" data-colors checked> Colors</label></div>
+          <div class="g-top"><label class="chk all"><input type="checkbox" data-all checked> All</label><label class="chk all colors"><input type="checkbox" data-colors> Colors</label></div>
         </div>
         <div class="hint">
           <p>Scroll or pinch to zoom. Drag to pan. Double-click to reset.</p>
@@ -700,7 +700,7 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg2").then(function (m) {
+            globeP = import("./globe.js?v=sg3").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
