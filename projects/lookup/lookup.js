@@ -15,24 +15,7 @@
   var FALLBACK = { lat: 47.3644, lon: 9.6916, altKm: 0.408, name: "Hohenems" };
   var DEG = Math.PI / 180;
 
-  var nav = document.querySelector("[data-nav]");
-  var btn = document.querySelector("[data-nav-btn]");
-  var list = document.getElementById("nav-list");
-  function setNav(open) {
-    nav.classList.toggle("is-open", open);
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-    list.hidden = !open;
-  }
-  btn.addEventListener("click", function (e) {
-    e.stopPropagation();
-    setNav(!nav.classList.contains("is-open"));
-  });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") setNav(false);
-  });
-  document.addEventListener("click", function (e) {
-    if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
-  });
+  var nav = document.querySelector("[data-nav]"); // menu itself: /nav.js
 
   var sky = document.querySelector("[data-sky]");
   var sctx = sky && sky.getContext("2d");

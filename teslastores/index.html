@@ -209,15 +209,9 @@
     <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
       <span></span><span></span><span></span>
     </button>
-    <ul class="nav-list" id="nav-list" hidden>
-      <li><a href="../">HOME</a></li>
-      <li><a href="./">Tesla-Stores</a></li>
-      <li><a href="../starlink/">Starlink</a></li>
-      <li><a href="../spacex/">SpaceX Launches</a></li>
-      <li><a href="../projects/">Projects</a></li>
-      <li><a href="../about/">About</a></li>
-    </ul>
+    <ul class="nav-list" id="nav-list" hidden></ul>
   </nav>
+  <script src="/nav.js?v=1" defer></script>
   <div id="map"></div>
   <div id="bar">
     <div id="bar-top">
@@ -232,28 +226,6 @@
   <script defer src="./vendor/leaflet.js"></script>
   <script defer src="./vendor/d3-delaunay.min.js"></script>
   <script defer src="./vendor/polygon-clipping.umd.min.js"></script>
-  <script>
-    (function () {
-      var nav = document.querySelector("[data-nav]");
-      var btn = document.querySelector("[data-nav-btn]");
-      var list = document.getElementById("nav-list");
-      function setNav(open) {
-        nav.classList.toggle("is-open", open);
-        btn.setAttribute("aria-expanded", open ? "true" : "false");
-        list.hidden = !open;
-      }
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        setNav(!nav.classList.contains("is-open"));
-      });
-      document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") setNav(false);
-      });
-      document.addEventListener("click", function (e) {
-        if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
-      });
-    })();
-  </script>
   <script type="module" src="./map.js?v=2"></script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>

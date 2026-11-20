@@ -1,22 +1,4 @@
 (function () {
-  var nav = document.querySelector("[data-nav]");
-  var btn = document.querySelector("[data-nav-btn]");
-  var list = document.getElementById("nav-list");
-  function setNav(open) {
-    nav.classList.toggle("is-open", open);
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-    list.hidden = !open;
-  }
-  btn.addEventListener("click", function (e) {
-    e.stopPropagation();
-    setNav(!nav.classList.contains("is-open"));
-  });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") setNav(false);
-  });
-  document.addEventListener("click", function (e) {
-    if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
-  });
 
   var canvas = document.querySelector(".stars");
   var ctx = canvas && canvas.getContext("2d");

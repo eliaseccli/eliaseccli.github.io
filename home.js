@@ -808,25 +808,7 @@
   requestAnimationFrame(idleWatch);
 
 
-  var nav = document.querySelector("[data-nav]");
-  var navBtn = document.querySelector("[data-nav-btn]");
-  var navList = document.getElementById("nav-list");
-  function setNav(open) {
-    if (!nav) return;
-    nav.classList.toggle("is-open", open);
-    if (navBtn) navBtn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (navList) navList.hidden = !open;
-  }
-  if (navBtn) {
-    navBtn.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      setNav(!nav.classList.contains("is-open"));
-    });
-  }
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") setNav(false);
-  });
+  // menu open/close: /nav.js
 
   window.addEventListener("pointermove", function (e) {
     noteAct();
@@ -834,7 +816,6 @@
   }, { passive: true });
   window.addEventListener("pointerdown", function (e) {
     noteAct();
-    if (nav && nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
     onPointer(e);
   }, { passive: true });
 

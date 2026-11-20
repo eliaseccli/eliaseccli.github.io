@@ -22,16 +22,6 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t
 // signed difference in (-180, 180]; JS % keeps the sign, so normalise twice
 const wrapLon = (l) => ((((l + 180) % 360) + 360) % 360) - 180;
 
-/* ---------------- nav (same as every inner page) ---------------- */
-(function () {
-  const nav = $("[data-nav]"), btn = $("[data-nav-btn]"), list = document.getElementById("nav-list");
-  if (!nav || !btn || !list) return;
-  const set = (open) => { nav.classList.toggle("is-open", open); btn.setAttribute("aria-expanded", open ? "true" : "false"); list.hidden = !open; };
-  btn.addEventListener("click", (e) => { e.stopPropagation(); set(!nav.classList.contains("is-open")); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") set(false); });
-  document.addEventListener("click", (e) => { if (nav.classList.contains("is-open") && !nav.contains(e.target)) set(false); });
-})();
-
 /* ---------------- data: Launch Library 2 ---------------- */
 const LL_HOSTS = ["https://ll.thespacedevs.com", "https://lldev.thespacedevs.com"];
 const LL_CACHE = "spacex.ll2.v1";

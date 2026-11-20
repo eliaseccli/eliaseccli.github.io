@@ -186,15 +186,9 @@
     <button class="nav-btn" type="button" data-nav-btn aria-expanded="false" aria-controls="nav-list" aria-label="Menu">
       <span></span><span></span><span></span>
     </button>
-    <ul class="nav-list" id="nav-list" hidden>
-      <li><a href="../">HOME</a></li>
-      <li><a href="../teslastores/">Tesla-Stores</a></li>
-      <li><a href="./">Starlink</a></li>
-      <li><a href="../spacex/">SpaceX Launches</a></li>
-      <li><a href="../projects/">Projects</a></li>
-      <li><a href="../about/">About</a></li>
-    </ul>
+    <ul class="nav-list" id="nav-list" hidden></ul>
   </nav>
+  <script src="/nav.js?v=1" defer></script>
   <div class="tabs" role="tablist" aria-label="View">
     <a href="./" role="tab" data-tab="globe" aria-selected="true">Globe</a>
     <a href="#chart" role="tab" data-tab="chart" aria-selected="false">Chart</a>
@@ -258,25 +252,6 @@
   <script src="./timeline.js?v=11"></script>
   <script>
     (function () {
-      var nav = document.querySelector("[data-nav]");
-      var btn = document.querySelector("[data-nav-btn]");
-      var list = document.getElementById("nav-list");
-      function setNav(open) {
-        nav.classList.toggle("is-open", open);
-        btn.setAttribute("aria-expanded", open ? "true" : "false");
-        list.hidden = !open;
-      }
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        setNav(!nav.classList.contains("is-open"));
-      });
-      document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") setNav(false);
-      });
-      document.addEventListener("click", function (e) {
-        if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
-      });
-
       var canvas = document.getElementById("c");
       var ctx = canvas.getContext("2d");
       function fitPlot() {
