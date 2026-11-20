@@ -335,7 +335,7 @@ export function mountGlobe(opts) {
     sel = i;
     hi.visible = i >= 0;
     pickEl.hidden = i < 0;
-    root.dataset.pick = i >= 0 ? String(ids[i]) : "";
+    root.dataset.picked = i >= 0 ? String(ids[i]) : "";
     pickT = 0;
     updatePick(true);
   }
@@ -353,7 +353,12 @@ export function mountGlobe(opts) {
       if (q && q.position) alt = window.satellite.eciToGeodetic(q.position, window.satellite.gstime(d)).height;
     } catch (e) { /* keep spherical altitude */ }
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-    pickEl.innerHTML = "<strong>" + esc(names[sel]) + "</strong>" + alt.toFixed(2) + " km · " + esc(shells[satShell[sel]].label) + " · NORAD " + ids[sel];
+    if (force || pickEl.dataset.id !== String(ids[sel])) {
+      // built once per selection so a tap on the link never lands on a re-rendered node
+      pickEl.dataset.id = String(ids[sel]);
+      pickEl.innerHTML = `<strong><a class="sat-link" href="https://satellitemap.space/sat/${ids[sel]}" target="_blank" rel="noopener">${esc(names[sel])}<span class="ext" aria-hidden="true">↗</span></a></strong><span data-pick-info></span>`;
+    }
+    pickEl.querySelector("[data-pick-info]").textContent = alt.toFixed(2) + " km · " + shells[satShell[sel]].label + " · NORAD " + ids[sel];
   }
 
   async function load() {

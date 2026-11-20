@@ -626,7 +626,7 @@
         return;
       }
       var lab = INC_COLOR[sat.inc] ? sat.inc + "\u00b0" : "other";
-      emitPick("<strong>" + sat.name + "</strong>" + lab, null);
+      emitPick("<strong><a class=\"sat-link\" href=\"https://satellitemap.space/sat/" + (sat.id | 0) + "\" target=\"_blank\" rel=\"noopener\">" + sat.name + "<span class=\"ext\" aria-hidden=\"true\">↗</span></a></strong>" + lab, null);
     }
 
     function pickAt(cssX, cssY) {

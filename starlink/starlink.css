@@ -470,3 +470,17 @@ html.sl-grey .swatch { background: #a3abb8 !important; }
 }
 .globe-pick[hidden] { display: none; }
 .globe-pick strong { display: block; font-size: 1.05rem; margin-bottom: 0.1rem; }
+
+/* ---------- satellite name -> satellitemap.space details ---------- */
+.sat-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.sat-link:hover, .sat-link:focus-visible { text-decoration-color: rgba(255, 255, 255, 0.85); }
+.sat-link .ext { display: inline-block; margin-left: 0.25em; font-size: 0.8em; color: var(--mute); text-decoration: none; }
