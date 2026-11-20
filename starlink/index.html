@@ -24,7 +24,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png?v=2">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-<link rel="stylesheet" href="./starlink.css?v=tl4">
+<link rel="stylesheet" href="./starlink.css?v=tl5">
 </head>
 <body>
   <nav class="nav" data-nav>
@@ -39,6 +39,17 @@
       <li><a href="../about/">About</a></li>
     </ul>
   </nav>
+  <div class="tabs" role="tablist" aria-label="View">
+    <a href="#chart" role="tab" data-tab="chart" aria-selected="true">Chart</a>
+    <a href="#globe" role="tab" data-tab="globe" aria-selected="false">Globe</a>
+  </div>
+  <section class="globe" data-globe hidden aria-label="Globe of all Starlink satellites">
+    <canvas class="globe-gl" data-globe-gl aria-label="Interactive globe showing every Starlink satellite in orbit"></canvas>
+    <div class="globe-hud" data-globe-hud>
+      <p class="globe-meta" data-globe-meta>Loading satellites…</p>
+      <div class="globe-shells" data-globe-shells></div>
+    </div>
+  </section>
   <main class="page">
     <div class="cluster">
     <header class="lead">
@@ -631,8 +642,10 @@
         });
       }
 
-      fetch("./sats.json", { cache: "no-store" })
-        .then(function (r) { return r.json(); })
+      var satsP = fetch("./sats.json", { cache: "no-store" })
+        .then(function (r) { return r.json(); });
+      window.__starlinkSatsP = satsP;
+      satsP
         .then(function (j) {
           data = j;
           buildShellStats();
@@ -647,6 +660,44 @@
         .catch(function () {
           document.querySelector("[data-meta]").textContent = "Sat list missing.";
         });
+    })();
+  </script>
+  <script>
+    (function () {
+      var globe = null, globeP = null;
+      var sec = document.querySelector("[data-globe]");
+      function apply() {
+        var g = location.hash === "#globe";
+        document.body.classList.toggle("is-globe", g);
+        sec.hidden = !g;
+        document.querySelectorAll("[data-tab]").forEach(function (t) {
+          t.setAttribute("aria-selected", (t.getAttribute("data-tab") === "globe") === g ? "true" : "false");
+        });
+        if (g) {
+          if (!globeP) {
+            globeP = import("./globe.js?v=sg1").then(function (m) {
+              globe = m.mountGlobe({ root: sec, satsP: window.__starlinkSatsP });
+              window.__starlinkGlobe = globe;
+              return globe;
+            });
+          }
+          globeP.then(function (gl) { if (location.hash === "#globe") gl.show(); });
+        } else {
+          if (globe) globe.hide();
+          window.dispatchEvent(new Event("resize"));
+        }
+      }
+      document.querySelectorAll("[data-tab]").forEach(function (t) {
+        t.addEventListener("click", function (e) {
+          e.preventDefault();
+          var want = t.getAttribute("data-tab") === "globe" ? "#globe" : "";
+          if (location.hash === want || (!want && !location.hash)) return;
+          history.replaceState(null, "", want || location.pathname + location.search);
+          apply();
+        });
+      });
+      window.addEventListener("hashchange", apply);
+      apply();
     })();
   </script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->

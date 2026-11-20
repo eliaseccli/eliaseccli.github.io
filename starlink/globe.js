@@ -1,0 +1,383 @@
+import * as THREE from "../spacex/vendor/three.module.min.js";
+import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g1";
+
+/* ============================================================
+   Starlink · globe tab
+   Same Earth as /spacex/ (shared globe-core.js). Every Starlink
+   in orbit from the daily Celestrak GP dump (./gp.json), SGP4 in
+   the browser. Shells come from ./sats.json (same as the chart).
+   SGP4 runs at keyframes 10 s apart (spread over frames); the
+   vertex shader blends the two keyframes and turns ECI into the
+   Earth-fixed frame, so the main thread stays nearly idle.
+   ============================================================ */
+
+const STEP = 10000;               // ms between SGP4 keyframes
+const MAX_AGE_D = 30;             // elements older than this: treat as gone
+const MIN_ALT = 150;              // km; below this it is re-entering
+const OFF_KEY = "starlink.globe.off.v1";
+const RAISING = "x";
+const RAISING_COLOR = "#8a94a6";
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const wrapLon = (l) => ((((l + 180) % 360) + 360) % 360) - 180;
+
+/* ---------- OMM row -> TLE (satellite.js 5 has no sgp4init export) ---------- */
+function checksum(line) {
+  let s = 0;
+  for (let i = 0; i < 68; i++) { const c = line.charAt(i); if (c === "-") s += 1; else if (c >= "0" && c <= "9") s += c.charCodeAt(0) - 48; }
+  return String(s % 10);
+}
+function put(arr, col, str) { const s = String(str); for (let i = 0; i < s.length && col - 1 + i < 68; i++) arr[col - 1 + i] = s.charAt(i); }
+function norad5(id) {
+  id |= 0;
+  if (id < 100000) return ("00000" + id).slice(-5);
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ", li = Math.floor(id / 10000) - 10;
+  if (li < 0 || li >= letters.length) return "99999";
+  return letters.charAt(li) + ("0000" + (id % 10000)).slice(-4);
+}
+function epochMs(iso) { let s = String(iso || "").trim(); if (!/[zZ]|[+-]\d\d:\d\d$/.test(s)) s += "Z"; return new Date(s).getTime(); }
+function epochField(ms) {
+  const d = new Date(ms), y = d.getUTCFullYear();
+  const doy = (ms - Date.UTC(y, 0, 1)) / 864e5 + 1, yy = y % 100, whole = Math.floor(doy);
+  return (yy < 10 ? "0" : "") + yy + ("00" + whole).slice(-3) + "." + (doy - whole).toFixed(8).slice(2);
+}
+function ndotField(n) { if (!n) return " .00000000"; let s = Math.abs(n).toFixed(8); if (s.charAt(0) === "0") s = s.slice(1); return ((n < 0 ? "-" : " ") + s).slice(0, 10); }
+function sci8(v) {
+  if (!v || !isFinite(v) || Math.abs(v) < 1e-16) return " 00000-0";
+  const a = Math.abs(v); let exp = Math.floor(Math.log10(a) + 1e-14) + 1, dg = Math.round(a / Math.pow(10, exp) * 1e5);
+  if (dg >= 100000) { dg = 10000; exp += 1; }
+  return (v < 0 ? "-" : " ") + ("00000" + dg).slice(-5) + (exp < 0 ? "-" : "+") + Math.abs(exp);
+}
+const ang8 = (d) => ("        " + ((((+d) % 360) + 360) % 360).toFixed(4)).slice(-8);
+function rowToSatrec(r, ep) {
+  const [, id, , mm, ecc, inc, raan, argp, ma, bstar, ndot] = r;
+  const a = new Array(68).fill(" "), b = new Array(68).fill(" "), cat = norad5(id);
+  put(a, 1, "1"); put(a, 3, cat); put(a, 8, "U"); put(a, 10, "00000A  "); put(a, 19, epochField(ep));
+  put(a, 34, ndotField(ndot)); put(a, 45, " 00000-0"); put(a, 54, sci8(bstar)); put(a, 63, "0"); put(a, 65, " 999");
+  put(b, 1, "2"); put(b, 3, cat); put(b, 9, ang8(inc)); put(b, 18, ang8(raan));
+  put(b, 27, ("0000000" + Math.round(Math.abs(ecc) * 1e7)).slice(-7)); put(b, 35, ang8(argp)); put(b, 44, ang8(ma));
+  put(b, 53, ("           " + Number(mm).toFixed(8)).slice(-11)); put(b, 64, "    0");
+  const l1 = a.join(""), l2 = b.join("");
+  const rec = window.satellite.twoline2satrec(l1 + checksum(l1), l2 + checksum(l2));
+  return rec && !rec.error ? rec : null;
+}
+
+function loadSatelliteJs() {
+  if (window.satellite) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "/spacex/vendor/satellite.min.js"; s.onload = () => res(); s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+const idle = () => new Promise((r) => setTimeout(r, 0));
+
+export function mountGlobe(opts) {
+  const root = opts.root;
+  const canvas = root.querySelector("[data-globe-gl]");
+  const metaEl = root.querySelector("[data-globe-meta]");
+  const shellsEl = root.querySelector("[data-globe-shells]");
+  const hud = root.querySelector("[data-globe-hud]");
+
+  /* ---------- scene (same globe as /spacex/) ---------- */
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+  renderer.setClearColor(0x000000, 1);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(dpr);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 200);
+  camera.layers.enable(1);
+  const { uSun } = addEarth(renderer, scene);
+
+  /* ---------- camera controls (drag / inertia / pinch / wheel, as on /spacex/) ---------- */
+  const ctl = { lat: 25, lon: 15, tLat: 25, tLon: 15, dist: 3.6, tDist: 3.6, vLat: 0, vLon: 0, dragging: false, minD: 1.25, maxD: 9, fitD: 3.6 };
+  const pointers = new Map();
+  let pinch0 = null, last = null, lastMoveT = 0, multi = false;
+  const degPerPx = () => (ctl.dist - 1) / ctl.fitD * 120 / (canvas.clientHeight || 800) * 1.15 + 0.01;
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    ctl.dragging = true; ctl.vLat = ctl.vLon = 0;
+    if (pointers.size >= 2) multi = true;
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), dist: ctl.tDist }; }
+    last = { x: e.clientX, y: e.clientY, t: performance.now() };
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size >= 2 && pinch0) {
+      const [a, b] = [...pointers.values()];
+      ctl.tDist = clamp(pinch0.dist * pinch0.d / Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1), ctl.minD, ctl.maxD);
+      return;
+    }
+    if (!last) return;
+    if (multi) { last = { x: e.clientX, y: e.clientY, t: performance.now() }; return; }
+    const dx = e.clientX - last.x, dy = e.clientY - last.y, now = performance.now(), dt = Math.max(now - last.t, 1), k = degPerPx();
+    ctl.tLon -= dx * k; ctl.tLat = clamp(ctl.tLat + dy * k, -85, 85);
+    ctl.lon = ctl.tLon; ctl.lat = ctl.tLat;
+    ctl.vLon = -dx * k / dt * 16; ctl.vLat = dy * k / dt * 16;
+    last = { x: e.clientX, y: e.clientY, t: now }; lastMoveT = now;
+  });
+  function endPointer(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch0 = null;
+    if (pointers.size === 0) {
+      ctl.dragging = false; multi = false;
+      if (performance.now() - lastMoveT > 80) ctl.vLat = ctl.vLon = 0;
+      last = null;
+    } else { const p = [...pointers.values()][0]; last = { x: p.x, y: p.y, t: performance.now() }; }
+  }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); ctl.tDist = clamp(ctl.tDist * Math.exp(e.deltaY * 0.0012), ctl.minD, ctl.maxD); }, { passive: false });
+  canvas.addEventListener("dblclick", () => { ctl.tDist = ctl.fitD; });
+
+  let W = 0, H = 0;
+  function layout() {
+    W = window.innerWidth; H = window.innerHeight;
+    if (!W || !H) return;
+    renderer.setSize(W, H, false);
+    const hr = hud.getBoundingClientRect();
+    const corner = hr.width && hr.width < W * 0.75; // landscape: HUD sits in the bottom-left corner
+    const hudTop = corner ? H : (hr.top || H);
+    const left = corner ? hr.right : 0;
+    const top = Math.min(64, H * 0.08);
+    const areaH = Math.max(hudTop - top, H * 0.35);
+    const cy = top + areaH / 2, cx = (left + W) / 2;
+    // leave room for the shells (orbits reach ~1.09 R_E)
+    const rPx = Math.min(areaH * 0.42, (W - left) * 0.43);
+    camera.aspect = W / H;
+    camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
+    const f = H / 2 / Math.tan(camera.fov * D2R / 2);
+    ctl.fitD = 1 / Math.sin(Math.atan(rPx / f));
+    if (!layout.done) { ctl.dist = ctl.tDist = ctl.fitD; layout.done = true; }
+    ctl.maxD = ctl.fitD * 2.4;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", () => { if (running) layout(); });
+  window.addEventListener("orientationchange", () => setTimeout(() => { if (running) layout(); }, 250));
+
+  /* ---------- satellites ---------- */
+  const MAXSH = 32;
+  const uMask = { value: new Float32Array(MAXSH).fill(1) };
+  const uni = { u: { value: 0 }, gmst: { value: 0 }, sun: uSun, size: { value: 2 * dpr }, mask: uMask };
+  const satMat = new THREE.ShaderMaterial({
+    uniforms: uni, transparent: true, depthWrite: false, depthTest: true,
+    vertexShader: `
+      attribute vec3 p0; attribute vec3 p1; attribute vec3 tint; attribute float shell;
+      uniform float u; uniform float gmst; uniform vec3 sun; uniform float size; uniform float mask[${MAXSH}];
+      varying vec3 vC; varying float vA;
+      void main() {
+        float on = mask[int(shell + 0.5)];
+        if (on < 0.5) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vA = 0.0; vC = vec3(0.0); return; }
+        vec3 e = mix(p0, p1, u);                       // TEME, Earth radii
+        float c = cos(gmst), s = sin(gmst);
+        vec3 f = vec3(e.x * c + e.y * s, -e.x * s + e.y * c, e.z); // Earth-fixed
+        vec3 w = vec3(f.x, f.z, -f.y);                 // scene frame (see ll2v)
+        vec3 sn = normalize(sun);
+        float sd = dot(w, sn);
+        float lit = (sd > 0.0 || length(w - sd * sn) > 1.0) ? 1.0 : 0.0;
+        vA = mix(0.6, 1.0, lit);
+        vC = mix(tint * 0.7, tint, lit);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(w, 1.0);
+        gl_PointSize = size;
+      }`,
+    fragmentShader: `
+      varying vec3 vC; varying float vA;
+      void main() {
+        vec2 q = gl_PointCoord - 0.5;
+        float r = dot(q, q) * 4.0;
+        if (r > 1.0) discard;
+        gl_FragColor = vec4(vC, vA * (1.0 - smoothstep(0.55, 1.0, r)));
+      }`
+  });
+
+  let N = 0, recs = [], P0, P1, PN, a0, a1, t0 = 0, t1 = 0, tN = 0, cursor = 0, points = null;
+  let shells = [], counts = [], off = new Set();
+  try { (JSON.parse(localStorage.getItem(OFF_KEY) || "[]") || []).forEach((k) => off.add(k)); } catch (e) { /* ignore */ }
+
+  function propInto(arr, i, date, fallback) {
+    let pv = null;
+    try { pv = window.satellite.propagate(recs[i], date); } catch (e) { pv = null; }
+    const p = pv && pv.position;
+    if (p && isFinite(p.x)) { arr[i * 3] = p.x / R_E; arr[i * 3 + 1] = p.y / R_E; arr[i * 3 + 2] = p.z / R_E; }
+    else if (fallback) { arr[i * 3] = fallback[i * 3]; arr[i * 3 + 1] = fallback[i * 3 + 1]; arr[i * 3 + 2] = fallback[i * 3 + 2]; }
+  }
+
+  function applyMask() {
+    shells.forEach((s, i) => { uMask.value[i] = off.has(s.id) ? 0 : 1; });
+    let shown = 0;
+    shells.forEach((s, i) => { if (!off.has(s.id)) shown += counts[i]; });
+    shellsEl.querySelectorAll("[data-sh]").forEach((b) => b.setAttribute("aria-pressed", off.has(b.getAttribute("data-sh")) ? "false" : "true"));
+    shellsEl.querySelectorAll("[data-inc]").forEach((b) => {
+      const ids = shells.filter((s) => String(s.inc) === b.getAttribute("data-inc") && s.id !== RAISING).map((s) => s.id);
+      const n = ids.filter((id) => !off.has(id)).length;
+      b.setAttribute("aria-pressed", n === ids.length ? "true" : n ? "mixed" : "false");
+    });
+    const all = shellsEl.querySelector("[data-all]");
+    if (all) all.setAttribute("aria-pressed", off.size === 0 ? "true" : shown ? "mixed" : "false");
+    metaEl.textContent = (shown === N ? N.toLocaleString("en-US") + " Starlink satellites in orbit" : shown.toLocaleString("en-US") + " of " + N.toLocaleString("en-US") + " satellites shown") + " · " + dataNote;
+    root.dataset.shown = String(shown);
+    root.dataset.total = String(N);
+    try { localStorage.setItem(OFF_KEY, JSON.stringify([...off])); } catch (e) { /* ignore */ }
+  }
+  let dataNote = "";
+
+  function buildChips() {
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const incs = [...new Set(shells.filter((s) => s.id !== RAISING).map((s) => s.inc))];
+    let html = "";
+    incs.forEach((inc) => {
+      html += `<div class="gs-row"><button type="button" class="gs-inc" data-inc="${inc}" aria-pressed="true">${inc === 97 ? "97.6" : inc}°</button>`;
+      shells.forEach((s, i) => {
+        if (s.inc !== inc || s.id === RAISING) return;
+        html += `<button type="button" class="gs-chip" data-sh="${esc(s.id)}" aria-pressed="true" style="--c:${esc(s.color)}"><i></i>${s.km} km <em>${counts[i].toLocaleString("en-US")}</em></button>`;
+      });
+      html += `</div>`;
+    });
+    const ri = shells.findIndex((s) => s.id === RAISING);
+    html += `<div class="gs-row"><button type="button" class="gs-inc" data-all aria-pressed="true">All</button>`;
+    if (ri >= 0) html += `<button type="button" class="gs-chip" data-sh="${RAISING}" aria-pressed="true" style="--c:${RAISING_COLOR}"><i></i>Raising / deorbiting <em>${counts[ri].toLocaleString("en-US")}</em></button>`;
+    html += `</div>`;
+    shellsEl.innerHTML = html;
+    shellsEl.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.hasAttribute("data-sh")) { const id = b.getAttribute("data-sh"); off.has(id) ? off.delete(id) : off.add(id); }
+      else if (b.hasAttribute("data-inc")) {
+        const ids = shells.filter((s) => String(s.inc) === b.getAttribute("data-inc") && s.id !== RAISING).map((s) => s.id);
+        const allOn = ids.every((id) => !off.has(id));
+        ids.forEach((id) => (allOn ? off.add(id) : off.delete(id)));
+      } else if (b.hasAttribute("data-all")) {
+        if (off.size === 0) shells.forEach((s) => off.add(s.id)); else off.clear();
+      }
+      applyMask();
+      layout();
+    });
+  }
+
+  async function load() {
+    metaEl.textContent = "Loading satellites…";
+    const [gp, sats] = await Promise.all([
+      fetch("./gp.json", { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error("gp " + r.status); return r.json(); }),
+      (opts.satsP || fetch("./sats.json", { cache: "no-cache" }).then((r) => r.json())).catch(() => null),
+      loadSatelliteJs()
+    ]);
+    // shells: the chart's listed shells, plus one bucket for raising / lowering / unassigned
+    const shellOf = new Map();
+    const listed = sats && sats.shells ? sats.shells.filter((s) => s.listed !== false && s.km != null) : [];
+    shells = listed.slice(0, MAXSH - 1).map((s) => ({ id: s.id, inc: s.inc, km: s.km, color: s.color }));
+    shells.push({ id: RAISING, inc: null, km: null, color: RAISING_COLOR });
+    const idx = new Map(shells.map((s, i) => [s.id, i]));
+    if (sats && sats.sats) sats.sats.forEach((r) => shellOf.set(r.id, r.s));
+    counts = shells.map(() => 0);
+
+    const now = Date.now(), nowD = new Date(now);
+    const rows = (gp.sats || []).filter((r) => Array.isArray(r) && r[11] !== "iss");
+    const keep = [], shIdx = [], colors = [];
+    const tmp = new THREE.Color();
+    let dropped = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (i % 400 === 0) await idle();
+      const r = rows[i], ep = epochMs(r[2]);
+      if (!isFinite(ep) || (now - ep) / 864e5 > MAX_AGE_D) { dropped++; continue; }
+      const rec = rowToSatrec(r, ep);
+      if (!rec) { dropped++; continue; }
+      let pv = null;
+      try { pv = window.satellite.propagate(rec, nowD); } catch (e) { pv = null; }
+      const p = pv && pv.position;
+      if (!p || !isFinite(p.x) || Math.hypot(p.x, p.y, p.z) - R_E < MIN_ALT) { dropped++; continue; }
+      const si = idx.has(shellOf.get(r[1])) ? idx.get(shellOf.get(r[1])) : idx.get(RAISING);
+      keep.push(rec); shIdx.push(si); counts[si]++;
+      tmp.set(shells[si].color); colors.push(tmp.r, tmp.g, tmp.b);
+    }
+    recs = keep; N = recs.length;
+    P0 = new Float32Array(N * 3); P1 = new Float32Array(N * 3); PN = new Float32Array(N * 3);
+    t0 = now; t1 = now + STEP;
+    for (let i = 0; i < N; i++) { if (i % 1500 === 0) await idle(); propInto(P0, i, new Date(t0), null); }
+    for (let i = 0; i < N; i++) { if (i % 1500 === 0) await idle(); propInto(P1, i, new Date(t1), P0); }
+    tN = t1 + STEP; cursor = 0;
+
+    const g = new THREE.BufferGeometry();
+    a0 = new THREE.BufferAttribute(P0, 3); a1 = new THREE.BufferAttribute(P1, 3);
+    a0.setUsage(THREE.DynamicDrawUsage); a1.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3)); // unused, keeps three happy
+    g.setAttribute("p0", a0); g.setAttribute("p1", a1);
+    g.setAttribute("tint", new THREE.BufferAttribute(new Float32Array(colors), 3));
+    g.setAttribute("shell", new THREE.BufferAttribute(new Float32Array(shIdx), 1));
+    points = new THREE.Points(g, satMat);
+    points.frustumCulled = false;
+    points.renderOrder = 3;
+    scene.add(points);
+
+    const fetched = gp.fetched ? new Date(gp.fetched) : null;
+    dataNote = fetched ? "elements " + new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Vienna", day: "numeric", month: "short" }).format(fetched) + ", SGP4 live" : "SGP4 live";
+    // drop empty shells from the chips (keeps the list honest when the chart file is newer or older)
+    buildChips();
+    shellsEl.querySelectorAll("[data-sh]").forEach((b) => { const i = idx.get(b.getAttribute("data-sh")); if (i != null && !counts[i]) b.remove(); });
+    applyMask();
+    layout();
+    root.dataset.ready = "1";
+  }
+
+  /* ---------- keyframe stepping ---------- */
+  function step(now, budgetMs) {
+    if (!N) return;
+    const until = performance.now() + budgetMs, dN = new Date(tN);
+    if (now >= t1 && cursor < N) budgetMs = 1e9; // late: finish now
+    while (cursor < N) {
+      propInto(PN, cursor, dN, P1); cursor++;
+      if ((cursor & 63) === 0 && budgetMs < 1e8 && performance.now() > until) break;
+    }
+    if (cursor >= N && now >= t1) {
+      P0.set(P1); P1.set(PN);
+      a0.needsUpdate = true; a1.needsUpdate = true;
+      t0 = t1; t1 = tN; tN = t1 + STEP; cursor = 0;
+      if (now >= t1) { // tab was in the background: resync everything
+        t0 = now; t1 = now + STEP; tN = t1 + STEP;
+        for (let i = 0; i < N; i++) propInto(P0, i, new Date(t0), P0);
+        for (let i = 0; i < N; i++) propInto(P1, i, new Date(t1), P0);
+        a0.needsUpdate = true; a1.needsUpdate = true;
+      }
+    }
+  }
+
+  let running = false, lastFrame = 0, loaded = null;
+  function frame(tms) {
+    if (!running) return;
+    requestAnimationFrame(frame);
+    const dt = Math.min((tms - (lastFrame || tms)) / 1000, 0.25); lastFrame = tms;
+    const now = Date.now();
+    step(now, 3);
+
+    if (!ctl.dragging && Math.abs(ctl.vLon) + Math.abs(ctl.vLat) > 0.001) {
+      ctl.tLon += ctl.vLon; ctl.tLat = clamp(ctl.tLat + ctl.vLat, -85, 85);
+      const decay = Math.pow(0.9, dt * 60); ctl.vLon *= decay; ctl.vLat *= decay;
+    }
+    const kz = 1 - Math.pow(0.0005, dt);
+    ctl.dist += (ctl.tDist - ctl.dist) * kz;
+    ctl.lat += (ctl.tLat - ctl.lat) * (ctl.dragging ? 1 : kz);
+    ctl.lon += wrapLon(ctl.tLon - ctl.lon) * (ctl.dragging ? 1 : kz);
+    ctl.lon = wrapLon(ctl.lon); ctl.tLon = ctl.lon + wrapLon(ctl.tLon - ctl.lon);
+    ll2v(ctl.lat, ctl.lon, ctl.dist, camera.position);
+    camera.up.set(0, 1, 0); camera.lookAt(0, 0, 0);
+
+    const d = new Date(now);
+    uSun.value.copy(sunDir(d));
+    uni.gmst.value = window.satellite ? window.satellite.gstime(d) : 0;
+    uni.u.value = t1 > t0 ? clamp((now - t0) / (t1 - t0), 0, 1.5) : 0;
+    uni.size.value = dpr * clamp(1.9 * (ctl.fitD - 1) / Math.max(ctl.dist - 1, 0.05), 1.9, 5);
+    renderer.render(scene, camera);
+  }
+
+  return {
+    show() {
+      if (running) return;
+      running = true; lastFrame = 0;
+      layout();
+      requestAnimationFrame(frame);
+      if (!loaded) loaded = load().catch((e) => { metaEl.textContent = "Could not load satellites."; console.error(e); });
+    },
+    hide() { running = false; },
+    debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0 }; }
+  };
+}
