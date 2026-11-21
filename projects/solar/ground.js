@@ -357,10 +357,10 @@ export class Ground {
   view(dir) {
     const l = this.toLocal(dir), half = (this.fov * Math.PI) / 360, el = Math.asin(Math.max(-1, Math.min(1, l[1])));
     let yaw = Math.atan2(l[0], -l[2]);
-    // a high Sun would sit right behind the title: nudge it off to the side
-    if (dir === this.sunW && el > half * 0.6) yaw += 0.5 * Math.atan(Math.tan(half) * this.camera.aspect);
+    // a high Sun (or Earth, from the Moon) would sit right behind the title: nudge it off to the side
+    if (el > half * 0.6) yaw += 0.5 * Math.atan(Math.tan(half) * this.camera.aspect);
     const pitch = this.cfg.gas ? Math.max(-0.03, Math.min(el - half * 0.35, half * 0.12))   // a sea of clouds fills the lower half
-      : el > 0 ? Math.max(0.04, Math.min(el - half * 0.35, half * (this.id === "moon" || this.ring ? 0.45 : 0.3))) : 0.06;
+      : el > 0 ? Math.max(0.04, Math.min(el - half * 0.35, half * (this.id === "moon" ? 0.85 : this.ring ? 0.45 : 0.3))) : 0.06;
     return [yaw, pitch];
   }
 
@@ -462,7 +462,7 @@ export class Ground {
       if (!bb.g.visible) continue;
       bb.g.position.set(o._dir[0] * S, o._dir[1] * S, o._dir[2] * S);
       bb.g.quaternion.copy(bb.it.spin.quaternion);
-      bb.g.scale.setScalar(S * Math.tan(ang));
+      bb.g.scale.setScalar(S * Math.tan(ang) * 1.8);   // like the Sun: drawn a bit larger than life so it reads
     }
     if (this.ring) {
       const S = 1000, sp = this.sys.byId[this.id].spin.quaternion;
