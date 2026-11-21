@@ -149,14 +149,14 @@ export function mountGlobe(opts) {
     if (!W || !H) return;
     renderer.setSize(W, H, false);
     const hr = hud.getBoundingClientRect();
-    const corner = hr.width && hr.width < W * 0.75; // landscape: HUD sits in the bottom-left corner
-    const hudTop = corner ? H : (hr.top || H);
-    const left = corner ? hr.right : 0;
-    const top = Math.min(64, H * 0.08);
+    const side = hr.width && hr.left > W * 0.4; // landscape: HUD is a column on the right
+    const hudTop = side ? H : (hr.top || H);
+    const right = side ? hr.left : W;
+    const top = side ? 0 : Math.min(64, H * 0.08);
     const areaH = Math.max(hudTop - top, H * 0.35);
-    const cy = top + areaH / 2, cx = (left + W) / 2;
+    const cy = top + areaH / 2, cx = right / 2;
     // leave room for the shells (orbits reach ~1.09 R_E)
-    const rPx = Math.min(areaH * 0.42, (W - left) * 0.43);
+    const rPx = Math.min(areaH * 0.42, right * 0.43);
     camera.aspect = W / H;
     camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
     const f = H / 2 / Math.tan(camera.fov * D2R / 2);

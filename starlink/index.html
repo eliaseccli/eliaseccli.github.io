@@ -26,8 +26,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
 
   <link rel="stylesheet" href="/nav.css?v=1">
-  <link rel="stylesheet" href="./starlink.css?v=nav1">
-  <link rel="modulepreload" href="./globe.js?v=sg9">
+  <link rel="stylesheet" href="./starlink.css?v=sg10">
+  <link rel="modulepreload" href="./globe.js?v=sg10">
   <link rel="modulepreload" href="../spacex/globe-core.js?v=g1">
   <link rel="modulepreload" href="../spacex/vendor/three.module.min.js">
   <link rel="preload" href="../spacex/vendor/satellite.min.js" as="script">
@@ -861,7 +861,7 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg9").then(function (m) {
+            globeP = import("./globe.js?v=sg10").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
