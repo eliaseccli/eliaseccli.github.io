@@ -168,10 +168,8 @@ html.is-scrubbing, body.is-scrubbing { overflow: hidden; touch-action: none; }
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
-body.is-timeline .heights { display: none; }
-body.is-timeline .inc-block > summary { pointer-events: none; }
-body.is-timeline .inc-block > summary::before { visibility: hidden; }
-body.is-timeline .inc-block > summary .chk.inc { pointer-events: auto; }
+body.is-timeline .heights, body.is-timeline .inc-toggle { display: none; }
+body.is-timeline .inc-row::before { visibility: hidden; }
 body.is-timeline .hint-today { display: none; }
 body:not(.is-timeline) .hint-timeline { display: none; }
 canvas {
@@ -249,22 +247,29 @@ canvas.drag { cursor: grabbing; }
   border-top: 1px solid rgba(255,255,255,0.06);
   padding: 0.15rem 0 0.2rem;
 }
-.inc-block > summary {
-  list-style: none;
-  cursor: pointer;
+/* row = arrow (drawn by ::before) + checkbox label; the expand button lies under the whole row, label on top */
+.inc-row {
+  position: relative;
   display: flex; align-items: center; gap: 0.35rem;
   padding: 0.28rem 0;
 }
-.inc-block > summary::-webkit-details-marker { display: none; }
-.inc-block > summary::before {
+.inc-row::before {
   content: "▸";
   color: rgba(255,255,255,0.55);
   width: 1.2em; flex-shrink: 0;
   font-size: 2.05rem;
   line-height: 0.9;
 }
-.inc-block[open] > summary::before { content: "▾"; }
-.inc-block .chk.inc { font-weight: 540; }
+.inc-block.is-open > .inc-row::before { content: "▾"; }
+.inc-toggle {
+  position: absolute; inset: 0; z-index: 0;
+  margin: 0; padding: 0; border: 0; border-radius: 0.4rem;
+  background: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.inc-toggle:focus-visible { outline: 2px solid rgba(190, 220, 255, 0.7); outline-offset: 2px; }
+.inc-block .chk.inc { position: relative; z-index: 1; font-weight: 540; }
+.heights[hidden] { display: none; }
 .heights {
   display: flex; flex-direction: column; gap: 0.18rem;
   padding: 0.1rem 0 0.35rem 1.7rem;
@@ -340,8 +345,8 @@ canvas.globe-gl:active { cursor: grabbing; }
 .globe-shells .chk input { width: 1.25em; height: 1.25em; }
 .globe-shells .chk em { font-size: 0.8rem; }
 .globe-shells .inc-block { border-top-color: rgba(255, 255, 255, 0.08); padding: 0; }
-.globe-shells .inc-block > summary { padding: 0.12rem 0; }
-.globe-shells .inc-block > summary::before { font-size: 1.6rem; }
+.globe-shells .inc-row { padding: 0.12rem 0; }
+.globe-shells .inc-row::before { font-size: 1.6rem; }
 .globe-shells .heights { padding: 0 0 0.25rem 1.5rem; gap: 0.08rem; }
 .globe-shells .g-other { border-top: 1px solid rgba(255, 255, 255, 0.08); padding: 0.2rem 0 0 1.5rem; }
 /* Landscape: the shells panel is a column right of the globe and scrolls on its own;

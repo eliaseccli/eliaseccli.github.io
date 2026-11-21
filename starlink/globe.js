@@ -250,14 +250,9 @@ export function mountGlobe(opts) {
       const group = incOf(inc);
       if (!group.length) return;
       const n = group.reduce((a, s) => a + counts[shells.indexOf(s)], 0);
-      html += `<details class="inc-block" data-gdet="${inc}"${openIncs.has(String(inc)) ? " open" : ""}><summary>` +
-        `<label class="chk inc"><input type="checkbox" data-ginc="${inc}" checked> ${INC_LABEL[inc] || inc + "°"} <em>${fmt(n)} satellites</em></label></summary><div class="heights">`;
-      group.forEach((s) => {
-        const i = shells.indexOf(s);
-        html += `<label class="chk"><input type="checkbox" data-gshell="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.color)}"></span>` +
-          `${s.km != null ? s.km + " km" : "orbit raising"} <em>${fmt(counts[i])} satellites</em></label>`;
-      });
-      html += `</div></details>`;
+      const rows = group.map((s) => `<label class="chk"><input type="checkbox" data-gshell="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.color)}"></span>` +
+        `${s.km != null ? s.km + " km" : "orbit raising"} <em>${fmt(counts[shells.indexOf(s)])} satellites</em></label>`).join("");
+      html += window.StarlinkIncBlock.html(inc, openIncs.has(String(inc)), `data-ginc="${inc}"`, INC_LABEL[inc] || inc + "°", fmt(n), rows);
     });
     const oi = shells.findIndex((s) => s.id === RAISING);
     if (oi >= 0 && counts[oi]) {
@@ -265,12 +260,11 @@ export function mountGlobe(opts) {
         `Orbit raising / deorbiting <em>${fmt(counts[oi])} satellites</em></label></div>`;
     }
     shellsEl.innerHTML = html;
-    shellsEl.querySelectorAll("summary label").forEach((l) => l.addEventListener("click", (e) => e.stopPropagation()));
-    shellsEl.querySelectorAll("[data-gdet]").forEach((d) => d.addEventListener("toggle", () => {
-      d.open ? openIncs.add(d.getAttribute("data-gdet")) : openIncs.delete(d.getAttribute("data-gdet"));
+    window.StarlinkIncBlock.bind(shellsEl, (inc, open) => {
+      open ? openIncs.add(inc) : openIncs.delete(inc);
       try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openIncs])); } catch (e) { /* ignore */ }
       layout();
-    }));
+    });
     shellsEl.addEventListener("change", (e) => {
       const b = e.target;
       if (b.hasAttribute("data-colors")) { opts.setColors(b.checked); return; }

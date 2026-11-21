@@ -24,8 +24,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
 
   <link rel="stylesheet" href="/nav.css?v=1">
-  <link rel="stylesheet" href="./starlink.css?v=sg10">
-  <link rel="modulepreload" href="./globe.js?v=sg11">
+  <link rel="stylesheet" href="./starlink.css?v=sg12">
+  <link rel="modulepreload" href="./globe.js?v=sg12">
   <link rel="modulepreload" href="../spacex/globe-core.js?v=g2">
   <link rel="modulepreload" href="/vendor/three.module.min.js">
   <link rel="preload" href="/vendor/satellite.min.js" as="script">
@@ -160,6 +160,28 @@
       }
       window.StarlinkWriteHash = writeHash;
     })();
+    // One inclination block for Chart and Globe: the expand button and the checkbox label sit side by side
+    // in one row (never nested). The button covers the row's empty space, so tapping the arrow or the
+    // blank part of the row expands; tapping the checkbox or its text toggles it.
+    window.StarlinkIncBlock = {
+      html: function (key, open, checkAttr, label, count, rows) {
+        return '<div class="inc-block' + (open ? " is-open" : "") + '" data-incblock="' + key + '">' +
+          '<div class="inc-row"><button type="button" class="inc-toggle" aria-expanded="' + !!open + '" aria-label="' + label + ' shells"></button>' +
+          '<label class="chk inc"><input type="checkbox" ' + checkAttr + " checked> " + label + " <em>" + count + " satellites</em></label></div>" +
+          '<div class="heights"' + (open ? "" : " hidden") + ">" + rows + "</div></div>";
+      },
+      bind: function (root, onToggle) {
+        root.addEventListener("click", function (e) {
+          var btn = e.target.closest && e.target.closest(".inc-toggle");
+          if (!btn || !root.contains(btn)) return;
+          var blk = btn.parentNode.parentNode, open = !blk.classList.contains("is-open");
+          blk.classList.toggle("is-open", open);
+          btn.setAttribute("aria-expanded", String(open));
+          blk.querySelector(".heights").hidden = !open;
+          if (onToggle) onToggle(blk.getAttribute("data-incblock"), open);
+        });
+      }
+    };
     // launch dates by NORAD id (ranges from ./launches.json); "" when unknown, never a guess
     (function () {
       var R = null, MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -622,40 +644,22 @@
         incOrder().forEach(function (inc) {
           var group = shellsOf(inc);
           var n = group.reduce(function (a, s) { return a + s.n; }, 0);
-          var det = document.createElement("details");
-          det.className = "inc-block";
-          if (inc === 53) det.open = true;
-          var sum = document.createElement("summary");
-          var incLab = document.createElement("label");
-          incLab.className = "chk inc";
-          incLab.innerHTML = "<input type=\"checkbox\" data-inc=\"" + inc + "\" checked> " +
-            (INC_LABEL[inc] || (inc + "°")) + " <em>" + n + " satellites</em>";
-          incLab.addEventListener("click", function (e) { e.stopPropagation(); });
-          sum.appendChild(incLab);
-          det.appendChild(sum);
-          var heights = document.createElement("div");
-          heights.className = "heights";
-          listedOf(inc).forEach(function (sh) {
-            var lab = document.createElement("label");
-            lab.className = "chk";
-            lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
+          var rows = listedOf(inc).map(function (sh) {
+            return "<label class=\"chk\"><input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
               "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
-              sh.km + " km <em>" + sh.n + " satellites</em>";
-            heights.appendChild(lab);
-          });
+              sh.km + " km <em>" + sh.n + " satellites</em></label>";
+          }).join("") +
           // satellites still raising (or lowering) in this inclination: last row, like on the Globe
-          shellsOf(inc).filter(function (sh) { return !isListed(sh) && sh.n > 0; }).forEach(function (sh) {
-            var lab = document.createElement("label");
-            lab.className = "chk";
-            lab.innerHTML = "<input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
+          shellsOf(inc).filter(function (sh) { return !isListed(sh) && sh.n > 0; }).map(function (sh) {
+            return "<label class=\"chk\"><input type=\"checkbox\" data-shell=\"" + sh.id + "\" checked>" +
               "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
-              "orbit raising <em>" + sh.n + " satellites</em>";
-            heights.appendChild(lab);
-          });
-          det.appendChild(heights);
-          root.appendChild(det);
+              "orbit raising <em>" + sh.n + " satellites</em></label>";
+          }).join("");
+          root.insertAdjacentHTML("beforeend", window.StarlinkIncBlock.html(inc, inc === 53, "data-inc=\"" + inc + "\"",
+            INC_LABEL[inc] || (inc + "°"), n, rows));
         });
 
+        window.StarlinkIncBlock.bind(root);
         root.querySelector("[data-all]").addEventListener("change", function () {
           setShellChecks(data.shells.map(function (s) { return s.id; }), this.checked);
           this.indeterminate = false;
@@ -800,7 +804,7 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg11").then(function (m) {
+            globeP = import("./globe.js?v=sg12").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
