@@ -1,6 +1,6 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { starfield } from "/spacex/globe-core.js?v=g3";
-import { bodyAxes } from "./bodies.js?v=2";
+import { bodyAxes } from "./bodies.js?v=3";
 
 /* The far-away sky: Milky Way panorama + stars, drawn around the camera
    (rotation only) before everything else. Shared by space and the ground. */

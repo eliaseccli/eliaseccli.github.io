@@ -1,9 +1,9 @@
 import * as THREE from "/vendor/three.module.min.js";
-import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } from "./bodies.js?v=2";
-import { System } from "./system.js?v=2";
-import { Sky } from "./sky.js?v=2";
-import { Ground } from "./ground.js?v=2";
-import { Cosmos } from "./cosmos.js?v=2";
+import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } from "./bodies.js?v=3";
+import { System } from "./system.js?v=3";
+import { Sky } from "./sky.js?v=3";
+import { Ground } from "./ground.js?v=3";
+import { Cosmos } from "./cosmos.js?v=3";
 
 /* ============================================================
    Solar system – app shell: renderer, camera rig (orbit / fly-to /
