@@ -326,11 +326,13 @@ export class Cosmos {
   }
 
   // camera direction for the Local Group: the Milky Way–Andromeda line runs along the long side of the screen
+  // looking at the Local Group: along the galactic pole as far as we can, so our galaxy shows as a spiral, not edge-on.
+  // Landscape: side-on to the line to Andromeda, so the two sit side by side. Portrait (narrow): from behind us,
+  // ~40° along that line, which foreshortens Andromeda's offset so it stays in frame below the title.
   lgView(portrait) {
-    const axis = M31.clone().normalize(), up = new THREE.Vector3(0, 1, 0);
-    if (!portrait) return new THREE.Vector3().crossVectors(axis, up).normalize().addScaledVector(up, 0.6).normalize();
-    const h = axis.clone().addScaledVector(up, -axis.y).normalize();       // the line's horizontal part
-    return up.multiplyScalar(Math.hypot(axis.x, axis.z)).addScaledVector(h, -axis.y).normalize();   // ⟂ the line, in its vertical plane
+    const axis = M31.clone().normalize(), { e3 } = this.galBasis();
+    const side = e3.clone().addScaledVector(axis, -e3.dot(axis)).normalize();
+    return portrait ? side.multiplyScalar(0.77).addScaledVector(axis, -0.64).normalize() : side;
   }
 
   galBasis() {
