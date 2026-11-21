@@ -259,7 +259,12 @@ function gameOver() {
   over = true; FL.length = 0; save();
   if (typeof document === "undefined") return;
   const el = $("[data-over]"); el.querySelector("b").textContent = LET[best]; el.hidden = false;
-  try { navigator.vibrate && navigator.vibrate([60, 40, 120]); } catch (e) {}
+  buzz([60, 40, 120]);
+}
+// haptics only after the first tap (browsers block and log vibrate() before any user gesture)
+function buzz(p) {
+  const ua = navigator.userActivation;
+  if (navigator.vibrate && (!ua || ua.hasBeenActive)) try { navigator.vibrate(p); } catch (e) {}
 }
 
 /* ---------- fresh game: a floating lattice of A's filling the lower 3/4 ---------- */
@@ -300,7 +305,7 @@ function audio() {
 }
 function plop(L, combo, many) {
   const t0 = performance.now();
-  if (navigator.vibrate && t0 - lastVib > 70) { lastVib = t0; try { navigator.vibrate(L > 8 ? [14, 30, 10] : 8 + L); } catch (e) {} }
+  if (t0 - lastVib > 70) { lastVib = t0; buzz(L > 8 ? [14, 30, 10] : 8 + L); }
   if (!AC || muted || t0 - lastSnd < 28) return; lastSnd = t0;
   const t = AC.currentTime, semi = Math.min(12, combo - 1);
   const f0 = 980 * Math.pow(0.9, L) * Math.pow(2, semi / 12);
