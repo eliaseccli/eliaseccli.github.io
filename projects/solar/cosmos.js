@@ -34,7 +34,7 @@ const SMC = V(radec2w(13.187, -72.829, 2.0e5));
 const VIRGO = V(radec2w(187.7059, 12.3911, 5.35e7));
 const FORNAX = V(radec2w(54.62, -35.45, 6.2e7));
 const GA = V(gal2w(307, 9, 2.5e8));          // Great Attractor, heart of Laniakea
-const LG = M31.clone().multiplyScalar(0.42);
+const LG = M31.clone().multiplyScalar(0.5);   // halfway to Andromeda: both fit on screen
 
 const T = (en, de) => ({ en, de });
 export const LAYERS = [
@@ -110,6 +110,12 @@ function bv2rgb(bv) {
   return [r, g, b];
 }
 
+// spiral arms (shared by the painted disc and the 3D sparkle): radius as a fraction of the texture, about 300° of winding
+const ARM = { wind: 2.2, tmax: 2.45, pitch: 0.3 };
+const armR = (t) => 0.085 * Math.exp(ARM.pitch * t * ARM.wind);
+// texture angle of the Sun: 26,000 ly out (t ≈ 1.42 → arm angle ≈ 3.12) and a little behind an arm, like the Orion spur
+const MW_ROT = 3.3;
+
 function galaxyTexture(seed, opts = {}) {
   const N = 1024, c = document.createElement("canvas"); c.width = c.height = N;
   const g = c.getContext("2d"), r = rng(seed), cx = N / 2;
@@ -127,29 +133,34 @@ function galaxyTexture(seed, opts = {}) {
   // a bar
   for (let k = 0; k < 160; k++) { const t = (r() - 0.5) * 2, w = gauss(r) * 0.02; blob(cx + t * N * 0.11 + w * N, cx + t * N * 0.05 * (opts.bar || 1) + gauss(r) * N * 0.012, N * 0.03, "255,210,150", 0.06); }
   // arms: logarithmic spirals, trailing; bright blue knots + pink nebulae + dust
-  const arms = opts.arms || 4, pitch = 0.22;
+  const arms = opts.arms || 4;
   for (let a = 0; a < arms; a++) {
-    const off = (a / arms) * Math.PI * 2 + (r() - 0.5) * 0.3, strong = a % 2 === 0 ? 1 : 0.65;
-    for (let k = 0; k < 2600; k++) {
-      const t = Math.pow(r(), 0.8) * 3.4, rad = N * 0.085 * Math.exp(pitch * t * 2.2);
+    const off = (a / arms) * Math.PI * 2 + (r() - 0.5) * 0.3, strong = a % 2 === 0 ? 1 : 0.6;
+    for (let k = 0; k < 3200; k++) {
+      const t = Math.pow(r(), 0.85) * ARM.tmax, rad = N * armR(t);
       if (rad > N * 0.47) continue;
-      const th = off + t * 2.2 + gauss(r) * 0.12, jitter = gauss(r) * N * 0.018 * (0.5 + t * 0.3);
-      const x = cx + Math.cos(th) * rad + jitter, y = cx + Math.sin(th) * rad + gauss(r) * N * 0.018;
+      const spread = N * 0.016 * (0.6 + t * 0.35);
+      const th = off + t * ARM.wind + gauss(r) * 0.06, x = cx + Math.cos(th) * rad + gauss(r) * spread, y = cx + Math.sin(th) * rad + gauss(r) * spread;
       const pick = r();
-      if (pick < 0.08) blob(x, y, 3 + r() * 6, "255,140,190", 0.35 * strong);
-      else if (pick < 0.5) blob(x, y, 2 + r() * 5, "190,215,255", 0.5 * strong);
-      else blob(x, y, 8 + r() * 20, "150,175,235", 0.07 * strong);
+      if (pick < 0.06) blob(x, y, 2 + r() * 5, "255,140,190", 0.4 * strong);
+      else if (pick < 0.46) blob(x, y, 1.5 + r() * 3.5, "200,222,255", 0.4 * strong);
+      else blob(x, y, 10 + r() * 26, "140,165,230", 0.05 * strong);
     }
   }
+  // a faint sea of old stars between the arms
+  for (let k = 0; k < 2500; k++) { const rad = Math.abs(gauss(r)) * N * 0.17, th = r() * 6.283; blob(cx + Math.cos(th) * rad, cx + Math.sin(th) * rad, 1 + r() * 2.5, "255,235,210", 0.25); }
   // dust lanes (darken)
   g.globalCompositeOperation = "multiply";
+  // thin, soft lanes on the inner edge of each arm
   for (let a = 0; a < arms; a++) {
-    const off = (a / arms) * Math.PI * 2 - 0.18;
-    for (let k = 0; k < 600; k++) {
-      const t = r() * 3.2, rad = N * 0.085 * Math.exp(pitch * t * 2.2);
-      if (rad > N * 0.45) continue;
-      const th = off + t * 2.2 + gauss(r) * 0.05, x = cx + Math.cos(th) * rad, y = cx + Math.sin(th) * rad, s = 4 + r() * 9;
-      g.fillStyle = "rgba(150,130,120,0.22)"; g.beginPath(); g.arc(x, y, s, 0, 7); g.fill();
+    const off = (a / arms) * Math.PI * 2 - 0.14;
+    for (let k = 0; k < 1400; k++) {
+      const t = 0.15 + r() * (ARM.tmax - 0.3), rad = N * armR(t);
+      if (rad > N * 0.44) continue;
+      const th = off + t * ARM.wind + gauss(r) * 0.025, x = cx + Math.cos(th) * rad, y = cx + Math.sin(th) * rad, s = 3 + r() * 6;
+      const gr = g.createRadialGradient(x, y, 0, x, y, s);
+      gr.addColorStop(0, "rgba(130,110,100,0.13)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = gr; g.fillRect(x - s, y - s, s * 2, s * 2);
     }
   }
   // fade the square's edge
@@ -351,7 +362,7 @@ export class Cosmos {
     const tex = galaxyTexture(7, { arms: 4 });
     this.mwTex = tex;
     // the texture's +x points from the centre towards the Sun's side: put the Sun on an arm edge (Orion spur)
-    const rot = 2.55, X = e1.clone().multiplyScalar(-Math.cos(rot)).addScaledVector(e2, -Math.sin(rot)), Y = new THREE.Vector3().crossVectors(e3, X);
+    const rot = MW_ROT, X = e1.clone().multiplyScalar(-Math.cos(rot)).addScaledVector(e2, -Math.sin(rot)), Y = new THREE.Vector3().crossVectors(e3, X);
     this.add(grp, this.galaxyMesh(tex, 120000, GC, X, Y, 1));
     // 3D sparkle: stars sampled along the same arms, a thin disc and a fat bulge
     const n = this.low ? 14000 : 32000, pts = this.points(n, { minPx: 0.7, maxPx: 3.5 }), a = pts.geometry.attributes, r = rng(5);
@@ -361,9 +372,9 @@ export class Cosmos {
         const rr = Math.abs(gauss(r)) * 3500; const u = r() * 2 - 1, th = r() * 6.283, q = Math.sqrt(1 - u * u);
         x = rr * q * Math.cos(th); y = rr * q * Math.sin(th) * 1.0; z = rr * u * 0.55; c = [1, 0.82, 0.6];
       } else {
-        const arm = Math.floor(r() * 4), t = Math.pow(r(), 0.8) * 3.4, rad = 60000 * 0.085 * 2 * Math.exp(0.22 * t * 2.2) * (1 + gauss(r) * 0.06);
+        const arm = Math.floor(r() * 4), t = Math.pow(r(), 0.85) * ARM.tmax, rad = 120000 * armR(t) * (1 + gauss(r) * 0.06);
         if (rad > 56000) { k--; continue; }
-        const th = (arm / 4) * Math.PI * 2 + t * 2.2 + gauss(r) * 0.14;
+        const th = (arm / 4) * Math.PI * 2 + t * ARM.wind + gauss(r) * 0.08;
         x = Math.cos(th) * rad; y = Math.sin(th) * rad; z = gauss(r) * 400; c = r() < 0.1 ? [1, 0.6, 0.75] : [0.72, 0.82, 1];
       }
       // texture space (x,y) -> world, same orientation as the textured disc
@@ -379,7 +390,6 @@ export class Cosmos {
       card: { name: T("Sagittarius A*", "Sagittarius A*"), scale: T("26,000 light-years away", "26.000 Lichtjahre entfernt"),
         kid: T("In the very middle of our galaxy sits a giant black hole. It's so heavy that nothing – not even light – can escape it.", "Ganz in der Mitte unserer Galaxie sitzt ein riesiges Schwarzes Loch. Es ist so schwer, dass nichts entkommt – nicht einmal Licht."),
         fun: T("It weighs as much as 4 million Suns, and astronomers took its photo in 2022.", "Es wiegt so viel wie 4 Millionen Sonnen, und 2022 haben Astronomen ein Foto davon gemacht.") } });
-    this.label("mw", GC.clone().addScaledVector(X, -40000), [4.5, 5.9], { name: LBY.mw.name, big: true });
   }
 
   build_lg(grp) {
@@ -424,7 +434,7 @@ export class Cosmos {
     this.add(grp, pts);
     // the Milky Way itself, seen from outside (only once the galaxy layer has faded)
     const { e1, e2, e3 } = this.galBasis();
-    const rot = 2.55, X = e1.clone().multiplyScalar(-Math.cos(rot)).addScaledVector(e2, -Math.sin(rot)), Y = new THREE.Vector3().crossVectors(e3, X);
+    const rot = MW_ROT, X = e1.clone().multiplyScalar(-Math.cos(rot)).addScaledVector(e2, -Math.sin(rot)), Y = new THREE.Vector3().crossVectors(e3, X);
     this.add(grp, this.galaxyMesh(tex, 120000, GC, X, Y, 1));
     const card = (en, de, s, kid) => ({ name: T(en, de), scale: s, kid });
     this.label("lg", M31, [5.7, 7.5], { name: T("Andromeda", "Andromeda"), card: card("Andromeda Galaxy", "Andromeda-Galaxie", T("2.5 million light-years", "2,5 Millionen Lichtjahre"), LBY.lg.kid) });
@@ -433,7 +443,6 @@ export class Cosmos {
     const MC = T("A small galaxy that circles our Milky Way. From the southern half of Earth you can see it at night as a faint cloud.", "Eine kleine Galaxie, die um unsere Milchstraße kreist. Von der Südhalbkugel sieht man sie nachts als blasse Wolke.");
     this.label("lg", LMC, [5.1, 6.4], { name: T("Large Magellanic Cloud", "Große Magellansche Wolke"), card: card("Large Magellanic Cloud", "Große Magellansche Wolke", T("160,000 light-years", "160.000 Lichtjahre"), MC) });
     this.label("lg", SMC, [5.3, 6.3], { name: T("Small Magellanic Cloud", "Kleine Magellansche Wolke"), card: card("Small Magellanic Cloud", "Kleine Magellansche Wolke", T("200,000 light-years", "200.000 Lichtjahre"), MC) });
-    this.label("lg", LG.clone().add(new THREE.Vector3(0, 9e5, 0)), [6.4, 7.5], { name: LBY.lg.name, big: true });
   }
 
   build_virgo(grp) {
@@ -538,7 +547,7 @@ export class Cosmos {
     this.active = true;
     // which way the view drifts: Sun → galactic centre → Local Group → (Virgo) → back to us
     const t = this.target.set(0, 0, 0);
-    t.addScaledVector(GC, smooth(3.7, 4.8, lg) * (1 - smooth(5.3, 6.1, lg)));
+    t.addScaledVector(GC, smooth(4.2, 5.4, lg) * (1 - smooth(5.5, 6.2, lg)));
     t.addScaledVector(LG, smooth(6.0, 6.9, lg) * (1 - smooth(7.2, 7.8, lg)));
     t.addScaledVector(VIRGO, 0.5 * smooth(7.0, 7.8, lg) * (1 - smooth(8.4, 9.4, lg)));
     t.addScaledVector(GA, 0.5 * smooth(8.2, 8.9, lg) * (1 - smooth(9.4, 10.2, lg)));
@@ -569,8 +578,8 @@ export class Cosmos {
     // the painted galaxy only comes in once it's small enough not to look blurry; the sparkle carries the zoom before that
     if (this.layers.mw) {
       const [disc, sparkle] = this.layers.mw.userData.items;
-      disc.userData.mat.opacity = vis.mw * smooth(4.7, 5.2, lg);
-      sparkle.userData.u.alpha.value = vis.mw * (0.4 + 0.6 * (1 - smooth(4.7, 5.3, lg)));
+      disc.userData.mat.opacity = vis.mw * smooth(4.5, 5.05, lg);
+      sparkle.userData.u.alpha.value = vis.mw * (0.35 + 0.65 * (1 - smooth(4.6, 5.3, lg)));
     }
     // the Milky Way disc inside the Local Group layer only appears once the galaxy layer is gone
     if (this.layers.lg) { const it = this.layers.lg.userData.items; it[it.length - 1].userData.mat.opacity = vis.lg * (1 - vis.mw); }
