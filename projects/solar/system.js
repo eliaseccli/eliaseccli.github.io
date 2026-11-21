@@ -1,5 +1,5 @@
 import * as THREE from "/vendor/three.module.min.js";
-import { BODIES, MOONS, BY_ID, AU, R_EARTH, D2R, helio, moonGeo, bodyAxes, primeW, halleyPos, HALLEY, orbitPos, elements } from "./bodies.js?v=4";
+import { BODIES, MOONS, BY_ID, AU, R_EARTH, D2R, helio, moonGeo, bodyAxes, primeW, halleyPos, HALLEY, orbitPos, elements } from "./bodies.js?v=5";
 
 /* ============================================================
    The solar system scene: Sun, planets, moons, rings, belts, orbits.

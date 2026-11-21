@@ -1,5 +1,5 @@
 import * as THREE from "/vendor/three.module.min.js";
-import { radec2w, eq2w, LY } from "./bodies.js?v=4";
+import { radec2w, eq2w, LY } from "./bodies.js?v=5";
 
 /* ============================================================
    Beyond the solar system: one continuous zoom from the Sun's bubble
