@@ -107,6 +107,67 @@
     var b = parseInt(h.slice(4, 6), 16);
     return "rgba(" + r + ", " + g + ", " + b + ", " + a.toFixed(3) + ")";
   }
+  /* Chart drawing shared by the Today chart (index.html) and history mode. */
+  function chartFrame(ctx, w, p) { // background + axes, then clips to the plot (caller restores)
+    var s = w - 2 * p;
+    ctx.fillStyle = "#0a0a10";
+    ctx.fillRect(0, 0, w, w);
+    ctx.strokeStyle = "rgba(255,255,255,.12)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(p, p, s, s);
+    ctx.fillStyle = "rgba(255,255,255,.45)";
+    ctx.font = "22px system-ui,sans-serif";
+    ctx.fillText("Anomaly (deg)", p + s / 2 - 70, w - 16);
+    ctx.save();
+    ctx.translate(20, p + s / 2 + 50);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText("RAAN (deg)", 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(p, p, s, s);
+    ctx.clip();
+  }
+
+  function dotRadius(k, kMax) {
+    var rMin = 3.36, rMax = rMin * 8;
+    return Math.min(rMax, rMin * Math.pow(k, Math.log(rMax / rMin) / Math.log(kMax)));
+  }
+
+  function dot(ctx, xy, r, lw, fill, stroke) {
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  function pickedDot(ctx, xy, r, lw, fill, stroke, name, p, s) { // dot + white ring + name kept inside the plot
+    dot(ctx, xy, r, lw, fill, stroke);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(xy[0], xy[1], r + 5, 0, Math.PI * 2);
+    ctx.stroke();
+    if (!name) return;
+    ctx.fillStyle = "#fff";
+    ctx.font = "42px system-ui,sans-serif";
+    var tw = ctx.measureText(name).width;
+    var th = 42, gap = 16, inset = 10;
+    var L = p + inset, R = p + s - inset, T = p + inset, B = p + s - inset;
+    var tx = xy[0] + r + gap;
+    if (tx + tw > R) tx = xy[0] - r - gap - tw;
+    if (tx < L) tx = L;
+    if (tx + tw > R) tx = R - tw;
+    var ty = xy[1] - r - 12;
+    if (ty - th * 0.85 < T) ty = xy[1] + r + th * 0.85 + 10;
+    if (ty > B) ty = B;
+    if (ty - th * 0.85 < T) ty = T + th * 0.85;
+    ctx.fillText(name, tx, ty);
+  }
+
 
   function decodeMonth(buffer) {
     if (!buffer || buffer.byteLength < 32) throw new Error("timeline bin too short");
@@ -498,50 +559,12 @@
       return formatPlayhead(p) + "  ·  " + st.vis + " / " + st.total + " satellites";
     }
 
-    function drawLabel(xy, r, name, p, s) {
-      ctx.fillStyle = "#fff";
-      ctx.font = "42px system-ui,sans-serif";
-      var tw = ctx.measureText(name).width;
-      var th = 42;
-      var gap = 16;
-      var inset = 10;
-      var L = p + inset, R = p + s - inset, T = p + inset, B = p + s - inset;
-      var tx = xy[0] + r + gap;
-      if (tx + tw > R) tx = xy[0] - r - gap - tw;
-      if (tx < L) tx = L;
-      if (tx + tw > R) tx = R - tw;
-      var ty = xy[1] - r - 12;
-      if (ty - th * 0.85 < T) ty = xy[1] + r + th * 0.85 + 10;
-      if (ty > B) ty = B;
-      if (ty - th * 0.85 < T) ty = T + th * 0.85;
-      ctx.fillText(name, tx, ty);
-    }
-
     function draw() {
       if (!canvas || !ctx) return;
       var w = canvas.width, p = padFn(), s = w - 2 * p;
-      ctx.fillStyle = "#0a0a10";
-      ctx.fillRect(0, 0, w, w);
-      ctx.strokeStyle = "rgba(255,255,255,.12)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(p, p, s, s);
-      ctx.fillStyle = "rgba(255,255,255,.45)";
-      ctx.font = "22px system-ui,sans-serif";
-      ctx.fillText("Anomaly (deg)", p + s / 2 - 70, w - 16);
-      ctx.save();
-      ctx.translate(20, p + s / 2 + 50);
-      ctx.rotate(-Math.PI / 2);
-      ctx.fillText("RAAN (deg)", 0, 0);
-      ctx.restore();
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(p, p, s, s);
-      ctx.clip();
+      chartFrame(ctx, w, p);
       var frame = resolveFrame(index);
-      var rMin = 3.36;
-      var rMax = rMin * 8;
-      var r = rMin * Math.pow(view.k, Math.log(rMax / rMin) / Math.log(KMAX));
-      if (r > rMax) r = rMax;
+      var r = dotRadius(view.k, KMAX);
       var lw = Math.max(0.9, r * 0.28);
       var showPick = !playing && selected >= 0;
       var i, sat, inc, hex, xy, dim;
@@ -554,13 +577,7 @@
           if (showPick && frame.slot[i] === selected) continue;
           hex = incHex(inc);
           xy = toPix(frame.x[i], frame.y[i]);
-          ctx.fillStyle = dim ? hexToRgba(hex, 0.3) : hex;
-          ctx.strokeStyle = dim ? hexToRgba(hex, 0.3) : hex;
-          ctx.lineWidth = lw;
-          ctx.beginPath();
-          ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          dot(ctx, xy, r, lw, dim ? hexToRgba(hex, 0.3) : hex, dim ? hexToRgba(hex, 0.3) : hex);
         }
         if (showPick) {
           for (i = 0; i < frame.n; i++) {
@@ -570,19 +587,7 @@
             if (!incOn(inc)) break;
             hex = incHex(inc);
             xy = toPix(frame.x[i], frame.y[i]);
-            ctx.fillStyle = hex;
-            ctx.strokeStyle = hex;
-            ctx.lineWidth = lw;
-            ctx.beginPath();
-            ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(xy[0], xy[1], r + 5, 0, Math.PI * 2);
-            ctx.stroke();
-            if (sat && sat.name) drawLabel(xy, r, sat.name, p, s);
+            pickedDot(ctx, xy, r, lw, hex, hex, sat && sat.name, p, s);
             break;
           }
         }
@@ -901,6 +906,11 @@
     INC_COLOR: INC_COLOR,
     INC_OTHER: INC_OTHER,
     mount: mount,
+    hexToRgba: hexToRgba,
+    chartFrame: chartFrame,
+    dotRadius: dotRadius,
+    dot: dot,
+    pickedDot: pickedDot,
     scrubDaysPerPx: scrubDaysPerPx,
     scrubKeyDelta: scrubKeyDelta,
     SCRUB_FINE_RANGE_PX: SCRUB_FINE_RANGE_PX,

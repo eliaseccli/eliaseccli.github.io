@@ -251,7 +251,7 @@
     </div>
     </div>
   </main>
-  <script src="./timeline.js?v=11"></script>
+  <script src="./timeline.js?v=12"></script>
   <script>
     (function () {
       var canvas = document.getElementById("c");
@@ -359,13 +359,7 @@
       }
       var shellStats = {};
 
-      function hexToRgba(hex, a) {
-        var h = hex.replace("#", "");
-        var r = parseInt(h.slice(0, 2), 16);
-        var g = parseInt(h.slice(2, 4), 16);
-        var b = parseInt(h.slice(4, 6), 16);
-        return "rgba(" + r + ", " + g + ", " + b + ", " + a.toFixed(3) + ")";
-      }
+      var TL = window.StarlinkTimeline, hexToRgba = TL.hexToRgba; // shared chart drawing: timeline.js
       function colorOf(sid) {
         if (!window.StarlinkColors.on()) return window.StarlinkColors.GREY;
         for (var i = 0; i < data.shells.length; i++) {
@@ -423,27 +417,8 @@
         }
         if (!data) return;
         var w = canvas.width, p = pad(), s = w - 2 * p;
-        ctx.fillStyle = "#0a0a10";
-        ctx.fillRect(0, 0, w, w);
-        ctx.strokeStyle = "rgba(255,255,255,.12)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(p, p, s, s);
-        ctx.fillStyle = "rgba(255,255,255,.45)";
-        ctx.font = "22px system-ui,sans-serif";
-        ctx.fillText("Anomaly (deg)", p + s / 2 - 70, w - 16);
-        ctx.save();
-        ctx.translate(20, p + s / 2 + 50);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText("RAAN (deg)", 0, 0);
-        ctx.restore();
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(p, p, s, s);
-        ctx.clip();
-        var rMin = 3.36;
-        var rMax = rMin * 8;
-        var r = rMin * Math.pow(view.k, Math.log(rMax / rMin) / Math.log(KMAX));
-        if (r > rMax) r = rMax;
+        TL.chartFrame(ctx, w, p);
+        var r = TL.dotRadius(view.k, KMAX);
         var dim = selected >= 0 && on[data.sats[selected].s];
         var lw = Math.max(0.9, r * 0.28);
         for (var i = 0; i < data.sats.length; i++) {
@@ -451,46 +426,12 @@
           if (!on[sat.s] || i === selected) continue;
           var xy = toPix(sat.x, sat.y);
           var hex = colorOf(sat.s);
-          ctx.fillStyle = dim ? hexToRgba(hex, 0.3) : satFill(sat);
-          ctx.strokeStyle = dim ? hexToRgba(hex, 0.3) : hex;
-          ctx.lineWidth = lw;
-          ctx.beginPath();
-          ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          TL.dot(ctx, xy, r, lw, dim ? hexToRgba(hex, 0.3) : satFill(sat), dim ? hexToRgba(hex, 0.3) : hex);
         }
         if (selected >= 0 && on[data.sats[selected].s]) {
           var sat = data.sats[selected];
           var xy = toPix(sat.x, sat.y);
-          ctx.fillStyle = satFill(sat);
-          ctx.strokeStyle = colorOf(sat.s);
-          ctx.lineWidth = lw;
-          ctx.beginPath();
-          ctx.arc(xy[0], xy[1], r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(xy[0], xy[1], r + 5, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.fillStyle = "#fff";
-          ctx.font = "42px system-ui,sans-serif";
-          var name = sat.name;
-          var tw = ctx.measureText(name).width;
-          var th = 42;
-          var gap = 16;
-          var inset = 10;
-          var L = p + inset, R = p + s - inset, T = p + inset, B = p + s - inset;
-          var tx = xy[0] + r + gap;
-          if (tx + tw > R) tx = xy[0] - r - gap - tw;
-          if (tx < L) tx = L;
-          if (tx + tw > R) tx = R - tw;
-          var ty = xy[1] - r - 12;
-          if (ty - th * 0.85 < T) ty = xy[1] + r + th * 0.85 + 10;
-          if (ty > B) ty = B;
-          if (ty - th * 0.85 < T) ty = T + th * 0.85;
-          ctx.fillText(name, tx, ty);
+          TL.pickedDot(ctx, xy, r, lw, satFill(sat), colorOf(sat.s), sat.name, p, s);
         }
         ctx.restore();
         updateMeta();
