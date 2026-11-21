@@ -1,6 +1,6 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } from "./bodies.js?v=3";
-import { System } from "./system.js?v=3";
+import { System, mapO } from "./system.js?v=3";
 import { Sky } from "./sky.js?v=3";
 import { Ground } from "./ground.js?v=3";
 import { Cosmos } from "./cosmos.js?v=3";
@@ -47,7 +47,9 @@ const cosmos = new Cosmos(renderer, lowPower);
 cosmos.onPick = (c) => { stopTour(); if (c) openCard({ cosmic: c }); };
 
 let W = 1, H = 1;
+let uiBoxes = [], uiDirty = true;   // screen rects of the title, buttons and bars (labels keep out)
 function resize() {
+  uiDirty = true;
   W = innerWidth; H = innerHeight;
   renderer.setSize(W, H, false);
   camera.aspect = W / H;
@@ -96,7 +98,8 @@ function anchorDist(a) {
     const L = sys.lineup(), halfV = (camera.fov * Math.PI) / 360, halfH = Math.atan(Math.tan(halfV) * camera.aspect);
     const along = sys.portrait ? halfV : halfH, across = sys.portrait ? halfH : halfV;
     const s = Math.max((L.end * (sys.portrait ? 0.8 : 0.6)) / Math.tan(along), (sys.byId.jupiter.rS * (innerHeight < 500 ? 2.1 : 1.4)) / Math.tan(across));
-    const o = HOME.o * (camera.aspect < 0.8 ? 1.3 : 1), dd = HOME.d * (camera.aspect < 0.8 ? 1.3 : 1);
+    // overview: orbits fill the width – out to Neptune on wide screens, to Saturn on a phone held upright
+    const o = Math.max(HOME.o, (sys.portrait ? mapO(9.6) * 1.25 : mapO(30) * 0.95) / Math.tan(halfH)), dd = HOME.d * (camera.aspect < 0.8 ? 1.3 : 1);
     return Math.exp(view.w[0] * Math.log(o) + view.w[1] * Math.log(s) + view.w[2] * Math.log(dd));
   }
   const it = sys.byId[a];
@@ -229,6 +232,9 @@ for (const it of sys.items) {
 function paintLabelNames() {
   for (const it of sys.items) it.lbl.querySelector("span").textContent = tr((it.b || it.m).name);
 }
+function measureUI() {
+  uiBoxes = [...document.querySelectorAll(".title, .acts, .modes, .bottom, .back, [data-tour]")].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+}
 function placeLabels() {
   const hideAll = ground.active || cosmos.level > 0.6;
   const sideways = view.w[1] > 0.5 && sys.portrait;
@@ -247,10 +253,14 @@ function placeLabels() {
   }
   // biggest (and the focused one) first; skip labels that would overlap one already placed
   cand.sort((a, b) => (b.id === rig.anchor) - (a.id === rig.anchor) || (b.kind !== "moonlet") - (a.kind !== "moonlet") || b.screenR - a.screenR);
-  const boxes = [];
+  // the title, buttons and bars count as placed labels, so nothing is drawn underneath them
+  if (uiDirty) { measureUI(); uiDirty = false; }
+  const boxes = uiBoxes.map((r) => [r.left, r.top, r.right, r.bottom]);
   for (const it of cand) {
     const r = Math.max(it.screenR, 2), w = (it.lbl.textContent.length * 7.4 + 18), h = 20;
-    const x = sideways ? it.scr.x + r + 10 : it.scr.x - w / 2, y = sideways ? it.scr.y - 11 : it.scr.y + r + 8;
+    // centred under the body, but never cut off by the screen edge
+    const cx = sideways ? it.scr.x : clamp(it.scr.x, w / 2 + 4, W - w / 2 - 4);
+    const x = sideways ? it.scr.x + r + 10 : cx - w / 2, y = sideways ? it.scr.y - 11 : it.scr.y + r + 8;
     const hit = boxes.some((b) => x < b[2] && x + w > b[0] && y < b[3] && y + h > b[1]);
     if (hit && it.id !== rig.anchor) { it.lbl.classList.remove("is-on"); continue; }
     boxes.push([x, y, x + w, y + h]);
@@ -258,7 +268,7 @@ function placeLabels() {
     el.classList.add("is-on");
     el.classList.toggle("is-ring", it.screenR < 5 && view.w[2] > 0.5);
     el.classList.toggle("is-focus", it.id === rig.anchor);
-    el.style.transform = sideways ? `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` : `translate(${it.scr.x.toFixed(1)}px, ${y.toFixed(1)}px) translateX(-50%)`;
+    el.style.transform = sideways ? `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` : `translate(${cx.toFixed(1)}px, ${y.toFixed(1)}px) translateX(-50%)`;
     el.style.setProperty("--r", Math.max(9, r + 6).toFixed(1) + "px");
   }
 }
@@ -311,6 +321,7 @@ function paintTitle() {
   dayBtn.hidden = !ground.active || ground.isDay();
   document.body.classList.toggle("is-ground", ground.active);
   document.body.classList.toggle("is-cosmic", !!c);
+  uiDirty = true;
 }
 function focusChanged(id) {
   rig.next = id;
