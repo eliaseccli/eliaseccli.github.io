@@ -27,10 +27,10 @@
 
   <link rel="stylesheet" href="/nav.css?v=1">
   <link rel="stylesheet" href="./starlink.css?v=sg10">
-  <link rel="modulepreload" href="./globe.js?v=sg10">
-  <link rel="modulepreload" href="../spacex/globe-core.js?v=g1">
-  <link rel="modulepreload" href="../spacex/vendor/three.module.min.js">
-  <link rel="preload" href="../spacex/vendor/satellite.min.js" as="script">
+  <link rel="modulepreload" href="./globe.js?v=sg11">
+  <link rel="modulepreload" href="../spacex/globe-core.js?v=g2">
+  <link rel="modulepreload" href="/vendor/three.module.min.js">
+  <link rel="preload" href="/vendor/satellite.min.js" as="script">
   <script>
     /* Shared page state for Chart and Globe, mirrored in the URL hash:
          #[chart][&sat=NORAD][&off=TOKENS | &on=TOKENS][&c=1]
@@ -802,7 +802,7 @@
         });
         if (g) {
           if (!globeP) {
-            globeP = import("./globe.js?v=sg10").then(function (m) {
+            globeP = import("./globe.js?v=sg11").then(function (m) {
               globe = m.mountGlobe({
                 root: sec, satsP: window.__starlinkSatsP,
                 colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set

@@ -1,5 +1,5 @@
-import * as THREE from "./vendor/three.module.min.js";
-import { addEarth, sunDir, ll2v } from "./globe-core.js?v=g1";
+import * as THREE from "/vendor/three.module.min.js";
+import { addEarth, sunDir, ll2v } from "./globe-core.js?v=g2";
 
 /* ============================================================
    SpaceX · flight globe

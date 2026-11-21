@@ -1,5 +1,5 @@
-import * as THREE from "../spacex/vendor/three.module.min.js";
-import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g1";
+import * as THREE from "/vendor/three.module.min.js";
+import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g2";
 
 /* ============================================================
    Starlink · globe tab
@@ -67,7 +67,7 @@ function loadSatelliteJs() {
   if (window.satellite) return Promise.resolve();
   return new Promise((res, rej) => {
     const s = document.createElement("script");
-    s.src = "/spacex/vendor/satellite.min.js"; s.onload = () => res(); s.onerror = rej;
+    s.src = "/vendor/satellite.min.js"; s.onload = () => res(); s.onerror = rej;
     document.head.appendChild(s);
   });
 }

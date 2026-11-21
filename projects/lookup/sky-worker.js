@@ -1,6 +1,6 @@
 /* Look up: SGP4 in a worker so 10k Starlink sats do not freeze the UI. */
 /* global satellite */
-importScripts("./vendor/satellite.min.js");
+importScripts("/vendor/satellite.min.js");
 
 var MIN_EL = -2.5;
 var MAX_DRAW = 480;

@@ -534,7 +534,7 @@
 
   function armWorker() {
     try {
-      worker = new Worker("./sky-worker.js?v=lookup1");
+      worker = new Worker("./sky-worker.js?v=lookup2");
     } catch (err) {
       satsEl.textContent = "Sky worker failed to start.";
       return;
