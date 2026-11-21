@@ -1,6 +1,6 @@
 import * as THREE from "/vendor/three.module.min.js";
-import { BODIES, BY_ID, AU, D2R, bodyAxes, primeW } from "./bodies.js?v=1";
-import { LOGV, LOGF } from "./system.js?v=1";
+import { BODIES, BY_ID, AU, D2R, bodyAxes, primeW } from "./bodies.js?v=2";
+import { LOGV, LOGF } from "./system.js?v=2";
 
 /* ============================================================
    Standing on a world: the real sky over the landing spot (Sun,
@@ -429,12 +429,12 @@ export class Ground {
     this.sunLight.intensity = 3.4 * lightK;
     const lowSun = 1 - smooth(0.0, 0.35, this.sunUp);
     this.sunLight.color.setRGB(1, 1 - 0.35 * lowSun * (airy ? 1 : 0), 1 - 0.6 * lowSun * (airy ? 1 : 0));
-    const skyC = new THREE.Color(...s.zen).lerp(new THREE.Color(...s.hor), 0.4);
-    this.hemi.color.copy(skyC).multiplyScalar(day * bright).add(new THREE.Color(0.05, 0.06, 0.09));
+    const C = this.C || (this.C = { a: new THREE.Color(), b: new THREE.Color(), n: new THREE.Color(), amb: new THREE.Color(0.05, 0.06, 0.09), body: {}, wdir: new THREE.Vector3() });
+    this.hemi.color.setRGB(...s.zen).lerp(C.b.setRGB(...s.hor), 0.4).multiplyScalar(day * bright).add(C.amb);
     this.hemi.groundColor.setRGB(...(this.cfg.lo || [0.2, 0.2, 0.2])).multiplyScalar(0.5 * lightK + 0.05);
     this.hemi.intensity = airy ? 1.5 : 0.35;
     this.hemi.position.set(...up);
-    const fogC = new THREE.Color(...s.hor).multiplyScalar(day * bright).lerp(new THREE.Color(...s.set), lowSun * day * 0.4).add(new THREE.Color(...s.night));
+    const fogC = C.a.setRGB(...s.hor).multiplyScalar(day * bright).lerp(C.b.setRGB(...s.set), lowSun * day * 0.4).add(C.n.setRGB(...s.night));
     this.scene.fog.color.copy(fogC);
     this.scene.fog.density = s.haze === 0 ? 0.00004 : s.haze > 1.5 ? 0.0011 : this.cfg.sky === "pluto" ? 0.0001 : this.cfg.gas ? 0.00012 : 0.00028;
     if (this.gasU) for (const u of this.gasU) { u.t.value += dt * 6; u.light.value = 0.12 + lightK * 0.95; u.fogc.value.copy(fogC); }
@@ -445,12 +445,14 @@ export class Ground {
     let k = 0;
     for (const o of BODIES) {
       if (o.id === this.id) { dots.setXYZ(k, 0, -1e5, 0); k++; continue; }
-      const p = this.sys.byId[o.id].pD, v = [p[0] - this.obs[0], p[1] - this.obs[1], p[2] - this.obs[2]], l = Math.hypot(...v);
-      const dir = v.map((x) => x / l);
+      const p = this.sys.byId[o.id].pD, dir = o._dir || (o._dir = [0, 0, 0]);
+      for (let i = 0; i < 3; i++) dir[i] = p[i] - this.obs[i];
+      const l = Math.hypot(dir[0], dir[1], dir[2]);
+      for (let i = 0; i < 3; i++) dir[i] /= l;
       dots.setXYZ(k, dir[0] * 6000, dir[1] * 6000, dir[2] * 6000);
-      const c = new THREE.Color(o.color), vis = o.id === "sun" ? 0 : Math.min(1, starK * 1.3 + (airy ? 0 : 0.6));
+      const c = C.body[o.id] || (C.body[o.id] = new THREE.Color(o.color)), vis = o.id === "sun" ? 0 : Math.min(1, starK * 1.3 + (airy ? 0 : 0.6));
       cols.setXYZ(k, c.r * vis, c.g * vis, c.b * vis);
-      o._dir = dir; o._ang = Math.atan((o.r / AU) / l);
+      o._ang = Math.atan((o.r / AU) / l);
       k++;
     }
     dots.needsUpdate = cols.needsUpdate = true;
@@ -485,7 +487,7 @@ export class Ground {
     }
     if (dt) { this.yaw += this.vy; this.pitch = Math.max(-0.6, Math.min(1.5, this.pitch + this.vp)); this.vy *= 0.9; this.vp *= 0.9; }
     const lx = Math.sin(this.yaw) * Math.cos(this.pitch), ly = Math.sin(this.pitch), lz = -Math.cos(this.yaw) * Math.cos(this.pitch);
-    const wdir = new THREE.Vector3(lx, ly, lz).applyQuaternion(this.Q);
+    const wdir = C.wdir.set(lx, ly, lz).applyQuaternion(this.Q);
     this.camera.position.set(0, 0, 0);
     this.camera.up.set(...up);
     this.camera.lookAt(wdir);
@@ -502,7 +504,7 @@ export class Ground {
       const up = this.skyU.up.value;
       const elev = o._dir[0] * up.x + o._dir[1] * up.y + o._dir[2] * up.z;
       const big = o._ang > 0.0007;
-      const show = elev > 0.01 && (id === "sun" ? this.sk.haze < 1.5 : (this.starK > 0.35 || big) && this.sk.haze < 1.5) && (id !== "moon" || this.id === "earth") ;
+      const show = elev > 0.01 && (id === "sun" ? this.sk.haze < 0.5 :   /* in a blue sky the Sun needs no label */ (this.starK > 0.35 || big) && this.sk.haze < 1.5) && (id !== "moon" || this.id === "earth") ;
       v.set(o._dir[0], o._dir[1], o._dir[2]).multiplyScalar(1000).applyMatrix4(this.camera.matrixWorldInverse).applyMatrix4(this.camera.projectionMatrix);
       const on = show && v.z < 1 && Math.abs(v.x) < 1.1 && v.y < 1.1 - 260 / H && v.y > -1.1;
       el.classList.toggle("is-on", on);
