@@ -161,7 +161,7 @@ svg { display: block; fill: currentColor; }
 
 /* ---------- states ---------- */
 body.is-ground .bottom .strip, body.is-ground .modes { opacity: 0; pointer-events: none; }
-body.is-ground .t-sub { color: rgba(255, 255, 255, 0.85); }   /* bright skies */
+body.is-ground .t-sub { color: rgba(255, 255, 255, 0.9); text-shadow: 0 0 2px rgba(0, 0, 0, 0.6), 0 1px 8px rgba(0, 0, 0, 0.6); }   /* bright skies */
 body.is-ground .modes { transform: translateY(-8px); }
 .modes { transition: opacity 0.3s, transform 0.4s var(--out); }
 .strip { transition: opacity 0.3s; }
