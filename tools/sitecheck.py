@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".git", "vendor", "node_modules", "__pycache__"}
 PRIVATE = ("/projects/", "/secret/")          # password / unlisted: must be noindex, not in sitemap
 ORBIT_FAVICON = ("/spacex/",)                 # pages that use the SpaceX orbit-dot favicon
-HEAD_OK = {"/projects/unlock.js", "/starlink/state.js"}  # must run before first paint (password gate; Starlink view classes)
+HEAD_OK = {"/projects/unlock.js", "/starlink/state.js", "/secret/secret.js"}  # must run before first paint (gates; Starlink view classes)
 NO_ZOOM_OK = {"/spacex/", "/projects/planet/", "/projects/plop/", "/projects/muse/"}  # globe/game gestures: pinch zoom off on purpose
 TITLE_SUFFIX = re.compile(r"\s[·\-–—|]\s*Elias\b")
 AXE = Path.home() / ".cache/sitecheck/axe.min.js"
@@ -112,6 +112,9 @@ def check_pages():
             icon_sets.setdefault(want, collections.Counter())[icons] += 1
             check_nav(u, s, p)
             check_head_perf(u, s)
+            for sc in s.find_all("script", src=False):
+                if sc.get("type") != "application/ld+json" and sc.get_text(strip=True):
+                    say("WARN", u, "inline <script>: move it into a versioned .js file (cacheable, one source)")
             for img in s.find_all("img"):
                 if img.get("alt") is None:
                     say("WARN", u, f"<img> without alt: {img.get('src')}")

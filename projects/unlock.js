@@ -24,3 +24,13 @@
   }
   window.ProjectsUnlock = { get: get, set: set, clear: clear };
 })();
+
+/* <script src="/projects/unlock.js?v=2" data-gate> on a project page: until unlocked, bounce to the
+   Projects password page (which returns here afterwards); once unlocked, mark <html class="is-open">. */
+(function () {
+  var me = document.currentScript;
+  if (!me || !me.hasAttribute("data-gate")) return;
+  if (window.ProjectsUnlock.get()) { document.documentElement.classList.add("is-open"); return; }
+  try { sessionStorage.setItem("projects.next", location.pathname); } catch (e) {}
+  location.replace("/projects/?next=" + encodeURIComponent(location.pathname));
+})();
