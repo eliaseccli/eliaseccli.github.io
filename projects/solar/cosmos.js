@@ -228,7 +228,8 @@ export class Cosmos {
     el.innerHTML = "<i></i><span></span>";
     el.addEventListener("click", () => this.onPick && this.onPick(opts.card || LBY[key] || null));
     this.labelEl.appendChild(el);
-    this.labels.push({ el, pos: pos.clone(), lg, name: opts.name, card: opts.card, here: opts.here });
+    this.labels.push({ el, pos: pos.clone(), lg, name: opts.name, card: opts.card, here: opts.here, big: opts.big });
+    this.order = null;
   }
 
   /* ---------- layers ---------- */
@@ -241,7 +242,7 @@ export class Cosmos {
       transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       uniforms: { alpha: { value: 1 } },
       vertexShader: "varying vec3 vN; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
-      fragmentShader: "uniform float alpha; varying vec3 vN; varying vec3 vV; void main(){ float f = 1.0 - abs(dot(vN, vV)); gl_FragColor = vec4(vec3(0.35,0.55,1.0) * pow(f, 2.5) * 0.55 * alpha, 1.0); }"
+      fragmentShader: "uniform float alpha; varying vec3 vN; varying vec3 vV; void main(){ float f = 1.0 - abs(dot(vN, vV)); gl_FragColor = vec4(vec3(0.35,0.55,1.0) * pow(f, 2.5) * 0.9 * alpha, 1.0); }"
     }));
     m.userData.u = m.material.uniforms;
     const lon = (255 * Math.PI) / 180, lat = (5 * Math.PI) / 180;
@@ -266,18 +267,22 @@ export class Cosmos {
   }
 
   build_oort(grp) {
-    const n = this.low ? 5000 : 12000, pts = this.points(n, { fixed: true, minPx: 0.5, maxPx: 3 }), a = pts.geometry.attributes, r = rng(31), AU = 1 / LY;
+    const n = this.low ? 9000 : 20000, pts = this.points(n, { fixed: true, minPx: 0.5, maxPx: 4 }), a = pts.geometry.attributes, r = rng(31), AU = 1 / LY;
     for (let k = 0; k < n; k++) {
       const inner = k < n * 0.3;
       const rad = (inner ? 2000 + r() * 18000 : 20000 + Math.pow(r(), 0.6) * 80000) * AU;
       const u = r() * 2 - 1, th = r() * Math.PI * 2, q = Math.sqrt(1 - u * u);
       const flat = inner ? 0.35 : 1;
       a.position.setXYZ(k, rad * q * Math.cos(th), rad * u * flat, rad * q * Math.sin(th));
-      const b = 0.25 + r() * 0.35;
-      a.color.setXYZ(k, b * 0.8, b * 0.9, b);
-      a.size.setX(k, 1.4 + r());
+      const b = 0.45 + r() * 0.45;
+      a.color.setXYZ(k, b * 0.75, b * 0.88, b);
+      a.size.setX(k, 2 + r() * 1.5);
     }
     this.add(grp, pts);
+    // a faint icy glow so the whole cloud reads as a ball from outside
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: blobTexture(), color: 0x5a7cc0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+    glow.scale.setScalar(3.4); glow.userData.mat = glow.material;
+    this.add(grp, glow, 0.2);
     this.label("oort", V([0.55, 0.25, -0.5]), [-1.6, -0.4], { name: LBY.oort.name });
   }
 
@@ -502,14 +507,14 @@ export class Cosmos {
   }
 
   build_web(grp) {
-    this.add(grp, this.web(this.low ? 22000 : 50000, 1.6e9, 420, 21, GA.clone().multiplyScalar(0.6)));
+    this.add(grp, this.web(this.low ? 22000 : 50000, 1.6e9, 420, 21, GA.clone().multiplyScalar(0.6)), 1.3);
     this.label("web", GA, [8.3, 9.4], { name: T("Laniakea", "Laniakea"), card: LBY.web });
     this.label("web", new THREE.Vector3(), [9.4, 11.5], { name: T("You are here", "Du bist hier"), here: true, card: LBY.universe });
   }
 
   build_universe(grp) {
     const R = 4.65e10;
-    this.add(grp, this.web(this.low ? 26000 : 60000, R * 0.97, 1600, 99, new THREE.Vector3()));
+    this.add(grp, this.web(this.low ? 26000 : 60000, R * 0.97, 1600, 99, new THREE.Vector3()), 1.6);
     const m = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { alpha: { value: 1 } },
       vertexShader: "varying vec3 vN; varying vec3 vV; varying vec3 vP; void main(){ vP = normalize(position); vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
@@ -522,7 +527,7 @@ export class Cosmos {
           float t = n3(vP * 6.0) * 0.6 + n3(vP * 14.0) * 0.3 + n3(vP * 31.0) * 0.1;
           vec3 cmb = mix(vec3(0.15, 0.3, 0.9), vec3(1.0, 0.55, 0.2), smoothstep(0.35, 0.65, t));
           float f = 1.0 - abs(dot(vN, vV));
-          gl_FragColor = vec4(cmb * (0.035 + 0.3 * pow(f, 4.0)) * alpha, 1.0);
+          gl_FragColor = vec4(cmb * (0.05 + 0.4 * pow(f, 3.0)) * alpha, 1.0);
         }`
     }));
     m.userData.u = m.material.uniforms;
@@ -608,16 +613,26 @@ export class Cosmos {
     this.labelEl.style.display = on ? "" : "none";
     if (!on) return;
     const v = new THREE.Vector3(), s = 1 / this.D, lang = document.documentElement.lang === "de" ? "de" : "en";
-    for (const l of this.labels) {
-      const show = this.lg > l.lg[0] && this.lg < l.lg[1];
-      if (show) {
+    // keep clear of the title above and the time bar + strip below; "you are here" wins, then the order labels were made in
+    const top = W < 700 ? 215 : 120, bottom = H - (W < 700 ? 185 : 150), boxes = [];
+    if (!this.order) this.order = [...this.labels].sort((a, b) => (b.here ? 1 : 0) - (a.here ? 1 : 0));
+    for (const l of this.order) {
+      let vis = this.lg > l.lg[0] && this.lg < l.lg[1];
+      if (vis) {
         v.copy(l.pos).sub(this.target).multiplyScalar(s).applyMatrix4(this.camera.matrixWorldInverse).applyMatrix4(this.camera.projectionMatrix);
+        l.x = (v.x * 0.5 + 0.5) * W; l.y = (-v.y * 0.5 + 0.5) * H;
+        vis = v.z < 1 && l.x > 4 && l.x < W - 4 && l.y > top && l.y < bottom;
       }
-      const vis = show && v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+      if (vis) {
+        const name = l.name[lang] || l.name.en, wpx = 22 + name.length * 8, left = !l.big && l.x + wpx > W - 6;   // near the right edge: text on the left
+        const box = left ? [l.x - wpx, l.y - 10, l.x + 8, l.y + 10] : [l.x - 8, l.y - 10, l.x + wpx, l.y + 10];
+        l.el.classList.toggle("is-left", left);
+        vis = !boxes.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+        if (vis) boxes.push(box);
+      }
       l.el.classList.toggle("is-on", vis);
       if (!vis) continue;
       if (l.lang !== lang) { l.el.querySelector("span").textContent = l.name[lang] || l.name.en; l.lang = lang; }
-      l.x = (v.x * 0.5 + 0.5) * W; l.y = (-v.y * 0.5 + 0.5) * H;
       l.el.style.transform = `translate(${l.x.toFixed(1)}px, ${l.y.toFixed(1)}px)`;
     }
   }
