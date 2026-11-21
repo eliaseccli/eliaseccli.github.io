@@ -400,10 +400,6 @@
     return places[index] || null;
   }
 
-  function hasPair(place) {
-    return !!(place && place.day && place.night);
-  }
-
   function syncMeta() {
     var place = current();
     if (!place) {

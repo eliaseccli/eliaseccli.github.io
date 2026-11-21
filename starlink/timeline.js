@@ -53,11 +53,6 @@
     return p.y + "-" + pad2(p.m);
   }
 
-  function nextMonthKey(p) {
-    if (p.m === 12) return (p.y + 1) + "-01";
-    return p.y + "-" + pad2(p.m + 1);
-  }
-
   function addMonthsKey(p, n) {
     var m = p.m + n;
     var y = p.y;
