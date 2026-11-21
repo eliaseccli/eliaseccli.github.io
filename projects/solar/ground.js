@@ -167,10 +167,11 @@ export class Ground {
   }
 
   resize(W, H) { this.W = W; this.H = H; this.camera.aspect = W / H; this.camera.updateProjectionMatrix(); }
+  // drag = grab the sky: what's under the finger stays under it (1 px of drag = 1 px of view), like Street View
   look(dx, dy) {
-    const k = (this.fov / 62) * 0.0042;
-    this.yaw += dx * k; this.pitch = Math.max(-0.6, Math.min(1.5, this.pitch + dy * k));
-    this.vy = dx * k; this.vp = dy * k;
+    const k = (this.fov * Math.PI) / 180 / this.H;
+    this.yaw -= dx * k; this.pitch = Math.max(-0.6, Math.min(1.5, this.pitch + dy * k));
+    this.vy = -dx * k; this.vp = dy * k;
     this.panToSun = false;
   }
   setFov(f) { this.fov = Math.max(12, Math.min(80, f)); }
@@ -393,7 +394,7 @@ export class Ground {
     return bt * 0.92;
   }
 
-  update(d, dt) {
+  update(d, dt, held = false) {
     if (!this.active) return;
     const b = this.b, it = this.sys.byId[this.id];
     const ax = bodyAxes(b, d, primeW(b, d), {});
@@ -485,7 +486,7 @@ export class Ground {
       this.pitch += (wantP - this.pitch) * k;
       if (Math.abs(dy) < 0.01 && Math.abs(wantP - this.pitch) < 0.01) this.panToSun = false;
     }
-    if (dt) { this.yaw += this.vy; this.pitch = Math.max(-0.6, Math.min(1.5, this.pitch + this.vp)); this.vy *= 0.9; this.vp *= 0.9; }
+    if (dt && !held) { this.yaw += this.vy; this.pitch = Math.max(-0.6, Math.min(1.5, this.pitch + this.vp)); this.vy *= 0.9; this.vp *= 0.9; }
     const lx = Math.sin(this.yaw) * Math.cos(this.pitch), ly = Math.sin(this.pitch), lz = -Math.cos(this.yaw) * Math.cos(this.pitch);
     const wdir = C.wdir.set(lx, ly, lz).applyQuaternion(this.Q);
     this.camera.position.set(0, 0, 0);

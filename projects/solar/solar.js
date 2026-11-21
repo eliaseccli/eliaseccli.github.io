@@ -149,7 +149,7 @@ canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
   gesture = ptrs.size === 1 ? { kind: "drag", moved: 0 } : { kind: "pinch", d0: pinchDist(), z0: rig.zoom, f0: ground.fov };
-  rig.vYaw = rig.vPitch = rig.vZoom = 0;
+  rig.vYaw = rig.vPitch = rig.vZoom = ground.vy = ground.vp = 0;
   stopTour();
 });
 canvas.addEventListener("pointermove", (e) => {
@@ -649,7 +649,7 @@ function frame(tms) {
   // render
   renderer.clear();
   if (ground.active) {
-    ground.update(time.d, dt);
+    ground.update(time.d, dt, !!gesture);
     ground.render();
   } else {
     sky.render(renderer, camera, cosmos.skyK);
