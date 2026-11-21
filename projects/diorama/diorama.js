@@ -52,7 +52,7 @@
   }
 
   function fileName(slug, when) {
-    return "stills/diorama-" + slug + "-" + when + ".png";
+    return "stills/diorama-" + slug + "-" + when + ".webp";
   }
 
   function asList(raw) {
