@@ -120,6 +120,8 @@ function flyTo(a, opts = {}) {
   const sep = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
   const bump = Math.log(1 + sep / Math.max(d0, d1)) * 0.75;
   const span = Math.abs(Math.log(d1 / d0)) + bump * 2;
+  // the Sun: look from low down, with Jupiter (the biggest neighbour) off to the side instead of right behind the title
+  if (a === "sun" && opts.yaw === undefined) { const j = sys.byId.jupiter.pos; opts = { ...opts, yaw: Math.atan2(j[0], j[2]) + Math.PI / 2, pitch: opts.pitch ?? 0.28 }; }
   rig.fly = { a: rig.anchor, b: a, t0: now, dur: reduceMotion ? 0.01 : clamp(1.2 + span * 0.16, 1.4, 4.2), d0, d1, bump,
     yaw0: rig.yaw, pitch0: rig.pitch, yaw1: opts.yaw ?? rig.yaw, pitch1: opts.pitch ?? clamp(rig.pitch, 0.12, 0.6), zoom1: opts.zoom || 0 };
   rig.vYaw = rig.vPitch = rig.vZoom = 0;
@@ -290,11 +292,12 @@ for (const id of STRIP) {
 function setCosmicHome() { /* flying anywhere from deep space also brings the camera back home */ }
 
 function paintStrip() {
+  const on = rig.next || rig.anchor;   // where we're going, so a tap answers at once
   for (const b of strip.children) {
     const id = b.dataset.id;
     b.querySelector("span").textContent = id === "home" ? tr(UI.system) : tr(BY_ID[id].name);
-    b.classList.toggle("is-on", id === rig.anchor);
-    b.setAttribute("aria-pressed", id === rig.anchor ? "true" : "false");
+    if (b.classList.toggle("is-on", id === on) && b.getAttribute("aria-pressed") !== "true") b.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest", inline: "center" });
+    b.setAttribute("aria-pressed", id === on ? "true" : "false");
   }
 }
 function paintTitle() {
@@ -522,10 +525,12 @@ function nextTour() {
     capEl.innerHTML = `<p>${lang === "de" ? "Und jetzt ganz weit hinaus – bis zum Rand des sichtbaren Universums!" : "And now all the way out – to the edge of the universe we can see!"}</p>`;
     tour.until = now + 22;
   } else {
-    flyTo(id, { yaw: rig.yaw + 0.5 });
+    flyTo(id, id === "sun" ? {} : { yaw: rig.yaw + 0.5 });
     capEl.innerHTML = `<h3>${tr(BY_ID[id].name)}</h3><p>${tr(TEXT[id].kid)}</p>`;
     tour.until = now + 9.5;
   }
+  // a thin bar fills up until the next stop (tap the caption to skip ahead)
+  capEl.insertAdjacentHTML("beforeend", `<i class="cap-bar" style="animation-duration:${(tour.until - now).toFixed(1)}s"></i>`);
   capEl.classList.add("is-on");
 }
 function stopTour() {
