@@ -448,7 +448,8 @@ function openCredits() {
     <li>Pluto: NASA / Johns Hopkins APL / SwRI, New Horizons (public domain)</li>
     <li>Nearby stars: <a href="https://github.com/astronexus/HYG-Database" rel="noopener" target="_blank">HYG database</a> v4.1 (CC BY-SA 4.0)</li>
     <li>Planet positions: JPL approximate Keplerian elements; rotation: IAU WGCCRE</li>
-    <li>3D: <a href="https://threejs.org" rel="noopener" target="_blank">three.js</a> (MIT) · Font: Barlow (OFL)</li></ul>`;
+    <li>3D: <a href="https://threejs.org" rel="noopener" target="_blank">three.js</a> (MIT) · Font: Barlow (OFL)</li>
+    <li><a href="./tex/CREDITS.txt" target="_blank">${lang === "de" ? "Alle Bilder, Datei für Datei" : "Every image, file by file"}</a></li></ul>`;
 }
 function closeCard() {
   if (card.hidden) return;

@@ -1,0 +1,30 @@
+Texture credits, one line per file (resized and converted to WebP).
+
+Solar System Scope, https://www.solarsystemscope.com/textures/ - CC BY 4.0, based on NASA data:
+  earth-1k.webp
+  earth-2k.webp
+  earth-clouds-1k.webp
+  earth-clouds-2k.webp
+  earth-night-1k.webp
+  earth-night-2k.webp
+  jupiter-1k.webp
+  jupiter-2k.webp
+  mars-1k.webp
+  mars-2k.webp
+  mercury-1k.webp
+  mercury-2k.webp
+  milky-way-2k.webp
+  moon-1k.webp
+  moon-2k.webp
+  neptune-1k.webp
+  saturn-1k.webp
+  saturn-2k.webp
+  saturn-ring.webp
+  sun-1k.webp
+  uranus-1k.webp
+  venus-1k.webp
+  venus-surface-1k.webp
+
+NASA / Johns Hopkins APL / SwRI, New Horizons global mosaic - public domain:
+  pluto-1k.webp
+  pluto-2k.webp

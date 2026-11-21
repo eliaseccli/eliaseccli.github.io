@@ -67,104 +67,51 @@
     });
   }
 
-  function ensureLookupCard(root) {
+  // Cards added after the encrypted shelf was made (no re-encryption needed): each goes in after
+  // its "after" card, in this order. GONE: cards that moved elsewhere (SpaceX is in the main menu now).
+  var EXTRA = [
+    { key: "lookup", title: "Look up", text: "Starlink in your sky, right now.", after: "diorama" },
+    { key: "planet", title: "Pokeable planet", text: "A tiny world. Plant trees, drop meteors, poke it.", after: "lookup" },
+    { key: "plop", title: "Plop", text: "Squish matching letters together. Get to a giant Z.", after: "planet" },
+    { key: "muse", title: "Muse", text: "Swipe through generative art. It learns your taste.", after: "plop" },
+    { key: "solar", title: "Solar system", text: "Fly to the planets, land on them, zoom out to the edge of the universe.", after: "muse" }
+  ];
+  var GONE = ['a[href*="spacex"]', 'a[href*="starship"]'];
+
+  function syncShelf(root) {
     if (!root) return;
-    if (root.querySelector('a[href="./lookup/"], a[href="/projects/lookup/"], a[href*="lookup"]')) return;
     var shelf = root.querySelector(".shelf") || root;
-    var card = document.createElement("a");
-    card.className = "card";
-    card.href = "./lookup/";
-    var strong = document.createElement("strong");
-    strong.textContent = "Look up";
-    var span = document.createElement("span");
-    span.textContent = "Starlink in your sky, right now.";
-    card.appendChild(strong);
-    card.appendChild(span);
-    var dio = shelf.querySelector('a[href*="diorama"]');
-    if (dio && dio.parentNode === shelf) {
-      if (dio.nextSibling) shelf.insertBefore(card, dio.nextSibling);
+    var changed = false;
+    EXTRA.forEach(function (c) {
+      if (root.querySelector('a[href*="' + c.key + '"]')) return;
+      var card = document.createElement("a");
+      card.className = "card";
+      card.href = "./" + c.key + "/";
+      var strong = document.createElement("strong");
+      strong.textContent = c.title;
+      var span = document.createElement("span");
+      span.textContent = c.text;
+      card.appendChild(strong);
+      card.appendChild(span);
+      var after = shelf.querySelector('a[href*="' + c.after + '"]');
+      if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
       else shelf.appendChild(card);
-    } else {
-      shelf.appendChild(card);
+      changed = true;
+    });
+    root.querySelectorAll(GONE.join(",")).forEach(function (a) {
+      a.parentNode.removeChild(a);
+      changed = true;
+    });
+    if (changed) {
+      try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
     }
-    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
-  }
-
-  function ensurePlanetCard(root) {
-    if (!root) return;
-    if (root.querySelector('a[href*="planet"]')) return;
-    var shelf = root.querySelector(".shelf") || root;
-    var card = document.createElement("a");
-    card.className = "card";
-    card.href = "./planet/";
-    var strong = document.createElement("strong");
-    strong.textContent = "Pokeable planet";
-    var span = document.createElement("span");
-    span.textContent = "A tiny world. Plant trees, drop meteors, poke it.";
-    card.appendChild(strong);
-    card.appendChild(span);
-    var after = shelf.querySelector('a[href*="lookup"]');
-    if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
-    else shelf.appendChild(card);
-    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
-  }
-
-  function ensurePlopCard(root) {
-    if (!root) return;
-    if (root.querySelector('a[href*="plop"]')) return;
-    var shelf = root.querySelector(".shelf") || root;
-    var card = document.createElement("a");
-    card.className = "card";
-    card.href = "./plop/";
-    var strong = document.createElement("strong");
-    strong.textContent = "Plop";
-    var span = document.createElement("span");
-    span.textContent = "Squish matching letters together. Get to a giant Z.";
-    card.appendChild(strong);
-    card.appendChild(span);
-    var after = shelf.querySelector('a[href*="planet"]');
-    if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
-    else shelf.appendChild(card);
-    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
-  }
-
-  function ensureMuseCard(root) {
-    if (!root) return;
-    if (root.querySelector('a[href*="muse"]')) return;
-    var shelf = root.querySelector(".shelf") || root;
-    var card = document.createElement("a");
-    card.className = "card";
-    card.href = "./muse/";
-    var strong = document.createElement("strong");
-    strong.textContent = "Muse";
-    var span = document.createElement("span");
-    span.textContent = "Swipe through generative art. It learns your taste.";
-    card.appendChild(strong);
-    card.appendChild(span);
-    var after = shelf.querySelector('a[href*="plop"]');
-    if (after && after.parentNode === shelf) shelf.insertBefore(card, after.nextSibling);
-    else shelf.appendChild(card);
-    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
-  }
-
-  // SpaceX moved to the main menu (/spacex/): drop any saved shelf card for it
-  function dropSpacexCard(root) {
-    if (!root) return;
-    var cards = root.querySelectorAll('a[href*="spacex"], a[href*="starship"]');
-    if (!cards.length) return;
-    for (var i = 0; i < cards.length; i++) cards[i].parentNode.removeChild(cards[i]);
-    try { window.ProjectsUnlock.set(root.innerHTML, true); } catch (err) {}
   }
 
   function unlock(html) {
     var gate = document.querySelector("[data-gate]");
     var panel = document.querySelector("[data-panel]");
     panel.innerHTML = html;
-    ensureLookupCard(panel);
-    ensurePlanetCard(panel);
-    ensurePlopCard(panel);
-    ensureMuseCard(panel);
-    dropSpacexCard(panel);
+    syncShelf(panel);
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");
