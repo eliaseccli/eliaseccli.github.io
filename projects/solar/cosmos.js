@@ -84,14 +84,14 @@ const LBY = Object.fromEntries(LAYERS.map((l) => [l.key, l]));
 /* soft round points; size in ly (scaled with distance) or fixed px */
 const ptsVS = `
   attribute float size; attribute vec3 color;
-  uniform float pxScale, sizeK, minPx, maxPx, fixedPx;
+  uniform float pxScale, sizeK, minPx, maxPx, fixedPx, dpr;   // sizes are CSS px; dpr turns them into device px
   varying vec3 vC; varying float vK;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
-    float ps = fixedPx > 0.5 ? size : size * sizeK * pxScale / max(-mv.z, 1e-9);
-    gl_PointSize = clamp(ps, minPx, maxPx);
-    vK = fixedPx > 0.5 ? 1.0 : clamp(ps / minPx, 0.0, 1.0);   // too small: fade instead of shrinking
+    float ps = fixedPx > 0.5 ? size * dpr : size * sizeK * pxScale / max(-mv.z, 1e-9);
+    gl_PointSize = clamp(ps, minPx * dpr, maxPx * dpr);
+    vK = fixedPx > 0.5 ? 1.0 : clamp(ps / (minPx * dpr), 0.0, 1.0);   // too small: fade instead of shrinking
     vC = color;
   }`;
 const ptsFS = `
@@ -192,7 +192,7 @@ export class Cosmos {
     g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setAttribute("size", new THREE.BufferAttribute(new Float32Array(n), 1));
-    const u = { pxScale: { value: 1 }, sizeK: { value: 1 }, minPx: { value: opts.minPx ?? 1.2 }, maxPx: { value: opts.maxPx ?? 64 }, fixedPx: { value: opts.fixed ? 1 : 0 }, alpha: { value: 1 } };
+    const u = { pxScale: { value: 1 }, sizeK: { value: 1 }, minPx: { value: opts.minPx ?? 1.2 }, maxPx: { value: opts.maxPx ?? 64 }, fixedPx: { value: opts.fixed ? 1 : 0 }, dpr: { value: 1 }, alpha: { value: 1 } };
     const p = new THREE.Points(g, new THREE.ShaderMaterial({ uniforms: u, vertexShader: ptsVS, fragmentShader: ptsFS, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
     p.frustumCulled = false;
     this.mats.push(u);
@@ -302,14 +302,14 @@ export class Cosmos {
   }
 
   build_disk(grp) {
-    // a statistical neighbourhood: the thin disc of stars around us out to ~3,000 ly
-    const n = this.low ? 9000 : 20000, pts = this.points(n, { fixed: true, minPx: 0.6, maxPx: 3 }), a = pts.geometry.attributes, r = rng(77);
+    // a statistical neighbourhood: the thin disc of stars around us out to ~7,000 ly
+    const n = this.low ? 12000 : 26000, pts = this.points(n, { fixed: true, minPx: 0.6, maxPx: 3 }), a = pts.geometry.attributes, r = rng(77);
     const { e1, e2, e3 } = this.galBasis();
     for (let k = 0; k < n; k++) {
-      const rad = 30 + Math.pow(r(), 0.5) * 3200, th = r() * Math.PI * 2, z = gauss(r) * 320;
+      const rad = 30 + Math.pow(r(), 0.6) * 7000, th = r() * Math.PI * 2, z = gauss(r) * (300 + rad * 0.05);
       const p = e1.clone().multiplyScalar(Math.cos(th) * rad).addScaledVector(e2, Math.sin(th) * rad).addScaledVector(e3, z);
       a.position.setXYZ(k, p.x, p.y, p.z);
-      const c = bv2rgb(r() * 1.6 - 0.1), b = 0.25 + Math.pow(r(), 4) * 0.6;
+      const c = bv2rgb(r() * 1.6 - 0.1), b = 0.4 + Math.pow(r(), 4) * 0.6;
       a.color.setXYZ(k, c[0] * b, c[1] * b, c[2] * b);
       a.size.setX(k, 1 + Math.pow(r(), 3) * 2);
     }
@@ -320,6 +320,14 @@ export class Cosmos {
   galaxyView() {
     const { e1, e3 } = this.galBasis();
     return e3.clone().multiplyScalar(Math.sin(1.0)).addScaledVector(e1, -Math.cos(1.0)).normalize();
+  }
+
+  // camera direction for the Local Group: the Milky Way–Andromeda line runs along the long side of the screen
+  lgView(portrait) {
+    const axis = M31.clone().normalize(), up = new THREE.Vector3(0, 1, 0);
+    if (!portrait) return new THREE.Vector3().crossVectors(axis, up).normalize().addScaledVector(up, 0.6).normalize();
+    const h = axis.clone().addScaledVector(up, -axis.y).normalize();       // the line's horizontal part
+    return up.multiplyScalar(Math.hypot(axis.x, axis.z)).addScaledVector(h, -axis.y).normalize();   // ⟂ the line, in its vertical plane
   }
 
   galBasis() {
@@ -346,7 +354,7 @@ export class Cosmos {
     const rot = 2.55, X = e1.clone().multiplyScalar(-Math.cos(rot)).addScaledVector(e2, -Math.sin(rot)), Y = new THREE.Vector3().crossVectors(e3, X);
     this.add(grp, this.galaxyMesh(tex, 120000, GC, X, Y, 1));
     // 3D sparkle: stars sampled along the same arms, a thin disc and a fat bulge
-    const n = this.low ? 14000 : 32000, pts = this.points(n, { minPx: 0.8, maxPx: 6 }), a = pts.geometry.attributes, r = rng(5);
+    const n = this.low ? 14000 : 32000, pts = this.points(n, { minPx: 0.7, maxPx: 3.5 }), a = pts.geometry.attributes, r = rng(5);
     for (let k = 0; k < n; k++) {
       let x, y, z, c;
       if (k < n * 0.2) {
@@ -363,9 +371,9 @@ export class Cosmos {
       a.position.setXYZ(k, p.x, p.y, p.z);
       const b = 0.25 + r() * 0.5;
       a.color.setXYZ(k, c[0] * b, c[1] * b, c[2] * b);
-      a.size.setX(k, 40 + r() * 110);
+      a.size.setX(k, 30 + r() * 70);
     }
-    this.add(grp, pts, 0.55);
+    this.add(grp, pts, 0.45);
     this.label("mw", new THREE.Vector3(), [3.0, 6.9], { name: T("You are here", "Du bist hier"), here: true, card: LBY.mw });
     this.label("mw", GC, [3.9, 5.5], { name: T("Galactic centre", "Zentrum der Galaxie"),
       card: { name: T("Sagittarius A*", "Sagittarius A*"), scale: T("26,000 light-years away", "26.000 Lichtjahre entfernt"),
@@ -420,7 +428,7 @@ export class Cosmos {
     this.add(grp, this.galaxyMesh(tex, 120000, GC, X, Y, 1));
     const card = (en, de, s, kid) => ({ name: T(en, de), scale: s, kid });
     this.label("lg", M31, [5.7, 7.5], { name: T("Andromeda", "Andromeda"), card: card("Andromeda Galaxy", "Andromeda-Galaxie", T("2.5 million light-years", "2,5 Millionen Lichtjahre"), LBY.lg.kid) });
-    this.label("lg", M33, [6.0, 7.2], { name: T("Triangulum", "Dreiecksnebel"), card: card("Triangulum Galaxy", "Dreiecksgalaxie", T("2.7 million light-years", "2,7 Millionen Lichtjahre"),
+    this.label("lg", M33, [5.9, 6.7], { name: T("Triangulum", "Dreiecksnebel"), card: card("Triangulum Galaxy", "Dreiecksgalaxie", T("2.7 million light-years", "2,7 Millionen Lichtjahre"),
       T("The third-biggest galaxy in our Local Group – a pretty little spiral.", "Die drittgrößte Galaxie unserer Lokalen Gruppe – eine hübsche kleine Spirale.")) });
     const MC = T("A small galaxy that circles our Milky Way. From the southern half of Earth you can see it at night as a faint cloud.", "Eine kleine Galaxie, die um unsere Milchstraße kreist. Von der Südhalbkugel sieht man sie nachts als blasse Wolke.");
     this.label("lg", LMC, [5.1, 6.4], { name: T("Large Magellanic Cloud", "Große Magellansche Wolke"), card: card("Large Magellanic Cloud", "Große Magellansche Wolke", T("160,000 light-years", "160.000 Lichtjahre"), MC) });
@@ -530,14 +538,14 @@ export class Cosmos {
     this.active = true;
     // which way the view drifts: Sun → galactic centre → Local Group → (Virgo) → back to us
     const t = this.target.set(0, 0, 0);
-    t.addScaledVector(GC, smooth(3.3, 4.6, lg) * (1 - smooth(5.3, 6.1, lg)));
-    t.addScaledVector(LG, smooth(5.6, 6.4, lg) * (1 - smooth(7.0, 7.6, lg)));
+    t.addScaledVector(GC, smooth(3.7, 4.8, lg) * (1 - smooth(5.3, 6.1, lg)));
+    t.addScaledVector(LG, smooth(6.0, 6.9, lg) * (1 - smooth(7.2, 7.8, lg)));
     t.addScaledVector(VIRGO, 0.5 * smooth(7.0, 7.8, lg) * (1 - smooth(8.4, 9.4, lg)));
     t.addScaledVector(GA, 0.5 * smooth(8.2, 8.9, lg) * (1 - smooth(9.4, 10.2, lg)));
     const s = 1 / D;
     const vis = {
       helio: band(lg, [-3.0, -2.5, -1.9, -1.3]), oort: band(lg, [-2.4, -1.6, 0.0, 0.8]), stars: band(lg, [-2.4, -1.2, 2.7, 3.5]),
-      disk: band(lg, [1.7, 2.5, 3.5, 4.2]), mw: band(lg, [3.6, 4.3, 5.4, 6.0]), lg: band(lg, [5.0, 5.8, 7.0, 7.7]),
+      disk: band(lg, [1.7, 2.5, 3.9, 4.6]), mw: band(lg, [3.5, 4.1, 5.4, 6.0]), lg: band(lg, [5.0, 5.8, 7.0, 7.7]),
       virgo: band(lg, [6.7, 7.4, 8.5, 9.1]), web: band(lg, [8.0, 8.7, 9.6, 10.4]), universe: band(lg, [9.4, 10.1, 13, 14])
     };
     this.vis = vis;
@@ -553,10 +561,16 @@ export class Cosmos {
         if (o.userData.u) {
           const u = o.userData.u;
           if (u.alpha) u.alpha.value = a;
-          if (u.pxScale) { u.pxScale.value = pxScale; u.sizeK.value = s; }
+          if (u.pxScale) { u.pxScale.value = pxScale; u.sizeK.value = s; u.dpr.value = this.renderer.getPixelRatio(); }
         }
         if (o.userData.mat) o.userData.mat.opacity = a;
       }
+    }
+    // the painted galaxy only comes in once it's small enough not to look blurry; the sparkle carries the zoom before that
+    if (this.layers.mw) {
+      const [disc, sparkle] = this.layers.mw.userData.items;
+      disc.userData.mat.opacity = vis.mw * smooth(4.7, 5.2, lg);
+      sparkle.userData.u.alpha.value = vis.mw * (0.4 + 0.6 * (1 - smooth(4.7, 5.3, lg)));
     }
     // the Milky Way disc inside the Local Group layer only appears once the galaxy layer is gone
     if (this.layers.lg) { const it = this.layers.lg.userData.items; it[it.length - 1].userData.mat.opacity = vis.lg * (1 - vis.mw); }

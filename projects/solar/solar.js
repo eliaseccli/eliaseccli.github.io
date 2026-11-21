@@ -610,8 +610,9 @@ function frame(tms) {
   // zooming through galactic scales turns the view to look down on the Milky Way (only while zooming)
   const lgNow = Math.log10(dist / LY), dLg = lgNow - (rig.lgPrev ?? lgNow);
   rig.lgPrev = lgNow;
-  if (dLg && lgNow > 3.2 && lgNow < 5.2 && view.w[2] > 0.99) {
-    const g = cosmos.galaxyView(), yawT = Math.atan2(g.x, g.z), pitchT = Math.asin(g.y);
+  // and on out, to line up our galaxy with Andromeda
+  if (dLg && lgNow > 3.2 && lgNow < 6.8 && view.w[2] > 0.99) {
+    const g = lgNow < 5.3 ? cosmos.galaxyView() : cosmos.lgView(sys.portrait), yawT = Math.atan2(g.x, g.z), pitchT = Math.asin(g.y);
     const k = clamp(Math.abs(dLg) * 1.6, 0, 1);
     rig.yaw += (((yawT - rig.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * k;
     rig.pitch += (pitchT - rig.pitch) * k;
