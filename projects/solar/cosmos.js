@@ -4,9 +4,9 @@ import { radec2w, eq2w, LY } from "./bodies.js?v=5";
 /* ============================================================
    Beyond the solar system: one continuous zoom from the Sun's bubble
    to the edge of the observable universe. Every layer lives in
-   light-years and is drawn relative to a target that drifts with the
-   zoom (Sun → galactic centre → Local Group → back to us), scaled by
-   1/D so a camera at distance 1 sees the right picture at any scale.
+   light-years around the Sun, scaled by 1/D so a camera at distance 1
+   sees the right picture at any scale, with us always at the centre.
+   Only the view direction turns (solar.js), never the target.
    Real data where it's cheap (HYG stars, galaxy positions); the
    galaxy, clusters and cosmic web are drawn, not measured.
    ============================================================ */
@@ -34,7 +34,6 @@ const SMC = V(radec2w(13.187, -72.829, 2.0e5));
 const VIRGO = V(radec2w(187.7059, 12.3911, 5.35e7));
 const FORNAX = V(radec2w(54.62, -35.45, 6.2e7));
 const GA = V(gal2w(307, 9, 2.5e8));          // Great Attractor, heart of Laniakea
-const LG = M31.clone().multiplyScalar(0.5);   // halfway to Andromeda: both fit on screen
 
 const T = (en, de) => ({ en, de });
 export const LAYERS = [
@@ -190,7 +189,6 @@ export class Cosmos {
     this.level = 0; this.skyK = 1; this.sysK = 1; this.lg = -9;
     this.layers = {};
     this.mats = [];
-    this.target = new THREE.Vector3();
     this.labels = [];
     this.labelEl = document.createElement("div");
     this.labelEl.className = "clabels";
@@ -314,7 +312,7 @@ export class Cosmos {
       g.setAttribute("color", new THREE.BufferAttribute(col, 3));
       g.setAttribute("size", new THREE.BufferAttribute(size, 1));
     });
-    this.label("stars", new THREE.Vector3(), [-1.2, 3.0], { name: T("Sun", "Sonne"), here: true, card: LBY.stars });
+    this.label("stars", new THREE.Vector3(), [-1.2, 3.6], { name: T("Sun", "Sonne"), here: true, card: LBY.stars });
   }
 
   build_disk(grp) {
@@ -332,7 +330,7 @@ export class Cosmos {
     this.add(grp, pts);
   }
 
-  // camera direction (from target to camera) that shows the galaxy from above, at an angle
+  // camera direction (from us to the camera) that shows the galaxy from above, at an angle
   galaxyView() {
     const { e1, e3 } = this.galBasis();
     return e3.clone().multiplyScalar(Math.sin(1.0)).addScaledVector(e1, -Math.cos(1.0)).normalize();
@@ -390,7 +388,7 @@ export class Cosmos {
       a.size.setX(k, 30 + r() * 70);
     }
     this.add(grp, pts, 0.45);
-    this.label("mw", new THREE.Vector3(), [3.0, 6.9], { name: T("You are here", "Du bist hier"), here: true, card: LBY.mw });
+    this.label("mw", new THREE.Vector3(), [3.6, 6.9], { name: T("You are here", "Du bist hier"), here: true, card: LBY.mw });
     this.label("mw", GC, [3.9, 5.5], { name: T("Galactic centre", "Zentrum der Galaxie"),
       card: { name: T("Sagittarius A*", "Sagittarius A*"), scale: T("26,000 light-years away", "26.000 Lichtjahre entfernt"),
         kid: T("In the very middle of our galaxy sits a giant black hole. It's so heavy that nothing – not even light – can escape it.", "Ganz in der Mitte unserer Galaxie sitzt ein riesiges Schwarzes Loch. Es ist so schwer, dass nichts entkommt – nicht einmal Licht."),
@@ -550,12 +548,6 @@ export class Cosmos {
     this.W = W; this.H = H;
     if (lg < -4) { this.active = false; return; }
     this.active = true;
-    // which way the view drifts: Sun → galactic centre → Local Group → (Virgo) → back to us
-    const t = this.target.set(0, 0, 0);
-    t.addScaledVector(GC, smooth(4.2, 5.4, lg) * (1 - smooth(5.5, 6.2, lg)));
-    t.addScaledVector(LG, smooth(6.0, 6.9, lg) * (1 - smooth(7.2, 7.8, lg)));
-    t.addScaledVector(VIRGO, 0.5 * smooth(7.0, 7.8, lg) * (1 - smooth(8.4, 9.4, lg)));
-    t.addScaledVector(GA, 0.5 * smooth(8.2, 8.9, lg) * (1 - smooth(9.4, 10.2, lg)));
     const s = 1 / D;
     const vis = {
       helio: band(lg, [-2.45, -2.15, -1.9, -1.3]), oort: band(lg, [-2.4, -1.6, 0.0, 0.8]), stars: band(lg, [-2.4, -1.2, 2.7, 3.5]),
@@ -569,7 +561,6 @@ export class Cosmos {
       const grp = this.layer(key);
       grp.visible = true;
       grp.scale.setScalar(s);
-      grp.position.copy(t).multiplyScalar(-s);
       for (const o of grp.userData.items) {
         const a = vis[key] * o.userData.base;
         if (o.userData.u) {
@@ -619,7 +610,7 @@ export class Cosmos {
     for (const l of this.order) {
       let vis = this.lg > l.lg[0] && this.lg < l.lg[1];
       if (vis) {
-        v.copy(l.pos).sub(this.target).multiplyScalar(s).applyMatrix4(this.camera.matrixWorldInverse).applyMatrix4(this.camera.projectionMatrix);
+        v.copy(l.pos).multiplyScalar(s).applyMatrix4(this.camera.matrixWorldInverse).applyMatrix4(this.camera.projectionMatrix);
         l.x = (v.x * 0.5 + 0.5) * W; l.y = (-v.y * 0.5 + 0.5) * H;
         vis = v.z < 1 && l.x > 4 && l.x < W - 4 && l.y > top && l.y < bottom;
       }
