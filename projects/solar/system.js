@@ -442,7 +442,7 @@ export class System {
       moon.pO[i] = earth.pO[i] + (tmp[i] / md) * earth.rO * 4.4;
     }
     moon.pS[0] = port ? 0 : L.moon; moon.pS[1] = port ? -L.moon : 0; moon.pS[2] = 0;
-    for (const it of this.items) if (it.b) this.orient(it, d);
+    for (const it of this.items) if (it.b) this.orient(it, d, realDt);
     for (const it of this.items) {
       if (it.kind !== "moonlet") continue;
       const p = this.byId[it.parent], m = it.m;
@@ -531,12 +531,13 @@ export class System {
     }
   }
 
-  orient(it, d) {
+  orient(it, d, realDt) {
     const b = it.b;
     const target = primeW(b, d);
     // rotation follows the real prime meridian, but never spins faster than ~1 turn / 4 s on screen
+    // (step per real second, so a pause – realDt 0 – stops a planet that was still catching up)
     if (it.angle === null) it.angle = target;
-    const diff = ((target - it.angle) % 360 + 540) % 360 - 180, maxStep = 1.6;
+    const diff = ((target - it.angle) % 360 + 540) % 360 - 180, maxStep = 96 * realDt;
     it.angle = Math.abs(diff) <= maxStep ? target : it.angle + Math.sign(b.W[1]) * maxStep;
     bodyAxes(b, d, it.angle, it.axes);
     const x = it.axes.x, y = it.axes.y, z = it.axes.z;

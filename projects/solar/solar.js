@@ -21,7 +21,7 @@ const tr = (o) => (o && typeof o === "object" ? o[lang] || o.en : o);
 const UI = {
   overview: { en: "Overview", de: "Überblick" }, sizes: { en: "True sizes", de: "Echte Größen" }, distances: { en: "True distances", de: "Echte Abstände" },
   system: { en: "Solar system", de: "Sonnensystem" }, land: { en: "Land", de: "Landen" }, takeoff: { en: "Take off", de: "Abheben" },
-  tour: { en: "Tour", de: "Tour" }, today: { en: "Today", de: "Heute" }, day: { en: "Daytime", de: "Tag" },
+  tour: { en: "Tour", de: "Tour" }, paused: { en: "Paused", de: "Pausiert" }, today: { en: "Today", de: "Heute" }, day: { en: "Daytime", de: "Tag" },
   hintO: { en: "Squeezed so everything fits on screen", de: "Zusammengeschoben, damit alles auf den Schirm passt" },
   hintS: { en: "Real sizes, side by side", de: "Echte Größen, nebeneinander" },
   hintD: { en: "Real distances – planets are tiny dots! Pinch out to leave the solar system", de: "Echte Abstände – die Planeten sind winzige Punkte! Weiter rauszoomen, um das Sonnensystem zu verlassen" },
@@ -353,13 +353,15 @@ for (const b of document.querySelectorAll("[data-mode]")) b.addEventListener("cl
 
 const fmtDate = (d) => new Date((d + 10957.5) * 864e5).toLocaleDateString(lang === "de" ? "de-AT" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
 function paintTime() {
-  speedBtn.textContent = tr(UI.speeds[time.speedI]);
+  speedBtn.textContent = tr(time.paused ? UI.paused : UI.speeds[time.speedI]);
+  speedBtn.classList.toggle("is-paused", time.paused);
   playBtn.classList.toggle("is-paused", time.paused);
+  document.body.classList.toggle("is-paused-all", time.paused);
   playBtn.setAttribute("aria-label", time.paused ? "Play" : "Pause");
   $("[data-today]").textContent = tr(UI.today);
 }
 playBtn.addEventListener("click", () => { time.paused = !time.paused; paintTime(); });
-speedBtn.addEventListener("click", () => setSpeed((time.speedI + 1) % UI.speeds.length));
+speedBtn.addEventListener("click", () => { if (time.paused) { time.paused = false; paintTime(); } else setSpeed((time.speedI + 1) % UI.speeds.length); });
 $("[data-today]").addEventListener("click", () => warpTime(days(new Date()) - time.d));
 function warpTime(dt) { time.warp = { d0: time.d, d1: time.d + dt, t0: now, dur: clamp(0.8 + Math.log10(1 + Math.abs(dt)) * 0.5, 0.8, 2.4) }; }
 
@@ -607,7 +609,9 @@ function frame(tms) {
     if (rig.anchor !== "home") flyTo("home", { zoom: 0.6 });
     setMode("distances");
   }
-  sys.compute(time.d, view.w, dt);
+  // pause freezes everything that moves on its own (sun surface, clouds too); the camera stays yours
+  const runDt = time.paused ? 0 : dt;
+  sys.compute(time.d, view.w, runDt);
   let dist;
   const tp = [0, 0, 0];
   if (rig.fly) {
@@ -649,7 +653,7 @@ function frame(tms) {
   // render
   renderer.clear();
   if (ground.active) {
-    ground.update(time.d, dt, !!gesture);
+    ground.update(time.d, dt, !!gesture, runDt);
     ground.render();
   } else {
     sky.render(renderer, camera, cosmos.skyK);

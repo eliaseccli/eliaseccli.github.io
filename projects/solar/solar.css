@@ -80,6 +80,9 @@ svg { display: block; fill: currentColor; }
 .t-btn svg { width: 16px; height: 16px; }
 .play .pl, .play.is-paused .pz { display: none; }
 .play.is-paused .pl { display: block; }
+/* paused must read at a glance: solid white play button, "Paused" in the chip */
+.play.is-paused { background: #fff; color: #000; box-shadow: 0 0 14px rgba(255, 255, 255, 0.45); }
+.t-chip.is-paused { color: #fff; }
 .t-chip { height: 36px; padding: 0 12px; white-space: nowrap; border: 0; border-radius: 18px; background: transparent; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); }
 .t-chip:active, .t-btn:active { background: rgba(255, 255, 255, 0.2); }
 .t-date { min-width: 96px; text-align: center; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; color: var(--mute); font-variant-numeric: tabular-nums; }
@@ -103,6 +106,7 @@ svg { display: block; fill: currentColor; }
   transform: rotate(-14deg); clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0 100%); }
 [data-id="sun"] .ball { box-shadow: inset -4px -3px 10px rgba(160, 50, 0, 0.5), 0 0 16px rgba(255, 170, 60, 0.55); }
 @keyframes spin { to { background-position: -200% 50%; } }
+.is-paused-all .ball { animation-play-state: paused; }   /* pause freezes the strip's little planets too */
 
 /* ---------- hint, caption, scale ---------- */
 .hint { position: fixed; z-index: 12; left: 50%; bottom: calc(var(--sb) + 150px); max-width: min(88vw, 30rem); transform: translate(-50%, 8px); opacity: 0; pointer-events: none;

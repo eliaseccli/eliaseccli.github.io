@@ -394,7 +394,7 @@ export class Ground {
     return bt * 0.92;
   }
 
-  update(d, dt, held = false) {
+  update(d, dt, held = false, runDt = dt) {
     if (!this.active) return;
     const b = this.b, it = this.sys.byId[this.id];
     const ax = bodyAxes(b, d, primeW(b, d), {});
@@ -438,7 +438,7 @@ export class Ground {
     const fogC = C.a.setRGB(...s.hor).multiplyScalar(day * bright).lerp(C.b.setRGB(...s.set), lowSun * day * 0.4).add(C.n.setRGB(...s.night));
     this.scene.fog.color.copy(fogC);
     this.scene.fog.density = s.haze === 0 ? 0.00004 : s.haze > 1.5 ? 0.0011 : this.cfg.sky === "pluto" ? 0.0001 : this.cfg.gas ? 0.00012 : 0.00028;
-    if (this.gasU) for (const u of this.gasU) { u.t.value += dt * 6; u.light.value = 0.12 + lightK * 0.95; u.fogc.value.copy(fogC); }
+    if (this.gasU) for (const u of this.gasU) { u.t.value += runDt * 6; u.light.value = 0.12 + lightK * 0.95; u.fogc.value.copy(fogC); }
     // other worlds
     const dots = this.dots.geometry.attributes.position, cols = this.dots.geometry.attributes.color;
     const starK = s.haze > 1.5 ? 0 : Math.max(0, 1 - day * (airy ? 1.4 : 0.15));
