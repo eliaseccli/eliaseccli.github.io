@@ -1,5 +1,6 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { addEarth, sunDir, ll2v } from "./globe-core.js?v=g3";
+import { LIVE_BEFORE, LIVE_AFTER, lkey, classifyLaunches, chooseSide } from "./pick-launch.js?v=sx15";
 
 /* ============================================================
    SpaceX · flight globe
@@ -23,7 +24,7 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t
 const wrapLon = (l) => ((((l + 180) % 360) + 360) % 360) - 180;
 
 /* ---------------- data: Launch Library 2 ---------------- */
-const LL_HOSTS = ["https://ll.thespacedevs.com", "https://lldev.thespacedevs.com"];
+const LL_HOSTS = ["https://ll.thespacedevs.com"]; // production only; lldev is a stale sandbox
 const LL_CACHE = "spacex.ll2.v1";
 const LL_TTL = 30 * 60 * 1000;
 const CT_CACHE = "spacex.celestrak.v1";
@@ -87,8 +88,8 @@ async function fetchLL(path) {
   throw err;
 }
 
-// LL2 keeps a launch in "upcoming" for a while after liftoff; one with a final status has flown
-const FLOWN = /^(success|failure|partial failure)$/i;
+// LL2 often leaves a just-flown launch in "upcoming" as well as "previous".
+// Keep both lists intact; classifyLaunches treats them as one pool.
 
 async function loadLaunches() {
   const c = readCache(LL_CACHE, LL_TTL);
@@ -99,7 +100,7 @@ async function loadLaunches() {
       fetchLL("/2.3.0/launches/previous/?lsp__id=" + SPACEX_LSP + "&limit=8&mode=normal&ordering=-net")
     ]);
     const data = {
-      upcoming: (up.results || []).filter((l) => !FLOWN.test((l.status || {}).abbrev || "")).map(slim),
+      upcoming: (up.results || []).map(slim),
       previous: (prev.results || []).map(slim)
     };
     writeCache(LL_CACHE, data);
@@ -1563,11 +1564,10 @@ function buildTicks() {
    Auto (every open/refresh): the next SpaceX launch (any vehicle), or the one
    flying right now; nominal orbit until CelesTrak has a pre-launch set. The
    most recent flown launch ("Last flight") only when there is no next launch
-   or when tapped. Re-checked every 10 minutes for new data. ?mission=next|latest forces one side. */
-const LIVE_BEFORE = 3600, LIVE_AFTER = 3 * 3600; // s around T-0 that count as "flying now"
+   or when tapped — including classified missions with no catalogue data.
+   Re-checked every 10 minutes for new data. ?mission=next|latest forces one side. */
 const RECHECK_MS = 10 * 60 * 1000;
 const dataCache = new Map(); // launch -> Promise<ct | null>
-const lkey = (l) => (l ? (l.name || "") + "@" + l.net : "");
 const within = (p, ms) => ms === Infinity ? p : Promise.race([p, new Promise((r) => setTimeout(() => r(undefined), ms))]);
 
 async function boot() {
@@ -1623,46 +1623,25 @@ function dataFor(l) {
 
 async function pickLaunch(waitMs) {
   const now = Date.now();
-  const tOf = (l) => new Date(l.net).getTime();
-  const failed = (l) => /^failure$/i.test((l.status || {}).abbrev || "");
-  // in flight: lifted off within LIVE_AFTER, whether LL2 still lists it as upcoming or already as previous
-  const seen = new Set(), flying = [];
-  for (const l of [...(S.data.upcoming || []), ...(S.data.previous || [])]) {
-    if (!l.net || failed(l) || seen.has(lkey(l))) continue;
-    seen.add(lkey(l));
-    if (tOf(l) <= now && tOf(l) > now - LIVE_AFTER * 1000) flying.push(l);
-  }
-  flying.sort((a, b) => tOf(b) - tOf(a)); // newest liftoff first
-  const flyKeys = new Set(flying.map(lkey));
-  const up = (S.data.upcoming || []).filter((l) => l.net && tOf(l) > now && !flyKeys.has(lkey(l))).sort((a, b) => tOf(a) - tOf(b));
-  const prev = (S.data.previous || []).filter((l) => l.net && tOf(l) <= now && !failed(l) && !flyKeys.has(lkey(l)))
-    .sort((a, b) => tOf(b) - tOf(a)).slice(0, 6);
-  // "next" = the launch in flight (the one picked in the in-flight chips, else the newest), else the next one up
-  const next = (S.pin && flying.find((l) => lkey(l) === S.pin)) || flying[0] || up[0] || null;
+  const { flying, next, latest } = classifyLaunches(S.data, now, S.pin);
   let pending = false;
-  const nextP = next ? within(dataFor(next), waitMs) : Promise.resolve(null);
-  let latest = null, latestCt = null;
-  for (const l of prev) {
+  const ctOf = async (l) => {
+    if (!l) return null;
     const ct = await within(dataFor(l), waitMs);
-    if (ct === undefined) { pending = true; break; } // not answered yet: decide again later
-    if (ct) { latest = l; latestCt = ct; break; }
-  }
-  let nextCt = await nextP;
-  if (nextCt === undefined) { pending = true; nextCt = null; }
-  if (!latest && prev.length) latest = prev[0];
+    if (ct === undefined) { pending = true; return null; }
+    return ct;
+  };
+  // orbit data is only for the path, and only for the two candidates — never a filter
+  const nextCt = await ctOf(next);
+  const latestCt = await ctOf(latest);
+  const side = chooseSide(S.which, next, latest);
+  S.autoPick = side.auto;
   const tNext = next ? (now - new Date(next.net).getTime()) / 1000 : 0;
   const nextLive = !!next && tNext > -LIVE_BEFORE && tNext < LIVE_AFTER;
-  // default is always the next launch, or the one flying right now (it stays in "upcoming"
-  // until LIVE_AFTER past T-0); "Last flight" only when there is no next launch or when tapped
-  const auto = next ? "next" : "latest";
-  S.autoPick = auto;
-  const which = S.which === "auto" ? auto : S.which;
-  const chosen = which === "next" ? (next || latest) : (latest || next);
-  const side = chosen === next ? "next" : "latest";
-  const other = side === "next" ? latest : next;
+  const other = side.which === "next" ? latest : next;
   return {
-    chosen, ct: side === "next" ? nextCt : latestCt, which: side, next, latest, pending, flying,
-    other, om: other ? parseMission(other) : null, nextLive
+    chosen: side.chosen, ct: side.which === "next" ? nextCt : latestCt, which: side.which,
+    next, latest, pending, flying, other, om: other ? parseMission(other) : null, nextLive
   };
 }
 
