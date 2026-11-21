@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Solar system</title>
+  <link rel="icon" href="/favicon.ico?v=2" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+  <script src="/projects/unlock.js?v=2" data-gate></script>
+  <link rel="preload" href="/spacex/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./solar.css?v=1">
+  <link rel="modulepreload" href="/vendor/three.module.min.js">
+</head>
+<body>
+  <canvas class="gl" aria-label="The solar system. Drag to turn, pinch to zoom, tap a planet to fly there."></canvas>
+  <div class="labels" aria-hidden="false"></div>
+
+  <a class="back" href="../" aria-label="Back to projects">‹</a>
+  <button type="button" class="pill tour" data-tour aria-label="Guided tour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg><span>Tour</span></button>
+
+  <div class="modes" role="radiogroup" aria-label="Scale">
+    <button type="button" role="radio" data-mode="overview"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="3.2"/><circle cx="16" cy="16" r="8" class="o"/><circle cx="16" cy="16" r="13" class="o"/><circle cx="24" cy="16" r="1.8"/><circle cx="7.5" cy="23" r="2.2"/></svg><span></span></button>
+    <button type="button" role="radio" data-mode="sizes"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="5" cy="16" r="2"/><circle cx="11.5" cy="16" r="3"/><circle cx="22.5" cy="16" r="7.5"/></svg><span></span></button>
+    <button type="button" role="radio" data-mode="distances"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="4" cy="16" r="2.6"/><circle cx="9" cy="16" r="1"/><circle cx="17" cy="16" r="1"/><circle cx="29" cy="16" r="1"/><path d="M4 22h25" class="o"/></svg><span></span></button>
+  </div>
+
+  <div class="top">
+    <h1 class="title"><span class="t-name"></span><span class="t-sub"></span></h1>
+    <div class="acts">
+      <button type="button" class="pill i" data-info aria-label="Info"><span aria-hidden="true">i</span></button>
+      <button type="button" class="pill" data-land></button>
+      <button type="button" class="pill" data-takeoff hidden></button>
+      <button type="button" class="pill" data-day hidden aria-label="Daytime">☀︎</button>
+    </div>
+  </div>
+
+  <div class="hint" role="status" aria-live="polite"></div>
+  <div class="scale"><span></span></div>
+  <div class="caption" role="status" aria-live="polite"></div>
+
+  <div class="bottom">
+    <div class="timebar">
+      <button type="button" class="t-btn play" data-play aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="pz" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/><path class="pl" d="M8 5.5v13l10.5-6.5z"/></svg></button>
+      <button type="button" class="t-chip" data-speed aria-label="Speed"></button>
+      <span class="t-date" data-date></span>
+      <button type="button" class="t-chip" data-today></button>
+    </div>
+    <nav class="strip" aria-label="Planets"></nav>
+  </div>
+
+  <aside class="card" hidden aria-label="Info card">
+    <button type="button" class="card-x" data-close aria-label="Close">×</button>
+    <div class="card-body"></div>
+  </aside>
+
+  <script type="module" src="./solar.js?v=1"></script>
+</body>
+</html>
