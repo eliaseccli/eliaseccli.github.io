@@ -469,13 +469,15 @@ export class System {
   /* Draw relative to the floating origin. pxAt(dist): world units per CSS pixel at that distance. */
   place(origin, camPos, pxAt) {
     const w = this.w, d = this.d, sun = this.byId.sun;
+    // past ~130 AU (scene units are AU) planet dots, belts and the comet would read as stars around the Sun: shrink/fade them out by ~400 AU
+    const far = 1 - Math.min(1, Math.max(0, (Math.log10(camPos.length()) - 2.1) / 0.5));
     for (const it of this.items) {
       it.group.position.set(it.pos[0] - origin[0], it.pos[1] - origin[1], it.pos[2] - origin[2]);
       const px = pxAt(it.group.position.distanceTo(camPos));
       const minR = px * (it.kind === "moonlet" ? 1.4 : it.id === "sun" ? 3 : 2.2);
       it.screenR = it.R / px;
-      it.group.visible = it.kind !== "moonlet" || w[1] < 0.98;
-      it.spin.scale.setScalar(Math.max(it.R, minR));
+      it.group.visible = (it.kind !== "moonlet" || w[1] < 0.98) && (far > 0.02 || it.id === "sun");
+      it.spin.scale.setScalar(Math.max(it.R, it.id === "sun" ? minR : minR * far));
     }
     const sp = sun.group.position;
     for (const it of this.items) {
@@ -506,20 +508,21 @@ export class System {
       it.orbit.material.uniforms.head.value = (((Lm - peri) % 360) + 360) % 360 / 360;
       it.orbit.material.uniforms.alpha.value = (it.focus ? 0.4 : it.kind === "dwarf" ? 0.11 : 0.19) * lineA;
     }
+    const beltA = lineA * far;
     for (const b of [this.belt, this.kuiper]) {
-      b.visible = lineA > 0.01;
+      b.visible = beltA > 0.01;
       b.userData.u.day.value = d;
       b.userData.u.px.value = this.renderer.getPixelRatio();
     }
-    this.belt.userData.u.alpha.value = 0.5 * lineA;
-    this.kuiper.userData.u.alpha.value = 0.28 * lineA;
+    this.belt.userData.u.alpha.value = 0.5 * beltA;
+    this.kuiper.userData.u.alpha.value = 0.28 * beltA;
     const h = this.halley;
     h.head.position.set(h.pos[0] - origin[0], h.pos[1] - origin[1], h.pos[2] - origin[2]);
     h.head.scale.setScalar(pxAt(h.head.position.distanceTo(camPos)) * 1.6);
     const tailLen = Math.min(1, 1.6 / (h.r * h.r)) * (w[0] * 0.4 + w[2] * 0.35);
-    h.head.visible = this.halleyOrbit.visible = lineA > 0.01;
-    h.tail.visible = tailLen > 0.002 && lineA > 0.01;
-    this.halleyOrbit.material.uniforms.alpha.value = 0.08 * lineA;
+    h.head.visible = this.halleyOrbit.visible = beltA > 0.01;
+    h.tail.visible = tailLen > 0.002 && beltA > 0.01;
+    this.halleyOrbit.material.uniforms.alpha.value = 0.08 * beltA;
     if (h.tail.visible) {
       h.tail.position.copy(h.head.position);
       this._v = (this._v || new THREE.Vector3()).copy(h.head.position).sub(sp).normalize();

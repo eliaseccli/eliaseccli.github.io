@@ -264,23 +264,12 @@ export class Cosmos {
     this.label("helio", nose.clone().multiplyScalar(120 * AU), [-2.35, -1.85], { name: LBY.helio.name });
   }
 
+  // no particles: comets out there are far too small and sparse to see, and dots would read as stars.
+  // Just a faint icy glow so the cloud reads as a ball, plus its label.
   build_oort(grp) {
-    const n = this.low ? 9000 : 20000, pts = this.points(n, { fixed: true, minPx: 0.5, maxPx: 4 }), a = pts.geometry.attributes, r = rng(31), AU = 1 / LY;
-    for (let k = 0; k < n; k++) {
-      const inner = k < n * 0.3;
-      const rad = (inner ? 2000 + r() * 18000 : 20000 + Math.pow(r(), 0.6) * 80000) * AU;
-      const u = r() * 2 - 1, th = r() * Math.PI * 2, q = Math.sqrt(1 - u * u);
-      const flat = inner ? 0.35 : 1;
-      a.position.setXYZ(k, rad * q * Math.cos(th), rad * u * flat, rad * q * Math.sin(th));
-      const b = 0.45 + r() * 0.45;
-      a.color.setXYZ(k, b * 0.75, b * 0.88, b);
-      a.size.setX(k, 2 + r() * 1.5);
-    }
-    this.add(grp, pts);
-    // a faint icy glow so the whole cloud reads as a ball from outside
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: blobTexture(), color: 0x5a7cc0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
     glow.scale.setScalar(3.4); glow.userData.mat = glow.material;
-    this.add(grp, glow, 0.2);
+    this.add(grp, glow, 0.28);
     this.label("oort", V([0.55, 0.25, -0.5]), [-1.6, -0.4], { name: LBY.oort.name });
   }
 
