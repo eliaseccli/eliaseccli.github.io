@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {".git", "vendor", "node_modules", "__pycache__"}
 PRIVATE = ("/projects/", "/secret/")          # password / unlisted: must be noindex, not in sitemap
 ORBIT_FAVICON = ("/spacex/",)                 # pages that use the SpaceX orbit-dot favicon
-HEAD_OK = {"/projects/unlock.js?v=1"}         # must run before first paint (password gate)
+HEAD_OK = {"/projects/unlock.js", "/starlink/state.js"}  # must run before first paint (password gate; Starlink view classes)
 NO_ZOOM_OK = {"/spacex/", "/projects/planet/", "/projects/plop/", "/projects/muse/"}  # globe/game gestures: pinch zoom off on purpose
 TITLE_SUFFIX = re.compile(r"\s[·\-–—|]\s*Elias\b")
 AXE = Path.home() / ".cache/sitecheck/axe.min.js"
@@ -141,7 +141,7 @@ def check_head_perf(u, s):
     if not head:
         return
     for sc in head.find_all("script", src=True):
-        if not (sc.has_attr("defer") or sc.has_attr("async") or sc.get("type") == "module" or sc["src"] in HEAD_OK):
+        if not (sc.has_attr("defer") or sc.has_attr("async") or sc.get("type") == "module" or urllib.parse.urlsplit(urllib.parse.urljoin(u, sc["src"])).path in HEAD_OK):
             say("WARN", u, f"render-blocking script in <head>: {sc['src']}")
 
 def refs_in_html(p):

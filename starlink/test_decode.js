@@ -32,7 +32,9 @@ assert.strictEqual(tl.angleDeg(0), 0);
 assert.ok(Math.abs(tl.angleDeg(32768) - 180) < 1e-12);
 
 var src = fs.readFileSync(path.join(__dirname, "timeline.js"), "utf8");
-var html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+var page = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+var chart = fs.readFileSync(path.join(__dirname, "chart.js"), "utf8");
+var html = page + chart; // markup + the Chart script it loads
 assert.ok(/PLAYBACK_FPS = 15/.test(src), "default playback is 15 fps");
 assert.ok(/FPS_MIN = 1/.test(src) && /FPS_MAX = 15/.test(src), "player can vary 1–15 fps");
 assert.ok(!/fps = j\.fps \|\| 30/.test(src), "player must not fall back to catalog 30 fps");
@@ -42,7 +44,7 @@ assert.ok(Math.abs(tl.dotRadius(28, 28) - 3.36 * 8) < 1e-9, "max-zoom dot radius
 assert.ok(/TL\.dotRadius\(/.test(html) && /TL\.pickedDot\(/.test(html), "Today chart draws with the shared timeline.js helpers");
 assert.ok(/data-tl-scrub/.test(html) && /data-tl-date/.test(html), "scrub keeps data-tl-scrub / data-tl-date");
 assert.ok(html.indexOf("data-tl-scrub-input") !== -1, "native range is a keyboard a11y fallback only");
-assert.ok(!/<input[^>]*data-tl-scrub[\s>=]/.test(html), "visible scrub host is not a native range input");
+assert.ok(!/<input[^>]*data-tl-scrub[\s>=]/.test(page), "visible scrub host is not a native range input");
 assert.ok(/role="slider"/.test(html), "scrub stays a keyboard slider");
 assert.ok(/transport-controls/.test(html), "play/stop/fps sit on their own row");
 assert.ok(/alignToday/.test(src), "today overlays last packed frame coords");
