@@ -1,6 +1,6 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { BODIES, BY_ID, AU, D2R, bodyAxes, primeW } from "./bodies.js?v=5";
-import { LOGV, LOGF } from "./system.js?v=5";
+import { LOGV, LOGF } from "./system.js?v=6";
 
 /* ============================================================
    Standing on a world: the real sky over the landing spot (Sun,

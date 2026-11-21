@@ -1,9 +1,9 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } from "./bodies.js?v=5";
-import { System, mapO } from "./system.js?v=5";
+import { System, mapO } from "./system.js?v=6";
 import { Sky } from "./sky.js?v=5";
-import { Ground } from "./ground.js?v=5";
-import { Cosmos } from "./cosmos.js?v=5";
+import { Ground } from "./ground.js?v=6";
+import { Cosmos } from "./cosmos.js?v=6";
 
 /* ============================================================
    Solar system – app shell: renderer, camera rig (orbit / fly-to /
@@ -23,7 +23,9 @@ const UI = {
   system: { en: "Solar system", de: "Sonnensystem" }, land: { en: "Land", de: "Landen" }, takeoff: { en: "Take off", de: "Abheben" },
   tour: { en: "Tour", de: "Tour" }, paused: { en: "Paused", de: "Pausiert" }, today: { en: "Today", de: "Heute" }, day: { en: "Daytime", de: "Tag" },
   hintO: { en: "Squeezed so everything fits on screen", de: "Zusammengeschoben, damit alles auf den Schirm passt" },
-  hintS: { en: "Real sizes, side by side", de: "Echte Größen, nebeneinander" },
+  hintS: matchMedia("(pointer: coarse)").matches
+    ? { en: "Real sizes · slide along with two fingers", de: "Echte Größen · mit zwei Fingern entlangschieben" }
+    : { en: "Real sizes · swipe sideways or shift-scroll to slide", de: "Echte Größen · seitlich wischen oder Shift+Scrollen" },
   hintD: { en: "Real distances – planets are tiny dots! Pinch out to leave the solar system", de: "Echte Abstände – die Planeten sind winzige Punkte! Weiter rauszoomen, um das Sonnensystem zu verlassen" },
   speeds: [
     { s: 1 / 86400, en: "real time", de: "Echtzeit" }, { s: 1 / 24, en: "1 hour / s", de: "1 Stunde / s" },
@@ -73,7 +75,7 @@ const modeW = (m) => [m === "overview" ? 1 : 0, m === "sizes" ? 1 : 0, m === "di
 /* ---------- camera rig ----------
    anchor: a body id or "home". The camera orbits the anchor at
    dist = base(anchor) * exp(zoom). Fly-to blends two anchors. */
-const rig = { anchor: "home", yaw: 0.35, pitch: innerHeight > innerWidth ? 0.85 : 0.52, zoom: 0, vYaw: 0, vPitch: 0, vZoom: 0, fly: null, origin: new Float64Array(3), dist: 1 };
+const rig = { anchor: "home", yaw: 0.35, pitch: innerHeight > innerWidth ? 0.85 : 0.52, zoom: 0, vYaw: 0, vPitch: 0, vZoom: 0, pan: 0, vPan: 0, fly: null, origin: new Float64Array(3), dist: 1 };
 const HOME = { o: 7.4, s: 1, d: 26 };
 
 function fitK(R) {
@@ -92,6 +94,31 @@ function anchorPos(a, out) {
   const it = sys.byId[a];
   out[0] = it.pos[0]; out[1] = it.pos[1]; out[2] = it.pos[2];
   return out;
+}
+/* True sizes: the target can slide along the row of planets (two-finger drag, trackpad swipe, shift+wheel).
+   rig.pan is in scene units along the row, relative to the anchor; it only counts while the row is shown. */
+function lineCoord(a) {
+  const L = sys.lineup();
+  return a === "home" ? L.end * (sys.portrait ? 0.5 : 0.49) : (L[a] ?? 0);
+}
+function addPan(pan, out) {
+  const k = view.w[1] * pan;
+  if (sys.portrait) out[1] -= k; else out[0] += k;
+  return out;
+}
+function panBy(px) {
+  // px: how far the row should follow the fingers, in screen pixels along the row's on-screen direction
+  const L = sys.lineup(), c = lineCoord(rig.anchor), du = -px * pxAt(rig.dist);
+  rig.pan = clamp(rig.pan + du, L.sun - c, L.end - c);
+  rig.zoomT = undefined;
+  return du;
+}
+// the row's direction on screen (unit vector, CSS px), so a drag along it slides the row under the fingers
+function rowDir() {
+  const a = new THREE.Vector3(0, 0, 0), b = new THREE.Vector3(sys.portrait ? 0 : 1, sys.portrait ? -1 : 0, 0);
+  a.project(camera); b.project(camera);
+  const x = (b.x - a.x) * W, y = -(b.y - a.y) * H, l = Math.hypot(x, y) || 1;
+  return [x / l, y / l];
 }
 function anchorDist(a) {
   if (a === "home") {
@@ -122,9 +149,10 @@ function flyTo(a, opts = {}) {
   const span = Math.abs(Math.log(d1 / d0)) + bump * 2;
   // the Sun: look from low down, with Jupiter (the biggest neighbour) off to the side instead of right behind the title
   if (a === "sun" && opts.yaw === undefined) { const j = sys.byId.jupiter.pos; opts = { ...opts, yaw: Math.atan2(j[0], j[2]) + Math.PI / 2, pitch: opts.pitch ?? 0.28 }; }
-  rig.fly = { a: rig.anchor, b: a, t0: now, dur: reduceMotion ? 0.01 : clamp(1.2 + span * 0.16, 1.4, 4.2), d0, d1, bump,
+  addPan(rig.pan, p0);
+  rig.fly = { pan0: rig.pan, a: rig.anchor, b: a, t0: now, dur: reduceMotion ? 0.01 : clamp(1.2 + span * 0.16, 1.4, 4.2), d0, d1, bump,
     yaw0: rig.yaw, pitch0: rig.pitch, yaw1: opts.yaw ?? rig.yaw, pitch1: opts.pitch ?? clamp(rig.pitch, 0.12, 0.6), zoom1: opts.zoom || 0 };
-  rig.vYaw = rig.vPitch = rig.vZoom = 0;
+  rig.vYaw = rig.vPitch = rig.vZoom = rig.vPan = 0; rig.pan = 0;
   if (a !== "home") sys.loadHi(sys.byId[a]);
   focusChanged(a);
 }
@@ -134,7 +162,7 @@ function setMode(m, keepAnchor = true) {
   if (ground.active) leaveGround(true);
   view.from = view.mode; view.mode = m; view.t0 = now;
   view.wFrom = view.w.slice();
-  if (m === "sizes") { rig.fly = null; rig.yawT = 0; rig.pitchT = 0.1; }
+  if (m === "sizes") { rig.fly = null; rig.yawT = 0; rig.pitchT = 0.1; rig.pan = rig.vPan = 0; }
   if (!keepAnchor) rig.anchor = "home";
   rig.zoomT = 0;
   hint(tr(UI[m === "overview" ? "hintO" : m === "sizes" ? "hintS" : "hintD"]));
@@ -148,8 +176,8 @@ let gesture = null, lastTap = 0, now = 0;
 canvas.addEventListener("pointerdown", (e) => {
   canvas.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
-  gesture = ptrs.size === 1 ? { kind: "drag", moved: 0 } : { kind: "pinch", d0: pinchDist(), z0: rig.zoom, f0: ground.fov };
-  rig.vYaw = rig.vPitch = rig.vZoom = ground.vy = ground.vp = 0;
+  gesture = ptrs.size === 1 ? { kind: "drag", moved: 0 } : { kind: "pinch", d0: pinchDist(), z0: rig.zoom, f0: ground.fov, m: pinchMid() };
+  rig.vYaw = rig.vPitch = rig.vZoom = rig.vPan = ground.vy = ground.vp = 0;
   stopTour();
 });
 canvas.addEventListener("pointermove", (e) => {
@@ -169,6 +197,10 @@ canvas.addEventListener("pointermove", (e) => {
     const d = pinchDist();
     if (ground.active) { ground.setFov(gesture.f0 * gesture.d0 / d); return; }
     setZoom(gesture.z0 - Math.log(d / gesture.d0) * 1.2);
+    // true sizes: two fingers moving together slide along the row of planets
+    const m = pinchMid(), mdx = m[0] - gesture.m[0], mdy = m[1] - gesture.m[1];
+    gesture.m = m;
+    if (view.mode === "sizes" && !rig.fly) { const r = rowDir(); rig.vPan = panBy(mdx * r[0] + mdy * r[1]) * 0.5; }
   }
 });
 const endPtr = (e) => {
@@ -185,8 +217,15 @@ canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   stopTour();
   if (ground.active) { ground.setFov(ground.fov * Math.exp(e.deltaY * 0.0015)); return; }
+  // true sizes: a sideways trackpad swipe or shift+wheel slides along the row (pinch / plain wheel still zooms)
+  if (view.mode === "sizes" && !rig.fly && !e.ctrlKey) {
+    const side = e.shiftKey ? (e.deltaX || e.deltaY) : Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+    // the row follows the fingers, like scrolling a page sideways
+    if (side) { panBy(sys.portrait ? -side : -side * Math.sign(rowDir()[0] || 1)); rig.vPan = 0; return; }
+  }
   rig.vZoom += e.deltaY * (e.ctrlKey ? 0.01 : 0.0016);
 }, { passive: false });
+function pinchMid() { const a = [...ptrs.values()]; return [(a[0].x + a[1].x) / 2, (a[0].y + a[1].y) / 2]; }
 function pinchDist() { const a = [...ptrs.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1; }
 const MAX_DIST = 1.6e11 * LY;   // AU: the whole observable universe in view
 function setZoom(z) {
@@ -599,6 +638,7 @@ function frame(tms) {
   if (!gesture && !rig.fly) {
     rig.yaw += rig.vYaw; rig.pitch = clamp(rig.pitch + rig.vPitch, -1.45, 1.45);
     rig.vYaw *= 0.92; rig.vPitch *= 0.92;
+    if (Math.abs(rig.vPan) > 1e-7) { const L = sys.lineup(), c = lineCoord(rig.anchor); rig.pan = clamp(rig.pan + rig.vPan, L.sun - c, L.end - c); rig.vPan *= 0.9; }
     if (Math.abs(rig.vZoom) > 1e-5) { setZoom(rig.zoom + rig.vZoom * 0.25); rig.vZoom *= 0.8; }
     if (rig.yawT !== undefined) { rig.yaw = lerp(rig.yaw, rig.yawT, 1 - Math.pow(0.02, dt)); rig.pitch = lerp(rig.pitch, rig.pitchT, 1 - Math.pow(0.02, dt)); }
     if (rig.zoomT !== undefined) { rig.zoom = lerp(rig.zoom, rig.zoomT, 1 - Math.pow(rig.landing ? 0.004 : 0.03, dt)); if (Math.abs(rig.zoom - rig.zoomT) < 1e-3) rig.zoomT = undefined; }
@@ -616,14 +656,14 @@ function frame(tms) {
   const tp = [0, 0, 0];
   if (rig.fly) {
     const f = rig.fly, u = clamp((now - f.t0) / f.dur, 0, 1), e = ease(u);
-    const a = anchorPos(f.a, [0, 0, 0]), b = anchorPos(f.b, [0, 0, 0]);
+    const a = addPan(f.pan0, anchorPos(f.a, [0, 0, 0])), b = anchorPos(f.b, [0, 0, 0]);
     for (let i = 0; i < 3; i++) tp[i] = lerp(a[i], b[i], e);
     const d1 = anchorDist(f.b) * Math.exp(f.zoom1);
     dist = Math.exp(lerp(Math.log(f.d0), Math.log(d1), e) + f.bump * Math.sin(Math.PI * e));
     rig.yaw = lerp(f.yaw0, f.yaw1, e); rig.pitch = lerp(f.pitch0, f.pitch1, e);
     if (u >= 1) { rig.anchor = f.b; rig.zoom = f.zoom1; rig.fly = null; writeHash(); paintTitle(); }
   } else {
-    anchorPos(rig.anchor, tp);
+    addPan(rig.pan, anchorPos(rig.anchor, tp));
     dist = anchorDist(rig.anchor) * Math.exp(rig.zoom);
   }
   rig.dist = dist;
@@ -700,4 +740,4 @@ requestAnimationFrame((t) => { clock.last = t; requestAnimationFrame(frame); });
 addEventListener("hashchange", () => { const a = location.hash; readHash(); paintAll(); });
 
 // test hooks (Playwright)
-window.__solar = { flyTo, setMode, land, leaveGround, rig, view, time, sys, cosmos, ground, openCard, setZoom, startTour, setSpeed };
+window.__solar = { flyTo, setMode, land, leaveGround, rig, view, time, sys, cosmos, ground, openCard, setZoom, startTour, setSpeed, camera };
