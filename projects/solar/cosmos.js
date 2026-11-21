@@ -1,5 +1,5 @@
 import * as THREE from "/vendor/three.module.min.js";
-import { radec2w, eq2w, LY } from "./bodies.js?v=3";
+import { radec2w, eq2w, LY } from "./bodies.js?v=4";
 
 /* ============================================================
    Beyond the solar system: one continuous zoom from the Sun's bubble
@@ -242,7 +242,7 @@ export class Cosmos {
       transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       uniforms: { alpha: { value: 1 } },
       vertexShader: "varying vec3 vN; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
-      fragmentShader: "uniform float alpha; varying vec3 vN; varying vec3 vV; void main(){ float f = 1.0 - abs(dot(vN, vV)); gl_FragColor = vec4(vec3(0.35,0.55,1.0) * pow(f, 2.5) * 0.9 * alpha, 1.0); }"
+      fragmentShader: "uniform float alpha; varying vec3 vN; varying vec3 vV; void main(){ float f = 1.0 - abs(dot(vN, vV)); gl_FragColor = vec4(vec3(0.35,0.55,1.0) * pow(f, 3.0) * 0.45 * alpha, 1.0); }"
     }));
     m.userData.u = m.material.uniforms;
     const lon = (255 * Math.PI) / 180, lat = (5 * Math.PI) / 180;
