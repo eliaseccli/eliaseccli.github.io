@@ -99,7 +99,7 @@ function anchorDist(a) {
     const along = sys.portrait ? halfV : halfH, across = sys.portrait ? halfH : halfV;
     const s = Math.max((L.end * (sys.portrait ? 0.8 : 0.6)) / Math.tan(along), (sys.byId.jupiter.rS * (innerHeight < 500 ? 2.1 : 1.4)) / Math.tan(across));
     // overview: orbits fill the width – out to Neptune on wide screens, to Saturn on a phone held upright
-    const o = Math.max(HOME.o, (sys.portrait ? mapO(9.6) * 1.25 : mapO(30) * 0.95) / Math.tan(halfH)), dd = HOME.d * (camera.aspect < 0.8 ? 1.3 : 1);
+    const o = Math.max(HOME.o, (sys.portrait ? mapO(9.6) * 1.25 : mapO(30) * 0.95) / Math.tan(halfH)), dd = Math.max(HOME.d, 35 / Math.tan(halfH));   // true distances: all the way out to Neptune
     return Math.exp(view.w[0] * Math.log(o) + view.w[1] * Math.log(s) + view.w[2] * Math.log(dd));
   }
   const it = sys.byId[a];

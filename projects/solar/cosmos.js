@@ -38,7 +38,7 @@ const LG = M31.clone().multiplyScalar(0.5);   // halfway to Andromeda: both fit 
 
 const T = (en, de) => ({ en, de });
 export const LAYERS = [
-  { key: "helio", lg: [-2.9, -1.7], name: T("Heliosphere", "Heliosphäre"), scale: T("The Sun's bubble", "Die Blase der Sonne"),
+  { key: "helio", lg: [-2.25, -1.7], name: T("Heliosphere", "Heliosphäre"), scale: T("The Sun's bubble", "Die Blase der Sonne"),
     kid: T("The Sun blows a wind of tiny particles. It blows a giant bubble around all the planets. Voyager 1, a little robot, flew out of it in 2012!",
       "Die Sonne bläst einen Wind aus winzigen Teilchen. Der bläst eine riesige Blase um alle Planeten. Voyager 1, ein kleiner Roboter, ist 2012 hinausgeflogen!"),
     fun: T("Voyager 1 is now about 170 AU away – its radio signals need almost a full day to reach us.", "Voyager 1 ist jetzt etwa 170 AE entfernt – seine Funksignale brauchen fast einen ganzen Tag bis zu uns.") },
@@ -261,9 +261,9 @@ export class Cosmos {
     this.add(grp, pts);
     const VOY = T("A robot from Earth, launched in 1977 – the farthest thing people ever built. It carries a golden record with music and greetings.",
       "Ein Roboter von der Erde, 1977 gestartet – das Fernste, was Menschen je gebaut haben. Er trägt eine goldene Schallplatte mit Musik und Grüßen.");
-    this.label("helio", v1, [-3.6, -2.0], { name: T("Voyager 1", "Voyager 1"), card: { name: T("Voyager 1", "Voyager 1"), scale: T("~170 AU from the Sun", "~170 AE von der Sonne"), kid: VOY, fun: LBY.helio.fun } });
-    this.label("helio", v2, [-3.6, -2.0], { name: T("Voyager 2", "Voyager 2"), card: { name: T("Voyager 2", "Voyager 2"), scale: T("~142 AU from the Sun", "~142 AE von der Sonne"), kid: VOY } });
-    this.label("helio", nose.clone().multiplyScalar(120 * AU), [-3.3, -2.2], { name: LBY.helio.name });
+    this.label("helio", v1, [-2.35, -1.6], { name: T("Voyager 1", "Voyager 1"), card: { name: T("Voyager 1", "Voyager 1"), scale: T("~170 AU from the Sun", "~170 AE von der Sonne"), kid: VOY, fun: LBY.helio.fun } });
+    this.label("helio", v2, [-2.35, -1.6], { name: T("Voyager 2", "Voyager 2"), card: { name: T("Voyager 2", "Voyager 2"), scale: T("~142 AU from the Sun", "~142 AE von der Sonne"), kid: VOY } });
+    this.label("helio", nose.clone().multiplyScalar(120 * AU), [-2.35, -1.85], { name: LBY.helio.name });
   }
 
   build_oort(grp) {
@@ -544,7 +544,7 @@ export class Cosmos {
   update(D, cam, dt, W, H) {
     const lg = D > 0 ? L10(D) : -9;
     this.lg = lg; this.D = D;
-    this.level = smooth(-3.6, -2.9, lg);
+    this.level = smooth(-2.45, -2.1, lg);   // cosmic titles start just beyond a view of all the planets
     this.sysK = 1 - smooth(-2.4, -1.5, lg);
     this.skyK = 1 - smooth(-1.4, 0.5, lg);
     this.W = W; this.H = H;
@@ -558,7 +558,7 @@ export class Cosmos {
     t.addScaledVector(GA, 0.5 * smooth(8.2, 8.9, lg) * (1 - smooth(9.4, 10.2, lg)));
     const s = 1 / D;
     const vis = {
-      helio: band(lg, [-3.0, -2.5, -1.9, -1.3]), oort: band(lg, [-2.4, -1.6, 0.0, 0.8]), stars: band(lg, [-2.4, -1.2, 2.7, 3.5]),
+      helio: band(lg, [-2.45, -2.15, -1.9, -1.3]), oort: band(lg, [-2.4, -1.6, 0.0, 0.8]), stars: band(lg, [-2.4, -1.2, 2.7, 3.5]),
       disk: band(lg, [1.7, 2.5, 3.9, 4.6]), mw: band(lg, [3.5, 4.1, 5.4, 6.0]), lg: band(lg, [5.0, 5.8, 7.0, 7.7]),
       virgo: band(lg, [6.7, 7.4, 8.5, 9.1]), web: band(lg, [8.0, 8.7, 9.6, 10.4]), universe: band(lg, [9.4, 10.1, 13, 14])
     };
