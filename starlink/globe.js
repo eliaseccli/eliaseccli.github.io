@@ -1,5 +1,5 @@
 import * as THREE from "/vendor/three.module.min.js";
-import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g2";
+import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g3";
 
 /* ============================================================
    Starlink · globe tab

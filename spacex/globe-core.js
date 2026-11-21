@@ -100,11 +100,20 @@ export function addEarth(renderer, scene) {
   scene.add(atmo);
 
   // stars (layer 1: main view only)
-  const n = 2400, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
-  let s = 1337;
+  const stars = starfield();
+  stars.layers.set(1);
+  scene.add(stars);
+
+  return { uSun, earth, atmo, stars };
+}
+
+// seeded random starfield on a sphere of radius r (fixed pixel size, like a night sky)
+export function starfield(n = 2400, r = 60, seed = 1337) {
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  let s = seed;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   for (let k = 0; k < n; k++) {
-    const u = rnd() * 2 - 1, a = rnd() * Math.PI * 2, r = 60;
+    const u = rnd() * 2 - 1, a = rnd() * Math.PI * 2;
     const q = Math.sqrt(1 - u * u);
     pos.set([r * q * Math.cos(a), r * u, r * q * Math.sin(a)], k * 3);
     const b = 0.18 + Math.pow(rnd(), 6) * 0.75;
@@ -113,9 +122,5 @@ export function addEarth(renderer, scene) {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  const stars = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.4, sizeAttenuation: false, vertexColors: true, transparent: true, depthWrite: false }));
-  stars.layers.set(1);
-  scene.add(stars);
-
-  return { uSun, earth, atmo, stars };
+  return new THREE.Points(g, new THREE.PointsMaterial({ size: 1.4, sizeAttenuation: false, vertexColors: true, transparent: true, depthWrite: false }));
 }
