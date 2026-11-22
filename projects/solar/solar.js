@@ -3,7 +3,7 @@ import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } fr
 import { System, mapO } from "./system.js?v=6";
 import { Sky } from "./sky.js?v=5";
 import { Ground } from "./ground.js?v=6";
-import { Cosmos } from "./cosmos.js?v=6";
+import { Cosmos } from "./cosmos.js?v=7";
 
 /* ============================================================
    Solar system – app shell: renderer, camera rig (orbit / fly-to /

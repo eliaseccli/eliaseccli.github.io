@@ -96,8 +96,11 @@ const ptsVS = `
 const ptsFS = `
   uniform float alpha; varying vec3 vC; varying float vK;
   void main() {
+    // round, and fully dark at the sprite's edge: a halo cut off by the square sprite showed as coloured
+    // squares/crosses on high-DPI screens (iPad)
     vec2 q = gl_PointCoord - 0.5; float d = dot(q, q) * 4.0;
-    float a = exp(-d * 4.0) + 0.25 * exp(-d * 0.9);
+    if (d >= 1.0) discard;
+    float a = (exp(-d * 4.0) + 0.25 * exp(-d * 0.9)) * (1.0 - smoothstep(0.55, 1.0, d));
     gl_FragColor = vec4(vC * a * alpha * vK, 1.0);
   }`;
 
@@ -186,7 +189,7 @@ export class Cosmos {
     this.low = lowPower;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(40, 1, 1e-6, 1e7);
-    this.level = 0; this.skyK = 1; this.sysK = 1; this.lg = -9;
+    this.level = 0; this.skyK = 1; this.sysK = 1; this.lg = -9; this.starsK = 0; this.starFrom = Infinity;
     this.layers = {};
     this.mats = [];
     this.labels = [];
@@ -226,7 +229,7 @@ export class Cosmos {
     el.innerHTML = "<i></i><span></span>";
     el.addEventListener("click", () => this.onPick && this.onPick(opts.card || LBY[key] || null));
     this.labelEl.appendChild(el);
-    this.labels.push({ el, pos: pos.clone(), lg, name: opts.name, card: opts.card, here: opts.here, big: opts.big });
+    this.labels.push({ el, key, pos: pos.clone(), lg, name: opts.name, card: opts.card, here: opts.here, big: opts.big });
     this.order = null;
   }
 
@@ -257,6 +260,7 @@ export class Cosmos {
     a.position.setXYZ(0, v1.x, v1.y, v1.z); a.position.setXYZ(1, v2.x, v2.y, v2.z);
     for (const k of [0, 1]) { a.color.setXYZ(k, 0.9, 0.95, 1); a.size.setX(k, 6); }
     this.add(grp, pts);
+    this.voyPts = pts;
     const VOY = T("A robot from Earth, launched in 1977 – the farthest thing people ever built. It carries a golden record with music and greetings.",
       "Ein Roboter von der Erde, 1977 gestartet – das Fernste, was Menschen je gebaut haben. Er trägt eine goldene Schallplatte mit Musik und Grüßen.");
     this.label("helio", v1, [-2.35, -1.6], { name: T("Voyager 1", "Voyager 1"), card: { name: T("Voyager 1", "Voyager 1"), scale: T("~170 AU from the Sun", "~170 AE von der Sonne"), kid: VOY, fun: LBY.helio.fun } });
@@ -269,28 +273,32 @@ export class Cosmos {
   build_oort(grp) {
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: blobTexture(), color: 0x5a7cc0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
     glow.scale.setScalar(3.4); glow.userData.mat = glow.material;
-    this.add(grp, glow, 0.28);
+    this.add(grp, glow, 0.14);
     this.label("oort", V([0.55, 0.25, -0.5]), [-1.6, -0.4], { name: LBY.oort.name });
   }
 
+  // our real neighbours (HYG). They only fade in once Proxima Centauri comes into view (see update);
+  // before that the zoom-out runs over a plain dark sky, with just the Sun.
   build_stars(grp) {
-    const pts = this.points(1, { fixed: true, minPx: 1, maxPx: 9 });
+    const sun = this.points(1, { fixed: true, minPx: 1, maxPx: 6 });
+    sun.geometry.attributes.color.setXYZ(0, 1, 0.9, 0.7); sun.geometry.attributes.size.setX(0, 5);
+    this.add(grp, sun);
+    const pts = this.points(1, { fixed: true, minPx: 1, maxPx: 5 });
     this.add(grp, pts);
     this.starsPts = pts;
     fetch(new URL("./stars.json", import.meta.url)).then((r) => r.json()).then((j) => {
-      const S = j.stars, n = S.length + 1, g = pts.geometry;
+      const S = j.stars, n = S.length, g = pts.geometry;
       const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), size = new Float32Array(n), o = [0, 0, 0];
-      // the Sun itself
-      col.set([1, 0.9, 0.7], 0); size[0] = 5;
       const want = new Set(["Proxima Centauri", "Alpha Centauri A", "Barnard's Star", "Sirius", "Wolf 359", "Procyon", "Epsilon Eridani", "Tau Ceti", "61 Cygni A",
         "Vega", "Altair", "Arcturus", "Aldebaran", "Fomalhaut", "Pollux", "Capella", "Regulus", "Betelgeuse", "Rigel", "Deneb", "Polaris", "Antares", "Canopus", "Spica"]);
       S.forEach((s, i) => {
         eq2w(s[0], s[1], s[2], o);
-        pos.set(o, (i + 1) * 3);
+        pos.set(o, i * 3);
+        if (s[5] === "Proxima Centauri") this.proxima = V(o);
         const c = bv2rgb(s[3]), L = Math.pow(10, (4.8 - s[4]) / 2.5);
         const br = Math.min(1, 0.35 + 0.18 * Math.log10(1 + L * 3));
-        col.set([c[0] * br, c[1] * br, c[2] * br], (i + 1) * 3);
-        size[i + 1] = Math.min(9, 2.2 + Math.log10(1 + L) * 1.6);
+        col.set([c[0] * br, c[1] * br, c[2] * br], i * 3);
+        size[i] = Math.min(5, 1.8 + Math.log10(1 + L) * 1.1);   // clean small dots
         if (want.has(s[5])) {
           const d = Math.hypot(s[0], s[1], s[2]);
           const name = s[5] === "Alpha Centauri A" ? "Alpha Centauri" : s[5];
@@ -535,7 +543,9 @@ export class Cosmos {
     this.lg = lg; this.D = D;
     this.level = smooth(-2.45, -2.1, lg);   // cosmic titles start just beyond a view of all the planets
     this.sysK = 1 - smooth(-2.4, -1.5, lg);
-    this.skyK = 1 - smooth(-1.4, 0.5, lg);
+    // the painted sky (panorama + starfield) goes as we leave the planets: from there on the background stays plain dark
+    // until the real neighbour stars come in
+    this.skyK = 1 - smooth(-2.5, -1.9, lg);
     this.W = W; this.H = H;
     if (lg < -4) { this.active = false; return; }
     this.active = true;
@@ -546,6 +556,19 @@ export class Cosmos {
       virgo: band(lg, [6.7, 7.4, 8.5, 9.1]), web: band(lg, [8.0, 8.7, 9.6, 10.4]), universe: band(lg, [9.4, 10.1, 13, 14])
     };
     this.vis = vis;
+    // neighbour stars: switch on the moment Proxima Centauri (our nearest star) is on screen while zooming out,
+    // stay on from that zoom level outwards; zooming back in below it hides them again
+    let starsT = 0;
+    if (lg > -1.3) {
+      if (lg < this.starFrom - 0.1) this.starFrom = Infinity;
+      if (this.starFrom === Infinity && this.proxima) {
+        const v = this.proxima.clone().multiplyScalar(s).project(this.camera);
+        if ((v.z < 1 && Math.abs(v.x) < 0.92 && Math.abs(v.y) < 0.85) || lg > 1.5) this.starFrom = lg;
+      }
+      starsT = lg >= this.starFrom - 0.02 ? 1 : 0;
+    } else this.starFrom = Infinity;
+    this.starsK += (starsT - this.starsK) * Math.min(1, (dt || 0.016) * 2.5);
+    if (this.starsK < 0.002) this.starsK = 0;
     const pxScale = (H * this.renderer.getPixelRatio()) / (2 * Math.tan((cam.fov * Math.PI) / 360));
     for (const key in vis) {
       if (vis[key] <= 0.001) { if (this.layers[key]) this.layers[key].visible = false; continue; }
@@ -562,6 +585,9 @@ export class Cosmos {
         if (o.userData.mat) o.userData.mat.opacity = a;
       }
     }
+    if (this.starsPts && this.layers.stars) this.starsPts.userData.u.alpha.value = vis.stars * this.starsK;
+    // the Voyager dots go together with their labels, so no unnamed dots are left out there
+    if (this.voyPts && this.layers.helio) this.voyPts.userData.u.alpha.value = vis.helio * (1 - smooth(-1.75, -1.6, lg));
     // the painted galaxy only comes in once it's small enough not to look blurry; the sparkle carries the zoom before that
     if (this.layers.mw) {
       const [disc, sparkle] = this.layers.mw.userData.items;
@@ -599,7 +625,7 @@ export class Cosmos {
     const top = W < 700 ? 215 : 120, bottom = H - (W < 700 ? 185 : 150), boxes = [];
     if (!this.order) this.order = [...this.labels].sort((a, b) => (b.here ? 1 : 0) - (a.here ? 1 : 0));
     for (const l of this.order) {
-      let vis = this.lg > l.lg[0] && this.lg < l.lg[1];
+      let vis = this.lg > l.lg[0] && this.lg < l.lg[1] && (l.key !== "stars" || l.here || this.starsK > 0.5);
       if (vis) {
         v.copy(l.pos).multiplyScalar(s).applyMatrix4(this.camera.matrixWorldInverse).applyMatrix4(this.camera.projectionMatrix);
         l.x = (v.x * 0.5 + 0.5) * W; l.y = (-v.y * 0.5 + 0.5) * H;
