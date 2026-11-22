@@ -41,7 +41,12 @@ svg { display: block; fill: currentColor; }
 .pill:active { transform: scale(0.92); }
 .pill[hidden] { display: none; }
 .pill svg { width: 15px; height: 15px; }
-.tour { position: fixed; z-index: 20; top: calc(var(--st) + 12px); left: calc(var(--sl) + 66px); }
+.zoomtrip { position: fixed; z-index: 20; top: calc(var(--st) + 12px); left: calc(var(--sl) + 66px); width: 44px; padding: 0; }
+.zoomtrip svg { width: 20px; height: 20px; }
+.zoomtrip path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.zoomtrip .zi, .zoomtrip.is-out .zo { display: none; }
+.zoomtrip.is-out .zi { display: block; }
+.tour { position: fixed; z-index: 20; top: calc(var(--st) + 12px); left: calc(var(--sl) + 118px); }
 .tour.is-on { background: rgba(255, 255, 255, 0.9); color: #000; }
 .pill.i { width: 44px; padding: 0; font: italic 600 19px/1 Georgia, "Times New Roman", serif; letter-spacing: 0; text-transform: none; }
 

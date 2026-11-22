@@ -21,6 +21,7 @@ const tr = (o) => (o && typeof o === "object" ? o[lang] || o.en : o);
 const UI = {
   overview: { en: "Overview", de: "Überblick" }, sizes: { en: "True sizes", de: "Echte Größen" }, distances: { en: "True distances", de: "Echte Abstände" },
   system: { en: "Solar system", de: "Sonnensystem" }, land: { en: "Land", de: "Landen" }, takeoff: { en: "Take off", de: "Abheben" },
+  zoomOut: { en: "Zoom all the way out", de: "Ganz hinauszoomen" }, zoomIn: { en: "Zoom back in", de: "Wieder hineinzoomen" },
   tour: { en: "Tour", de: "Tour" }, paused: { en: "Paused", de: "Pausiert" }, today: { en: "Today", de: "Heute" }, day: { en: "Daytime", de: "Tag" },
   hintO: { en: "Squeezed so everything fits on screen", de: "Zusammengeschoben, damit alles auf den Schirm passt" },
   hintS: matchMedia("(pointer: coarse)").matches
@@ -120,14 +121,14 @@ function rowDir() {
   const x = (b.x - a.x) * W, y = -(b.y - a.y) * H, l = Math.hypot(x, y) || 1;
   return [x / l, y / l];
 }
-function anchorDist(a) {
+function anchorDist(a, w = view.w) {
   if (a === "home") {
     const L = sys.lineup(), halfV = (camera.fov * Math.PI) / 360, halfH = Math.atan(Math.tan(halfV) * camera.aspect);
     const along = sys.portrait ? halfV : halfH, across = sys.portrait ? halfH : halfV;
     const s = Math.max((L.end * (sys.portrait ? 0.8 : 0.6)) / Math.tan(along), (sys.byId.jupiter.rS * (innerHeight < 500 ? 2.1 : 1.4)) / Math.tan(across));
     // overview: orbits fill the width – out to Neptune on wide screens, to Saturn on a phone held upright
     const o = Math.max(HOME.o, (sys.portrait ? mapO(9.6) * 1.25 : mapO(30) * 0.95) / Math.tan(halfH)), dd = Math.max(HOME.d, 35 / Math.tan(halfH));   // true distances: all the way out to Neptune
-    return Math.exp(view.w[0] * Math.log(o) + view.w[1] * Math.log(s) + view.w[2] * Math.log(dd));
+    return Math.exp(w[0] * Math.log(o) + w[1] * Math.log(s) + w[2] * Math.log(dd));
   }
   const it = sys.byId[a];
   const ext = it.b && it.b.ring ? it.b.ring[1] / it.b.r : 1;
@@ -145,13 +146,14 @@ function flyTo(a, opts = {}) {
   const p0 = anchorPos(rig.anchor, [0, 0, 0]), p1 = anchorPos(a, [0, 0, 0]);
   const d0 = anchorDist(rig.anchor) * Math.exp(rig.zoom), d1 = anchorDist(a) * Math.exp(opts.zoom || 0);
   const sep = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-  const bump = Math.log(1 + sep / Math.max(d0, d1)) * 0.75;
+  const bump = opts.zoomTrip ? 0 : Math.log(1 + sep / Math.max(d0, d1)) * 0.75;
   const span = Math.abs(Math.log(d1 / d0)) + bump * 2;
   // the Sun: look from low down, with Jupiter (the biggest neighbour) off to the side instead of right behind the title
   if (a === "sun" && opts.yaw === undefined) { const j = sys.byId.jupiter.pos; opts = { ...opts, yaw: Math.atan2(j[0], j[2]) + Math.PI / 2, pitch: opts.pitch ?? 0.28 }; }
   addPan(rig.pan, p0);
-  rig.fly = { pan0: rig.pan, a: rig.anchor, b: a, t0: now, dur: reduceMotion ? 0.01 : clamp(1.2 + span * 0.16, 1.4, 4.2), d0, d1, bump,
-    yaw0: rig.yaw, pitch0: rig.pitch, yaw1: opts.yaw ?? rig.yaw, pitch1: opts.pitch ?? clamp(rig.pitch, 0.12, 0.6), zoom1: opts.zoom || 0 };
+  rig.fly = { pan0: rig.pan, a: rig.anchor, b: a, t0: now + (opts.delay || 0), dur: reduceMotion ? 0.01 : opts.dur ?? clamp(1.2 + span * 0.16, 1.4, 4.2), d0, d1, bump,
+    yaw0: rig.yaw, pitch0: rig.pitch, yaw1: opts.yaw ?? rig.yaw, pitch1: opts.pitch ?? clamp(rig.pitch, 0.12, 0.6), zoom1: opts.zoom || 0,
+    trip: opts.zoomTrip || null, then: opts.then || null };
   rig.vYaw = rig.vPitch = rig.vZoom = rig.vPan = 0; rig.pan = 0;
   if (a !== "home") sys.loadHi(sys.byId[a]);
   focusChanged(a);
@@ -179,6 +181,7 @@ canvas.addEventListener("pointerdown", (e) => {
   gesture = ptrs.size === 1 ? { kind: "drag", moved: 0 } : { kind: "pinch", d0: pinchDist(), z0: rig.zoom, f0: ground.fov, m: pinchMid() };
   rig.vYaw = rig.vPitch = rig.vZoom = rig.vPan = ground.vy = ground.vp = 0;
   stopTour();
+  stopZoomTrip();
 });
 canvas.addEventListener("pointermove", (e) => {
   const p = ptrs.get(e.pointerId);
@@ -216,6 +219,7 @@ canvas.addEventListener("pointercancel", endPtr);
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   stopTour();
+  stopZoomTrip();
   if (ground.active) { ground.setFov(ground.fov * Math.exp(e.deltaY * 0.0015)); return; }
   // true sizes: a sideways trackpad swipe or shift+wheel slides along the row (pinch / plain wheel still zooms)
   if (view.mode === "sizes" && !rig.fly && !e.ctrlKey) {
@@ -234,6 +238,54 @@ function setZoom(z) {
   rig.zoom = clamp(z, lo, hi);
   rig.zoomT = undefined;
 }
+
+/* ---------- zoom all the way out / back in ---------- */
+// one button: out to the edge of the observable universe, or back home to the solar system.
+// It's just a long flyTo: distance runs on a log scale with ease-in-out, so every scale gets equal time.
+const W_OVER = modeW("overview"), W_DIST = modeW("distances");
+const tripIn = () => anchorDist("home", W_OVER), tripOut = () => MAX_DIST * 0.97;
+// 0 = home view, 1 = the whole universe (log scale); past halfway the button brings you back in
+const tripPos = () => clamp(Math.log(rig.dist / tripIn()) / Math.log(tripOut() / tripIn()), 0, 1);
+function zoomTrip() {
+  stopTour();
+  // tapped again on the way: turn around from right where we are
+  const trip = rig.fly && rig.fly.trip, out = trip ? trip === "in" : ground.active || tripPos() < 0.5;
+  stopZoomTrip();
+  if (ground.active) leaveGround(true);
+  rig.zoomT = undefined; rig.yawT = rig.pitchT = undefined;
+  if (out) {
+    // the cosmos only exists in true distances: switch first, then set off
+    const wait = view.mode === "distances" ? (view.t0 >= 0 ? Math.max(0, view.t0 + view.dur - now) : 0) : view.dur;
+    setMode("distances");
+    rig.zoomT = undefined;
+    flyTo("home", { zoom: Math.log(tripOut() / anchorDist("home", W_DIST)), dur: 4, delay: wait, zoomTrip: "out" });
+  } else {
+    flyTo("home", { zoom: 0, dur: 4, zoomTrip: "in",
+      then: () => { setMode("overview"); rig.pitchT = innerHeight > innerWidth ? 0.85 : 0.52; rig.yawT = rig.yaw; } });
+  }
+  paintZoomBtn(true);
+}
+// a touch, scroll or pinch hands the camera back right where it is
+function stopZoomTrip() {
+  const f = rig.fly;
+  if (!f || !f.trip) return;
+  rig.fly = null;
+  rig.anchor = f.b;
+  setZoom(Math.log(rig.dist / anchorDist("home")));
+  writeHash(); paintTitle(); paintZoomBtn(true);
+}
+const zoomBtn = $("[data-zoomtrip]");
+let zoomBtnOut = null;
+function paintZoomBtn(force) {
+  const trip = rig.fly && rig.fly.trip;
+  const out = trip ? trip === "in" : ground.active || tripPos() < 0.5;
+  if (out === zoomBtnOut && !force) return;
+  zoomBtnOut = out;
+  zoomBtn.classList.toggle("is-out", !out);
+  zoomBtn.setAttribute("aria-label", tr(UI[out ? "zoomOut" : "zoomIn"]));
+  zoomBtn.title = tr(UI[out ? "zoomOut" : "zoomIn"]);
+}
+zoomBtn.addEventListener("click", zoomTrip);
 
 /* ---------- picking ---------- */
 const v3 = new THREE.Vector3();
@@ -274,7 +326,7 @@ function paintLabelNames() {
   for (const it of sys.items) it.lbl.querySelector("span").textContent = tr((it.b || it.m).name);
 }
 function measureUI() {
-  uiBoxes = [...document.querySelectorAll(".title, .acts, .modes, .bottom, .back, [data-tour]")].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+  uiBoxes = [...document.querySelectorAll(".title, .acts, .modes, .bottom, .back, [data-tour], [data-zoomtrip]")].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
 }
 function placeLabels() {
   const hideAll = ground.active || cosmos.level > 0.6;
@@ -660,8 +712,9 @@ function frame(tms) {
     for (let i = 0; i < 3; i++) tp[i] = lerp(a[i], b[i], e);
     const d1 = anchorDist(f.b) * Math.exp(f.zoom1);
     dist = Math.exp(lerp(Math.log(f.d0), Math.log(d1), e) + f.bump * Math.sin(Math.PI * e));
-    rig.yaw = lerp(f.yaw0, f.yaw1, e); rig.pitch = lerp(f.pitch0, f.pitch1, e);
-    if (u >= 1) { rig.anchor = f.b; rig.zoom = f.zoom1; rig.fly = null; writeHash(); paintTitle(); }
+    // a zoom trip leaves the angles free, so the galaxy steering below can turn the view on the way
+    if (!f.trip) { rig.yaw = lerp(f.yaw0, f.yaw1, e); rig.pitch = lerp(f.pitch0, f.pitch1, e); }
+    if (u >= 1) { rig.anchor = f.b; rig.zoom = f.zoom1; rig.fly = null; writeHash(); paintTitle(); if (f.then) f.then(); }
   } else {
     addPan(rig.pan, anchorPos(rig.anchor, tp));
     dist = anchorDist(rig.anchor) * Math.exp(rig.zoom);
@@ -690,6 +743,7 @@ function frame(tms) {
   // deep space: how far out are we (light years), relative to the Sun
   cosmos.update(view.w[2] > 0.99 ? dist / LY : 0, camera, dt, W, H);
   sys.scene.visible = cosmos.sysK > 0.01;
+  paintZoomBtn();
   // render
   renderer.clear();
   if (ground.active) {
