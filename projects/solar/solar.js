@@ -1,9 +1,9 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } from "./bodies.js?v=5";
-import { System, mapO } from "./system.js?v=7";
-import { Sky } from "./sky.js?v=7";
-import { Ground } from "./ground.js?v=7";
-import { Cosmos } from "./cosmos.js?v=7";
+import { System, mapO } from "./system.js?v=8";
+import { Sky } from "./sky.js?v=8";
+import { Ground } from "./ground.js?v=8";
+import { Cosmos } from "./cosmos.js?v=8";
 
 /* ============================================================
    Solar system – app shell: renderer, camera rig (orbit / fly-to /
@@ -37,7 +37,7 @@ const UI = {
 /* ---------- renderer ---------- */
 const canvas = $("canvas.gl");
 const lowPower = /iPhone|iPad|Android/.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 500;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
+const renderer = new THREE.WebGLRenderer({ canvas, precision: "highp", antialias: true, logarithmicDepthBuffer: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.autoClear = false;
 renderer.setClearColor(0x000000, 1);

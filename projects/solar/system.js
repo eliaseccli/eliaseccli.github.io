@@ -1,4 +1,5 @@
 import * as THREE from "/vendor/three.module.min.js";
+import { radialTexture, tailTexture, HASH_GLSL } from "./textures.js?v=1";
 import { BODIES, MOONS, BY_ID, AU, R_EARTH, D2R, helio, moonGeo, bodyAxes, primeW, halleyPos, HALLEY, orbitPos, elements } from "./bodies.js?v=5";
 
 /* ============================================================
@@ -122,10 +123,10 @@ const sunFS = LOGF + `
     gl_FragColor = vec4(pow(min(c, vec3(1.0)), vec3(1.0 / 2.2)) * glow, 1.0);
   }`;
 
-const moonletFS = LOGF + `
+const moonletFS = LOGF + HASH_GLSL + `
   uniform vec3 L; uniform vec3 base;
   varying vec2 vUv; varying vec3 vN; varying vec3 vV; varying vec3 vW;
-  float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float h(vec2 p) { return hash12(p); }
   float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
     return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
   void main() {
@@ -202,16 +203,11 @@ const beltFS = LOGF + `
   }`;
 
 function shader(vs, fs, uniforms, extra) {
-  return new THREE.ShaderMaterial(Object.assign({ vertexShader: vs, fragmentShader: fs, uniforms }, extra || {}));
+  return new THREE.ShaderMaterial(Object.assign({ precision: "highp", vertexShader: vs, fragmentShader: fs, uniforms }, extra || {}));
 }
 
 function glowTexture() {
-  const c = document.createElement("canvas"); c.width = c.height = 256;
-  const g = c.getContext("2d"), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  gr.addColorStop(0, "rgba(255,244,214,1)"); gr.addColorStop(0.1, "rgba(255,226,160,0.85)");
-  gr.addColorStop(0.25, "rgba(255,190,100,0.28)"); gr.addColorStop(0.5, "rgba(255,160,70,0.08)"); gr.addColorStop(1, "rgba(255,140,60,0)");
-  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  return radialTexture(256, [[0, 255, 244, 214, 1], [0.1, 255, 226, 160, 0.85], [0.25, 255, 190, 100, 0.28], [0.5, 255, 160, 70, 0.08], [1, 255, 140, 60, 0]], THREE.SRGBColorSpace);
 }
 
 const V = () => new Float64Array(3);
@@ -385,11 +381,7 @@ export class System {
     this.halleyOrbit = new THREE.Line(g, this.orbitMat(0x9fd0ff, 0.07));
     this.halleyOrbit.frustumCulled = false;
     this.scene.add(this.halleyOrbit);
-    const tail = document.createElement("canvas"); tail.width = 64; tail.height = 256;
-    const c = tail.getContext("2d"), gr = c.createLinearGradient(0, 0, 0, 256);
-    gr.addColorStop(0, "rgba(220,240,255,0.95)"); gr.addColorStop(0.15, "rgba(170,210,255,0.4)"); gr.addColorStop(1, "rgba(120,170,255,0)");
-    c.fillStyle = gr; c.beginPath(); c.moveTo(32, 0); c.quadraticCurveTo(64, 120, 58, 256); c.lineTo(6, 256); c.quadraticCurveTo(0, 120, 32, 0); c.fill();
-    const tt = new THREE.CanvasTexture(tail);
+    const tt = tailTexture();
     this.halley = { pD: V(), pO: V(), pos: V(), head: new THREE.Mesh(this.sphereLo, new THREE.MeshBasicMaterial({ color: 0xe8f4ff })),
       tail: new THREE.Mesh(new THREE.PlaneGeometry(1, 4).translate(0, -2, 0), new THREE.MeshBasicMaterial({ map: tt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })) };
     this.scene.add(this.halley.head, this.halley.tail);

@@ -1,5 +1,6 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { radec2w, eq2w, LY } from "./bodies.js?v=5";
+import { radialTexture, smoothCanvas, HASH_GLSL } from "./textures.js?v=1";
 
 /* ============================================================
    Beyond the solar system: one continuous zoom from the Sun's bubble
@@ -170,17 +171,13 @@ function galaxyTexture(seed, opts = {}) {
   const m = g.createRadialGradient(cx, cx, N * 0.3, cx, cx, N * 0.5);
   m.addColorStop(0, "rgba(0,0,0,1)"); m.addColorStop(1, "rgba(0,0,0,0)");
   g.fillStyle = m; g.fillRect(0, 0, N, N);
-  const tex = new THREE.CanvasTexture(c);
+  const tex = new THREE.CanvasTexture(smoothCanvas(c));
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
 function blobTexture() {
-  const c = document.createElement("canvas"); c.width = c.height = 128;
-  const g = c.getContext("2d"), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.3, "rgba(255,255,255,0.35)"); gr.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(c);
+  return radialTexture(128, [[0, 255, 255, 255, 1], [0.3, 255, 255, 255, 0.35], [1, 255, 255, 255, 0]]);
 }
 
 export class Cosmos {
@@ -205,7 +202,7 @@ export class Cosmos {
     g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setAttribute("size", new THREE.BufferAttribute(new Float32Array(n), 1));
     const u = { pxScale: { value: 1 }, sizeK: { value: 1 }, minPx: { value: opts.minPx ?? 1.2 }, maxPx: { value: opts.maxPx ?? 64 }, fixedPx: { value: opts.fixed ? 1 : 0 }, dpr: { value: 1 }, alpha: { value: 1 } };
-    const p = new THREE.Points(g, new THREE.ShaderMaterial({ uniforms: u, vertexShader: ptsVS, fragmentShader: ptsFS, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+    const p = new THREE.Points(g, new THREE.ShaderMaterial({ precision: "highp", uniforms: u, vertexShader: ptsVS, fragmentShader: ptsFS, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
     p.frustumCulled = false;
     this.mats.push(u);
     p.userData.u = u;
@@ -239,7 +236,7 @@ export class Cosmos {
     const AU = 1 / LY, g = new THREE.SphereGeometry(1, 64, 48), p = g.attributes.position;
     for (let k = 0; k < p.count; k++) { const z = p.getZ(k); p.setZ(k, z > 0 ? z * 2.4 : z); }
     g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({
+    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ precision: "highp",
       transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       uniforms: { alpha: { value: 1 } },
       vertexShader: "varying vec3 vN; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
@@ -268,12 +265,9 @@ export class Cosmos {
     this.label("helio", nose.clone().multiplyScalar(120 * AU), [-2.35, -1.85], { name: LBY.helio.name });
   }
 
-  // no particles: comets out there are far too small and sparse to see, and dots would read as stars.
-  // Just a faint icy glow so the cloud reads as a ball, plus its label.
-  build_oort(grp) {
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: blobTexture(), color: 0x5a7cc0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
-    glow.scale.setScalar(3.4); glow.userData.mat = glow.material;
-    this.add(grp, glow, 0.14);
+  // no particles and no glow: the comets out there are far too small and sparse to see, dots read as stars, and the
+  // screen-filling glow sprite showed up as a blocky colour grid on iPhone (dithered canvas gradient, magnified).
+  build_oort() {
     this.label("oort", V([0.55, 0.25, -0.5]), [-1.6, -0.4], { name: LBY.oort.name });
   }
 
@@ -512,11 +506,12 @@ export class Cosmos {
   build_universe(grp) {
     const R = 4.65e10;
     this.add(grp, this.web(this.low ? 26000 : 60000, R * 0.97, 1600, 99, new THREE.Vector3()), 1.6);
-    const m = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), new THREE.ShaderMaterial({
+    const m = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), new THREE.ShaderMaterial({ precision: "highp",
       transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { alpha: { value: 1 } },
       vertexShader: "varying vec3 vN; varying vec3 vV; varying vec3 vP; void main(){ vP = normalize(position); vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }",
       fragmentShader: `uniform float alpha; varying vec3 vN; varying vec3 vV; varying vec3 vP;
-        float h(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        ${HASH_GLSL}
+        float h(vec3 p){ return hash13(p); }
         float n3(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
           return mix(mix(mix(h(i), h(i+vec3(1,0,0)), f.x), mix(h(i+vec3(0,1,0)), h(i+vec3(1,1,0)), f.x), f.y),
                      mix(mix(h(i+vec3(0,0,1)), h(i+vec3(1,0,1)), f.x), mix(h(i+vec3(0,1,1)), h(i+vec3(1,1,1)), f.x), f.y), f.z); }
@@ -568,6 +563,8 @@ export class Cosmos {
       starsT = lg >= this.starFrom - 0.02 ? 1 : 0;
     } else this.starFrom = Infinity;
     this.starsK += (starsT - this.starsK) * Math.min(1, (dt || 0.016) * 2.5);
+    // In the empty stretch not even a transparent sprite gets a draw call. The Sun marker is HTML.
+    this.blank = lg > -1.55 && lg < 2.7 && starsT === 0 && this.starsK < 0.003;
     if (this.starsK < 0.002) this.starsK = 0;
     const pxScale = (H * this.renderer.getPixelRatio()) / (2 * Math.tan((cam.fov * Math.PI) / 360));
     for (const key in vis) {
@@ -596,6 +593,18 @@ export class Cosmos {
     }
     // the Milky Way disc inside the Local Group layer only appears once the galaxy layer is gone
     if (this.layers.lg) { const it = this.layers.lg.userData.items; it[it.length - 1].userData.mat.opacity = vis.lg * (1 - vis.mw); }
+    // anything at (near) zero opacity is not drawn at all – no faint leftovers on GPUs that round differently
+    for (const key in this.layers) {
+      const grp = this.layers[key];
+      if (!grp.visible) continue;
+      let any = false;
+      for (const o of grp.userData.items) {
+        const a = o.userData.u && o.userData.u.alpha ? o.userData.u.alpha.value : o.userData.mat ? o.userData.mat.opacity : 1;
+        o.visible = a > 0.003;
+        any = any || o.visible;
+      }
+      grp.visible = any || key === "oort";
+    }
     this.camera.fov = cam.fov; this.camera.aspect = cam.aspect;
     this.camera.near = 1e-4; this.camera.far = 1e6;
     this.camera.updateProjectionMatrix();
@@ -605,7 +614,7 @@ export class Cosmos {
   }
 
   render(renderer) {
-    if (!this.active) return;
+    if (!this.active || this.blank) return;
     renderer.render(this.scene, this.camera);
   }
 

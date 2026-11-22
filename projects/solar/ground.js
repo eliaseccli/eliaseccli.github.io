@@ -1,6 +1,7 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { BODIES, BY_ID, AU, D2R, bodyAxes, primeW } from "./bodies.js?v=5";
-import { LOGV, LOGF } from "./system.js?v=7";
+import { LOGV, LOGF } from "./system.js?v=8";
+import { HASH_GLSL } from "./textures.js?v=1";
 
 /* ============================================================
    Standing on a world: the real sky over the landing spot (Sun,
@@ -83,10 +84,10 @@ const gasVS = LOGV + `varying vec2 vP; varying float vDist; uniform float t;
   void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vP = position.xz; vDist = length(wp.xyz); gl_Position = projectionMatrix * viewMatrix * wp;
     #include <logdepthbuf_vertex>
   }`;
-const gasFS = LOGF + `
+const gasFS = LOGF + HASH_GLSL + `
   uniform vec3 c0, c1, c2, fogc, sunc; uniform float t, light, layer;
   varying vec2 vP; varying float vDist;
-  float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float h(vec2 p) { return hash12(p); }
   float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
     return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
   float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * n(p); p = p * 2.02 + vec2(7.1, 3.3); a *= 0.5; } return s; }
@@ -138,7 +139,7 @@ export class Ground {
     this.yaw = 0; this.pitch = 0.1; this.vy = 0; this.vp = 0;
     this.skyU = { zen: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, setc: { value: new THREE.Color() }, glow: { value: new THREE.Color() },
       night: { value: new THREE.Color() }, sun: { value: new THREE.Vector3() }, up: { value: new THREE.Vector3() }, haze: { value: 1 }, grad: { value: 0.45 }, disc: { value: 1 }, sunR: { value: 0.005 }, bright: { value: 1 } };
-    this.dome = new THREE.Mesh(new THREE.SphereGeometry(9000, 64, 32), new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, depthWrite: false, uniforms: this.skyU, vertexShader: skyVS, fragmentShader: skyFS }));
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(9000, 64, 32), new THREE.ShaderMaterial({ precision: "highp", side: THREE.BackSide, transparent: true, depthWrite: false, uniforms: this.skyU, vertexShader: skyVS, fragmentShader: skyFS }));
     this.dome.renderOrder = -10;
     this.scene.add(this.dome);
     this.sunLight = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -307,7 +308,7 @@ export class Ground {
     for (const layer of [0, 1]) {
       const u = { c0: { value: new THREE.Color(...c[0]) }, c1: { value: new THREE.Color(...c[1]) }, c2: { value: new THREE.Color(...c[2]) },
         fogc: { value: new THREE.Color() }, sunc: { value: new THREE.Color(1, 0.95, 0.85) }, t: { value: 0 }, light: { value: 1 }, layer: { value: layer } };
-      const m = new THREE.Mesh(new THREE.CircleGeometry(9000, 96).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ uniforms: u, vertexShader: gasVS, fragmentShader: gasFS, transparent: layer > 0, depthWrite: layer === 0 }));
+      const m = new THREE.Mesh(new THREE.CircleGeometry(9000, 96).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ precision: "highp", uniforms: u, vertexShader: gasVS, fragmentShader: gasFS, transparent: layer > 0, depthWrite: layer === 0 }));
       m.position.y = layer ? -14 : -70;
       m.renderOrder = layer ? 2 : 1;
       this.land.add(m);

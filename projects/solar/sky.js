@@ -13,7 +13,7 @@ export class Sky {
     this.u = { map: { value: tex }, k: { value: 1 } };
     // the panorama is sampled with a mip bias: keeps the Milky Way's glow, drops its stars, which showed up as big soft blobs
     // (the starfield draws crisp ones)
-    const mw = new THREE.Mesh(new THREE.SphereGeometry(80, 64, 32), new THREE.ShaderMaterial({
+    const mw = new THREE.Mesh(new THREE.SphereGeometry(80, 64, 32), new THREE.ShaderMaterial({ precision: "highp",
       side: THREE.BackSide, depthWrite: false, depthTest: false, uniforms: this.u,
       vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
       fragmentShader: `uniform sampler2D map; uniform float k; varying vec2 vUv;
