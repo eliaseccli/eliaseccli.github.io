@@ -68,7 +68,7 @@
   }
 
   // Cards added after the encrypted shelf was made (no re-encryption needed): each goes in after
-  // its "after" card, in this order. GONE: cards that moved elsewhere (SpaceX is in the main menu now).
+  // its "after" card, in this order.
   var EXTRA = [
     { key: "lookup", title: "Look up", text: "Starlink in your sky, right now.", after: "diorama" },
     { key: "planet", title: "Pokeable planet", text: "A tiny world. Plant trees, drop meteors, poke it.", after: "lookup" },
@@ -76,7 +76,17 @@
     { key: "muse", title: "Muse", text: "Swipe through generative art. It learns your taste.", after: "plop" },
     { key: "solar", title: "Solar system", text: "Fly to the planets, land on them, zoom out to the edge of the universe.", after: "muse" }
   ];
-  var GONE = ['a[href*="spacex"]', 'a[href*="starship"]'];
+  // GONE: anything that has its own place in the main menu (/nav.js, e.g. Starlink, SpaceX) is not a project
+  // any more, plus a few retired cards. Matched by the card link's last path segment, so "./starlink/" goes but
+  // "./lookup/" (whose text mentions Starlink) stays.
+  var RETIRED = ["starship"];
+  function slug(href) {
+    try { return new URL(href, location.href).pathname.split("/").filter(Boolean).pop() || ""; } catch (err) { return ""; }
+  }
+  function goneSlugs() {
+    var menu = (window.SiteNav && window.SiteNav.items) || [];
+    return RETIRED.concat(menu.map(slug)).filter(function (s) { return s && s !== "projects"; });
+  }
 
   function syncShelf(root) {
     if (!root) return;
@@ -98,7 +108,9 @@
       else shelf.appendChild(card);
       changed = true;
     });
-    root.querySelectorAll(GONE.join(",")).forEach(function (a) {
+    var gone = goneSlugs();
+    shelf.querySelectorAll("a[href]").forEach(function (a) {
+      if (gone.indexOf(slug(a.getAttribute("href"))) === -1) return;
       a.parentNode.removeChild(a);
       changed = true;
     });
@@ -112,6 +124,8 @@
     var panel = document.querySelector("[data-panel]");
     panel.innerHTML = html;
     syncShelf(panel);
+    // the menu (nav.js, deferred) may not have run yet when a remembered unlock opens the shelf at load
+    if (!window.SiteNav) document.addEventListener("DOMContentLoaded", function () { syncShelf(panel); });
     gate.hidden = true;
     panel.hidden = false;
     document.body.classList.add("is-open");

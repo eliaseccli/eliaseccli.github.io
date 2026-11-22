@@ -53,5 +53,6 @@
   document.addEventListener("pointerdown", function (e) {
     if (nav.classList.contains("is-open") && !nav.contains(e.target)) setNav(false);
   }, true);
-  window.SiteNav = { setOpen: setNav };
+  // items: the menu's paths, so other pages can tell what lives in the main menu (the Projects shelf hides those)
+  window.SiteNav = { setOpen: setNav, items: ITEMS.map(function (it) { return it[0]; }) };
 })();
