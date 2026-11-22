@@ -10,4 +10,5 @@ Public page `/spacex/` ("SpaceX Launches" in the menu; `/projects/spacex/` and `
 - Earth: NASA Blue Marble (public domain), pre-desaturated into `assets/earth-mono-*.jpg`.
 - Vendor: three.js r170 (MIT) and satellite.js 5.0.0 (MIT) from the shared `/vendor/`; Barlow font (OFL).
 - URL params: `?mission=next|latest`, `?t=<seconds from T-0>`, `?fixture=f14-prelaunch|f14-tracked|florida|florida-hls|f9-vandenberg|f9-florida|f9-iss|f9-gto|fh|two-flying|last-flight`. Debug: `window.__spacex()`.
-- Tests: `node --test test_pick_launch.js test_ascent.js test_tle.js` (run by `tools/sitecheck.py`). Templates: `python3 tools/spacex_ascent.py` (downloads its sources once into `~/.cache/eliaseccli-spacex`), `--check` to validate without writing.
+- Code: `mission.js` is the mission model without the page (launch parsing, orbit plane, trajectory); `spacex.js` the data loaders, globe and HUD. A vehicle that stays in orbit (every Falcon) keeps moving past the drawn path: SGP4 with a set, else the orbit model in closed form; live, the clock is not held at the slider's end. Only Starship stops, at its landing point.
+- Tests: `node --test test_pick_launch.js test_ascent.js test_tle.js test_mission.js` (run by `tools/sitecheck.py`). Templates: `python3 tools/spacex_ascent.py` (downloads its sources once into `~/.cache/eliaseccli-spacex`), `--check` to validate without writing.
