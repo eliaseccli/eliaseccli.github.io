@@ -3,7 +3,7 @@ import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } fr
 import { System, mapO } from "./system.js?v=8";
 import { Sky } from "./sky.js?v=8";
 import { Ground } from "./ground.js?v=8";
-import { Cosmos } from "./cosmos.js?v=8";
+import { Cosmos } from "./cosmos.js?v=9";
 
 /* ============================================================
    Solar system – app shell: renderer, camera rig (orbit / fly-to /
@@ -242,6 +242,7 @@ function setZoom(z) {
 /* ---------- zoom all the way out / back in ---------- */
 // one button: out to the edge of the observable universe, or back home to the solar system.
 // It's just a long flyTo: distance runs on a log scale with ease-in-out, so every scale gets equal time.
+const TRIP_S = 12;   // seconds each way – a slow glide, so a child can watch every scale go by
 const W_OVER = modeW("overview"), W_DIST = modeW("distances");
 const tripIn = () => anchorDist("home", W_OVER), tripOut = () => MAX_DIST * 0.97;
 // 0 = home view, 1 = the whole universe (log scale); past halfway the button brings you back in
@@ -258,9 +259,9 @@ function zoomTrip() {
     const wait = view.mode === "distances" ? (view.t0 >= 0 ? Math.max(0, view.t0 + view.dur - now) : 0) : view.dur;
     setMode("distances");
     rig.zoomT = undefined;
-    flyTo("home", { zoom: Math.log(tripOut() / anchorDist("home", W_DIST)), dur: 4, delay: wait, zoomTrip: "out" });
+    flyTo("home", { zoom: Math.log(tripOut() / anchorDist("home", W_DIST)), dur: TRIP_S, delay: wait, zoomTrip: "out" });
   } else {
-    flyTo("home", { zoom: 0, dur: 4, zoomTrip: "in",
+    flyTo("home", { zoom: 0, dur: TRIP_S, zoomTrip: "in",
       then: () => { setMode("overview"); rig.pitchT = innerHeight > innerWidth ? 0.85 : 0.52; rig.yawT = rig.yaw; } });
   }
   paintZoomBtn(true);

@@ -642,7 +642,10 @@ export class Cosmos {
       }
       if (vis) {
         const name = l.name[lang] || l.name.en, wpx = 22 + name.length * 8, left = !l.big && l.x + wpx > W - 6;   // near the right edge: text on the left
-        const box = left ? [l.x - wpx, l.y - 10, l.x + 8, l.y + 10] : [l.x - 8, l.y - 10, l.x + wpx, l.y + 10];
+        // big centred names (13 px, wide tracking ≈ 12 px a letter) slide inwards so they never hang off a narrow screen
+        const half = name.length * 6 + 6;
+        if (l.big) l.x = Math.min(Math.max(l.x, half + 8), Math.max(half + 8, W - half - 8));
+        const box = l.big ? [l.x - half, l.y - 10, l.x + half, l.y + 10] : left ? [l.x - wpx, l.y - 10, l.x + 8, l.y + 10] : [l.x - 8, l.y - 10, l.x + wpx, l.y + 10];
         l.el.classList.toggle("is-left", left);
         vis = !boxes.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
         if (vis) boxes.push(box);
