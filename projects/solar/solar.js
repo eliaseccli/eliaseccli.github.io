@@ -242,7 +242,14 @@ function setZoom(z) {
 /* ---------- zoom all the way out / back in ---------- */
 // one button: out to the edge of the observable universe, or back home to the solar system.
 // It's just a long flyTo: distance runs on a log scale with ease-in-out, so every scale gets equal time.
-const TRIP_S = 12;   // seconds each way – a slow glide, so a child can watch every scale go by
+const TRIP_S = 30;   // seconds each way – a slow glide, so a child can watch every scale go by
+// over a long trip a cubic ease would crawl for seconds at each end: instead speed up over ~3 s,
+// glide at an even pace (equal time per power of ten), and slow down over ~3 s
+const TRIP_RAMP = Math.min(0.4, 3 / TRIP_S);
+function tripEase(u, a = TRIP_RAMP) {
+  const k = 1 / (2 * a * (1 - a));
+  return u < a ? u * u * k : u > 1 - a ? 1 - (1 - u) * (1 - u) * k : (u - a / 2) / (1 - a);
+}
 const W_OVER = modeW("overview"), W_DIST = modeW("distances");
 const tripIn = () => anchorDist("home", W_OVER), tripOut = () => MAX_DIST * 0.97;
 // 0 = home view, 1 = the whole universe (log scale); past halfway the button brings you back in
@@ -708,7 +715,7 @@ function frame(tms) {
   let dist;
   const tp = [0, 0, 0];
   if (rig.fly) {
-    const f = rig.fly, u = clamp((now - f.t0) / f.dur, 0, 1), e = ease(u);
+    const f = rig.fly, u = clamp((now - f.t0) / f.dur, 0, 1), e = f.trip ? tripEase(u) : ease(u);
     const a = addPan(f.pan0, anchorPos(f.a, [0, 0, 0])), b = anchorPos(f.b, [0, 0, 0]);
     for (let i = 0; i < 3; i++) tp[i] = lerp(a[i], b[i], e);
     const d1 = anchorDist(f.b) * Math.exp(f.zoom1);
