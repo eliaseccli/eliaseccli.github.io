@@ -169,7 +169,8 @@ def refs_in_text(p):
 
 def check_links():
     refs = collections.defaultdict(set)   # asset path -> {(page, version)}
-    srcs = [(p, refs_in_html(p)) for p in files(".html")] + [(p, refs_in_text(p)) for p in files(".css", ".js")]
+    # test_* files run under node (check_tests), never in a browser: their imports need no ?v= cache-bust
+    srcs = [(p, refs_in_html(p)) for p in files(".html")] + [(p, refs_in_text(p)) for p in files(".css", ".js") if not p.name.startswith("test_")]
     for p, it in srcs:
         for base, ref, kind in it:
             f = resolve(base, ref)
@@ -273,12 +274,13 @@ def check_sizes():
             say("INFO", rel, f"large file: {kb} KB")
 
 def check_tests():
-    """Repo unit tests that run offline: Starlink timeline decode (node) and refresh pipeline (unittest)."""
-    runs = [(["node", "test_decode.js"], "starlink/test_decode.js"),
-            ([sys.executable, "-m", "unittest", "discover", "-s", "refresh", "-t", ".", "-p", "test_*.py"], "starlink/refresh tests")]
-    for cmd, name in runs:
+    """Repo unit tests that run offline: Starlink timeline decode (node), refresh pipeline (unittest), SpaceX launch picking (node:test)."""
+    runs = [(["node", "test_decode.js"], "starlink/test_decode.js", "starlink"),
+            ([sys.executable, "-m", "unittest", "discover", "-s", "refresh", "-t", ".", "-p", "test_*.py"], "starlink/refresh tests", "starlink"),
+            (["node", "--test", "test_pick_launch.js"], "spacex/test_pick_launch.js", "spacex")]
+    for cmd, name, cwd in runs:
         try:
-            r = subprocess.run(cmd, cwd=ROOT / "starlink", capture_output=True, text=True, timeout=600,
+            r = subprocess.run(cmd, cwd=ROOT / cwd, capture_output=True, text=True, timeout=600,
                                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
         except (FileNotFoundError, subprocess.TimeoutExpired) as e:
             say("INFO", name, f"not run: {e}")
