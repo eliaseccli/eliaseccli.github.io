@@ -184,8 +184,12 @@ const beltVS = LOGV + MAP_GLSL + `
     vec3 p = vec3(orb.x * cos(ang), orb.w, -orb.x * sin(ang));
     vec4 mv = modelViewMatrix * vec4(mapPos(p), 1.0);
     gl_Position = projectionMatrix * mv;
-    gl_PointSize = sz * px;
-    vA = sz;
+    // rocks up close, fine dust from afar: specks shrink with distance (scene units, so it also works in the
+    // squeezed overview) instead of keeping a fixed pixel size and piling up into a thick band of boulders;
+    // below ~0.7 px they fade rather than shrink further
+    float s = sz * clamp(7.0 / max(-mv.z, 1e-6), 0.0, 1.0);
+    gl_PointSize = max(s, 0.7) * px;
+    vA = clamp(s / 0.7, 0.3, 1.0);
     #include <logdepthbuf_vertex>
   }`;
 const beltFS = LOGF + `
@@ -194,7 +198,7 @@ const beltFS = LOGF + `
     #include <logdepthbuf_fragment>
     vec2 q = gl_PointCoord - 0.5; float d = dot(q, q);
     if (d > 0.25) discard;
-    gl_FragColor = vec4(color, alpha * smoothstep(0.25, 0.05, d));
+    gl_FragColor = vec4(color, alpha * vA * smoothstep(0.25, 0.05, d));
   }`;
 
 function shader(vs, fs, uniforms, extra) {
@@ -232,7 +236,7 @@ export class System {
     for (const b of BODIES) this.addBody(b);
     for (const m of MOONS) this.addMoonlet(m);
     this.addOrbits();
-    this.addBelts(lowPower ? 1800 : 4200, lowPower ? 1200 : 2600);
+    this.addBelts(lowPower ? 1500 : 3000, lowPower ? 1200 : 2600);
     this.addHalley();
   }
 
@@ -346,7 +350,8 @@ export class System {
       const orb = new Float32Array(n * 4), sz = new Float32Array(n), pos = new Float32Array(n * 3);
       for (let k = 0; k < n; k++) {
         // clumpy radial distribution with Kirkwood-ish gaps for the main belt
-        let a = a0 + (a1 - a0) * Math.pow(rnd(), 0.9);
+        // main belt: most rocks between ~2.3 and 3.1 AU (peaked, not a flat wide ring); Kuiper: spread out
+        let a = a0 < 3 ? 2.7 + (rnd() + rnd() + rnd() - 1.5) * 0.5 : a0 + (a1 - a0) * Math.pow(rnd(), 0.9);
         if (a0 < 3 && (Math.abs(a - 2.5) < 0.03 || Math.abs(a - 2.82) < 0.025 || Math.abs(a - 2.95) < 0.02)) a += 0.06;
         orb.set([a, rnd() * Math.PI * 2, 0.01720209895 / Math.pow(a, 1.5), (rnd() - 0.5) * 2 * zAmp * a * rnd()], k * 4);
         sz[k] = size * (0.5 + Math.pow(rnd(), 3) * 1.6);
@@ -362,7 +367,7 @@ export class System {
       this.scene.add(pts);
       return pts;
     };
-    this.belt = make(nA, 2.1, 3.3, 0.07, 1.6, 0xcbb9a2, 0.55, 4242);
+    this.belt = make(nA, 2.1, 3.3, 0.05, 1.6, 0xcbb9a2, 0.55, 4242);
     this.kuiper = make(nK, 30, 50, 0.12, 1.5, 0x9fb4cf, 0.32, 777);
   }
 
