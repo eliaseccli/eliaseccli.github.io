@@ -26,7 +26,7 @@
   <link rel="preload" href="./fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
 
   <link rel="stylesheet" href="/nav.css?v=1">
-  <link rel="stylesheet" href="./spacex.css?v=sx13">
+  <link rel="stylesheet" href="./spacex.css?v=sx14">
 </head>
 <body>
   <canvas class="gl" data-gl aria-label="Interactive globe showing the SpaceX flight path"></canvas>
@@ -103,7 +103,44 @@
           <circle cx="50" cy="50" r="46" class="a-ring"></circle>
           <line x1="8" y1="50" x2="92" y2="50" class="a-hz"></line>
           <text x="50" y="16" class="a-n">N</text>
-          <g data-ship><rect x="18" y="46.5" width="64" height="7" rx="3.5" class="a-ship"></rect><path d="M18 50 L10 50" class="a-nose"></path><rect x="74" y="44" width="6" height="12" rx="1" class="a-fin"></rect></g>
+          <!-- side views, nose left, to scale (each stack drawn 84 units long): Falcon 9 70 m x 3.7 m
+               (5.2 m fairing), Falcon Heavy 3 x 3.7 m cores, Starship 124 m x 9 m (ship + hot-stage ring + Super Heavy) -->
+          <defs>
+            <g id="veh-f9-core">
+              <path class="a-ship" d="M25.4 47.78H91.4V52.22H25.4Z"></path>
+              <path class="a-dark" d="M36.8 47.78h6.6v4.44h-6.6ZM80 47.78h10.2v.7H80ZM80 51.52h10.2v.7H80ZM90.2 47.78h1.2v4.44h-1.2ZM91.4 48.4l1 -.5v4.2l-1 -.5Z"></path>
+              <path class="a-fin" d="M43.8 46.5h1.8v1.28h-1.8ZM43.8 52.22h1.8v1.28h-1.8Z"></path>
+            </g>
+            <path id="veh-fairing" class="a-ship" d="M8 50C9.2 47.6 11.8 46.88 15.2 46.88H23.6L25.4 47.78V52.22L23.6 53.12H15.2C11.8 53.12 9.2 52.4 8 50Z"></path>
+            <g id="veh-falcon-9"><use href="#veh-f9-core"></use><use href="#veh-fairing"></use></g>
+            <g id="veh-falcon-9-dragon">
+              <use href="#veh-f9-core"></use>
+              <path class="a-ship" d="M13.2 50C13.2 48.75 14 48.4 15.2 48.4L20.1 47.6V52.4L15.2 51.6C14 51.6 13.2 51.25 13.2 50Z"></path>
+              <path class="a-ship" d="M20.6 47.78H25.4V52.22H20.6Z"></path>
+              <path class="a-dark" d="M20.1 47.6h.5v4.8h-.5ZM20.6 50h4.8v2.22h-4.8Z"></path>
+            </g>
+            <g id="veh-fh-side">
+              <path class="a-ship" d="M37.4 0C38.8 -1.7 41 -2.22 43.4 -2.22H91.4V2.22H43.4C41 2.22 38.8 1.7 37.4 0Z"></path>
+              <path class="a-dark" d="M80 -2.22h10.2v.7H80ZM90.2 -2.22h1.2v4.44h-1.2ZM91.4 -1.6l1 -.5v4.2l-1 -.5Z"></path>
+            </g>
+            <g id="veh-falcon-heavy">
+              <use href="#veh-fh-side" y="45.3"></use><use href="#veh-fh-side" y="54.7"></use>
+              <path class="a-fin" d="M43.8 41.78h1.8v1.3h-1.8ZM43.8 56.92h1.8v1.3h-1.8Z"></path>
+              <path class="a-ship" d="M25.4 47.78H91.4V52.22H25.4Z"></path>
+              <path class="a-dark" d="M36.8 47.78h6.6v4.44h-6.6ZM90.2 47.78h1.2v4.44h-1.2ZM91.4 48.4l1 -.5v4.2l-1 -.5Z"></path>
+              <use href="#veh-fairing"></use>
+            </g>
+            <g id="veh-starship">
+              <path class="a-ship" d="M8 50C9 47.4 12 46.95 16.1 46.95H91.3V53.05H16.1C12 53.05 9 52.6 8 50Z"></path>
+              <path class="a-tile" d="M8 50H43.2V53.05H16.1C12 53.05 9 52.6 8 50Z"></path>
+              <path class="a-dark" d="M43.2 46.95h1.2v6.1h-1.2ZM91.3 47.4l.9 -.3v5.8l-.9 -.3Z"></path>
+              <path class="a-fin" d="M11.4 47.5L16.4 46.95V45.5H13.4ZM11.4 52.5L16.4 53.05V54.5H13.4ZM36 46.95H43V44.6H38.6ZM36 53.05H43V55.4H38.6ZM45.2 45.5h2v1.45h-2ZM45.2 53.05h2v1.45h-2Z"></path>
+            </g>
+            <g id="veh-generic">
+              <rect x="18" y="46.5" width="64" height="7" rx="3.5" class="a-ship"></rect><path d="M18 50 L10 50" class="a-nose"></path><rect x="74" y="44" width="6" height="12" rx="1" class="a-fin"></rect>
+            </g>
+          </defs>
+          <g data-ship><use data-vehicle href="#veh-generic"></use></g>
         </svg>
       </div>
       <div class="mini" data-mini aria-hidden="true"><i></i></div>
@@ -136,7 +173,7 @@
   <p class="toast" data-toast hidden></p>
 
   <script src="/vendor/satellite.min.js"></script>
-  <script type="module" src="./spacex.js?v=sx15"></script>
+  <script type="module" src="./spacex.js?v=sx16"></script>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82e8baa382ea494dacc72e38c42df0dc"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>

@@ -529,7 +529,7 @@
     });
     if (g) {
       if (!globeP) {
-        globeP = import("./globe.js?v=sg13").then(function (m) {
+        globeP = import("./globe.js?v=sg14").then(function (m) {
           globe = m.mountGlobe({
             root: sec, satsP: window.__starlinkSatsP,
             colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set

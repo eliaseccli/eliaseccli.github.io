@@ -274,10 +274,11 @@ def check_sizes():
             say("INFO", rel, f"large file: {kb} KB")
 
 def check_tests():
-    """Repo unit tests that run offline: Starlink timeline decode (node), refresh pipeline (unittest), SpaceX launch picking (node:test)."""
+    """Repo unit tests that run offline: Starlink timeline decode (node), refresh pipeline (unittest), SpaceX launch picking,
+    ascent templates and TLE handling (node:test)."""
     runs = [(["node", "test_decode.js"], "starlink/test_decode.js", "starlink"),
             ([sys.executable, "-m", "unittest", "discover", "-s", "refresh", "-t", ".", "-p", "test_*.py"], "starlink/refresh tests", "starlink"),
-            (["node", "--test", "test_pick_launch.js"], "spacex/test_pick_launch.js", "spacex")]
+            (["node", "--test", "test_pick_launch.js", "test_ascent.js", "test_tle.js"], "spacex/test_*.js", "spacex")]
     for cmd, name, cwd in runs:
         try:
             r = subprocess.run(cmd, cwd=ROOT / cwd, capture_output=True, text=True, timeout=600,

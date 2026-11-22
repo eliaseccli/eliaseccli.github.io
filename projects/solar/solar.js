@@ -1,7 +1,7 @@
 import * as THREE from "/vendor/three.module.min.js";
 import { BODIES, MOONS, BY_ID, TEXT, LAND, LAND_TEXT, AU, LY, R_EARTH, days } from "./bodies.js?v=5";
 import { System, mapO } from "./system.js?v=8";
-import { Sky } from "./sky.js?v=8";
+import { Sky } from "./sky.js?v=9";
 import { Ground } from "./ground.js?v=8";
 import { Cosmos } from "./cosmos.js?v=9";
 

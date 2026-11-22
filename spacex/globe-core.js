@@ -7,8 +7,8 @@ import * as THREE from "/vendor/three.module.min.js";
    Frame: +Y north pole, lon 0 on +X, lon 90E on -Z. 1 unit = R_E.
    ============================================================ */
 
-export const R_E = 6371;
-export const D2R = Math.PI / 180;
+import { R_E, D2R } from "./earth.js?v=e1";
+export { R_E, D2R };
 
 export function ll2v(latDeg, lonDeg, r, out) {
   const la = latDeg * D2R, lo = lonDeg * D2R;
