@@ -247,6 +247,8 @@ canvas.drag { cursor: grabbing; }
   border-top: 1px solid rgba(255,255,255,0.06);
   padding: 0.15rem 0 0.2rem;
 }
+.filters > .inc-block:first-child,
+.globe-shells > .inc-block:first-child { border-top: 0; }
 /* row = arrow (drawn by ::before) + checkbox label; the expand button lies under the whole row, label on top */
 .inc-row {
   position: relative;

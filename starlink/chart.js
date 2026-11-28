@@ -367,6 +367,8 @@
     var root = document.querySelector("[data-filters]");
     window.StarlinkShells.known(data.shells.map(function (sh) { return sh.id; }));
     data.shells.forEach(function (sh) { on[sh.id] = window.StarlinkShells.isOn(sh.id); });
+    var allCount = root.querySelector("[data-all-count]");
+    if (allCount) allCount.textContent = data.n + " satellites";
     incOrder().forEach(function (inc) {
       var group = shellsOf(inc);
       var n = group.reduce(function (a, s) { return a + s.n; }, 0);
@@ -529,7 +531,7 @@
     });
     if (g) {
       if (!globeP) {
-        globeP = import("./globe.js?v=sg15").then(function (m) {
+        globeP = import("./globe.js?v=sg16").then(function (m) {
           globe = m.mountGlobe({
             root: sec, satsP: window.__starlinkSatsP,
             colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set

@@ -280,12 +280,12 @@ export function mountGlobe(opts) {
   }
   let dataNote = "";
 
-  // same pattern as the Chart tab: All, then one collapsible block per inclination
+  // same pattern as the Chart tab: All Satellites (collapsed; Colors inside), then one block per inclination
   function buildChips() {
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const incs = [...new Set(shells.filter((s) => s.inc != null).map((s) => s.inc))];
-    let html = `<div class="g-top"><label class="chk all"><input type="checkbox" data-gall checked> All</label>` +
-      `<label class="chk all colors"><input type="checkbox" data-colors> Colors</label></div>`;
+    const colorRow = `<label class="chk colors"><input type="checkbox" data-colors> Colors</label>`;
+    let html = window.StarlinkIncBlock.html("all", false, "data-gall", "All Satellites", fmt(N), colorRow);
     incs.forEach((inc) => {
       const group = incOf(inc);
       if (!group.length) return;
@@ -300,9 +300,11 @@ export function mountGlobe(opts) {
         `Orbit raising / deorbiting <em>${fmt(counts[oi])} satellites</em></label></div>`;
     }
     shellsEl.innerHTML = html;
-    window.StarlinkIncBlock.bind(shellsEl, (inc, open) => {
-      open ? openIncs.add(inc) : openIncs.delete(inc);
-      try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openIncs])); } catch (e) { /* ignore */ }
+    window.StarlinkIncBlock.bind(shellsEl, (key, open) => {
+      if (key !== "all") {
+        open ? openIncs.add(key) : openIncs.delete(key);
+        try { localStorage.setItem(OPEN_KEY, JSON.stringify([...openIncs])); } catch (e) { /* ignore */ }
+      }
       layout();
     });
     shellsEl.addEventListener("change", (e) => {

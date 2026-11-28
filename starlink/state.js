@@ -4,7 +4,7 @@
      #[chart][&sat=NORAD][&off=TOKENS | &on=TOKENS][&c=1][&spd=N]
    no "chart" = Globe (default view; old #globe links still work). Shell tokens: "53-463" one shell,
    "43" a whole inclination, "53r" its orbit-raising group, "o" the Globe's orbit raising / deorbiting
-   group. c=1 = Colors on (default grey). spd=10|60|300|1000 is the globe time multiplier (omitted at
+   group. c=1 = Colors on (default grey). spd=10|60|150|300 is the globe time multiplier (omitted at
    1×, live). Only non-defaults are written. A link carrying sat/off/on/c is applied for the visit
    without touching saved prefs; a toggle the visitor changes is saved. spd alone does not do that. */
 (function () {
@@ -107,7 +107,7 @@
   };
 
   // ---- simulated clock (globe time multiplier) ----
-  var SPEEDS = [1, 10, 60, 300, 1000];
+  var SPEEDS = [1, 10, 60, 150, 300];
   var speed = 1, simTime = Date.now(), tracking = true, clockSubs = [];
   if (SPEEDS.indexOf(+q.spd) >= 0 && +q.spd !== 1) { speed = +q.spd; tracking = false; }
   function clockNotify() { clockSubs.forEach(function (f) { f(); }); }
