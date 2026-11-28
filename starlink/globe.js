@@ -280,26 +280,27 @@ export function mountGlobe(opts) {
   }
   let dataNote = "";
 
-  // same pattern as the Chart tab: All Satellites (collapsed; Colors inside), then one block per inclination
+  // Colors stays top-level and visible; All Satellites wraps every shell group (collapsed by default)
   function buildChips() {
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const incs = [...new Set(shells.filter((s) => s.inc != null).map((s) => s.inc))];
-    const colorRow = `<label class="chk colors"><input type="checkbox" data-colors> Colors</label>`;
-    let html = window.StarlinkIncBlock.html("all", false, "data-gall", "All Satellites", fmt(N), colorRow);
+    let kids = "";
     incs.forEach((inc) => {
       const group = incOf(inc);
       if (!group.length) return;
       const n = group.reduce((a, s) => a + counts[shells.indexOf(s)], 0);
       const rows = group.map((s) => `<label class="chk"><input type="checkbox" data-gshell="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.color)}"></span>` +
         `${s.km != null ? s.km + " km" : "orbit raising"} <em>${fmt(counts[shells.indexOf(s)])} satellites</em></label>`).join("");
-      html += window.StarlinkIncBlock.html(inc, openIncs.has(String(inc)), `data-ginc="${inc}"`, INC_LABEL[inc] || inc + "°", fmt(n), rows);
+      kids += window.StarlinkIncBlock.html(inc, openIncs.has(String(inc)), `data-ginc="${inc}"`, INC_LABEL[inc] || inc + "°", fmt(n), rows);
     });
     const oi = shells.findIndex((s) => s.id === RAISING);
     if (oi >= 0 && counts[oi]) {
-      html += `<div class="g-other"><label class="chk"><input type="checkbox" data-gshell="${RAISING}" checked><span class="swatch" style="background:${RAISING_COLOR}"></span>` +
+      kids += `<div class="g-other"><label class="chk"><input type="checkbox" data-gshell="${RAISING}" checked><span class="swatch" style="background:${RAISING_COLOR}"></span>` +
         `Orbit raising / deorbiting <em>${fmt(counts[oi])} satellites</em></label></div>`;
     }
-    shellsEl.innerHTML = html;
+    shellsEl.innerHTML =
+      `<div class="g-top"><label class="chk all colors"><input type="checkbox" data-colors> Colors</label></div>` +
+      window.StarlinkIncBlock.html("all", false, "data-gall", "All Satellites", fmt(N), kids);
     window.StarlinkIncBlock.bind(shellsEl, (key, open) => {
       if (key !== "all") {
         open ? openIncs.add(key) : openIncs.delete(key);

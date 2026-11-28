@@ -249,6 +249,7 @@ canvas.drag { cursor: grabbing; }
 }
 .filters > .inc-block:first-child,
 .globe-shells > .inc-block:first-child { border-top: 0; }
+.heights > .inc-block:first-child { border-top: 0; }
 /* row = arrow (drawn by ::before) + checkbox label; the expand button lies under the whole row, label on top */
 .inc-row {
   position: relative;
@@ -351,6 +352,7 @@ canvas.globe-gl:active { cursor: grabbing; }
 .globe-shells .inc-row::before { font-size: 1.6rem; }
 .globe-shells .heights { padding: 0 0 0.25rem 1.5rem; gap: 0.08rem; }
 .globe-shells .g-other { border-top: 1px solid rgba(255, 255, 255, 0.08); padding: 0.2rem 0 0 1.5rem; }
+.globe-shells .heights > .g-other { padding-left: 0; }
 /* Landscape: the shells panel is a column right of the globe and scrolls on its own;
    globe.js centres the globe in the space left of it. */
 @media (orientation: landscape) {

@@ -383,7 +383,7 @@
           "<span class=\"swatch\" style=\"background:" + sh.color + "\"></span>" +
           "orbit raising <em>" + sh.n + " satellites</em></label>";
       }).join("");
-      root.insertAdjacentHTML("beforeend", window.StarlinkIncBlock.html(inc, inc === 53, "data-inc=\"" + inc + "\"",
+      root.querySelector('[data-incblock="all"] > .heights').insertAdjacentHTML("beforeend", window.StarlinkIncBlock.html(inc, inc === 53, "data-inc=\"" + inc + "\"",
         INC_LABEL[inc] || (inc + "°"), n, rows));
     });
 
@@ -531,7 +531,7 @@
     });
     if (g) {
       if (!globeP) {
-        globeP = import("./globe.js?v=sg16").then(function (m) {
+        globeP = import("./globe.js?v=sg17").then(function (m) {
           globe = m.mountGlobe({
             root: sec, satsP: window.__starlinkSatsP,
             colorsOn: window.StarlinkColors.on, setColors: window.StarlinkColors.set
