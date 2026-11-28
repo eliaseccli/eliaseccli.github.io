@@ -1,11 +1,12 @@
 /* Starlink page: shared state (URL hash, colors, shells, selection, view), launch dates and the shell-row builder.
    Loaded in <head> on purpose: it sets the is-globe / sl-grey classes before first paint. */
 /* Shared page state for Chart and Globe, mirrored in the URL hash:
-     #[chart][&sat=NORAD][&off=TOKENS | &on=TOKENS][&c=1]
+     #[chart][&sat=NORAD][&off=TOKENS | &on=TOKENS][&c=1][&spd=N]
    no "chart" = Globe (default view; old #globe links still work). Shell tokens: "53-463" one shell,
    "43" a whole inclination, "53r" its orbit-raising group, "o" the Globe's orbit raising / deorbiting
-   group. c=1 = Colors on (default grey). Only non-defaults are written. A link carrying sat/off/on/c
-   is applied for the visit without touching saved prefs; a toggle the visitor changes is saved. */
+   group. c=1 = Colors on (default grey). spd=10|60|300|1000 is the globe time multiplier (omitted at
+   1×, live). Only non-defaults are written. A link carrying sat/off/on/c is applied for the visit
+   without touching saved prefs; a toggle the visitor changes is saved. spd alone does not do that. */
 (function () {
   var root = document.documentElement;
   var KEY_C = "starlink.colors.v1", KEY_OFF = "starlink.globe.off.v2";
@@ -105,6 +106,42 @@
     set: function (id, name) { sel = { id: id == null ? null : +id, name: name || "" }; writeHash(); }
   };
 
+  // ---- simulated clock (globe time multiplier) ----
+  var SPEEDS = [1, 10, 60, 300, 1000];
+  var speed = 1, simTime = Date.now(), tracking = true, clockSubs = [];
+  if (SPEEDS.indexOf(+q.spd) >= 0 && +q.spd !== 1) { speed = +q.spd; tracking = false; }
+  function clockNotify() { clockSubs.forEach(function (f) { f(); }); }
+  window.StarlinkClock = {
+    SPEEDS: SPEEDS,
+    speed: function () { return speed; },
+    now: function () { return simTime; },
+    isLive: function () { return tracking && speed === 1; },
+    setSpeed: function (v) {
+      v = +v;
+      if (SPEEDS.indexOf(v) < 0 || v === speed) return;
+      speed = v;
+      if (v !== 1) tracking = false;
+      writeHash();
+      clockNotify();
+    },
+    live: function () {
+      speed = 1;
+      tracking = true;
+      simTime = Date.now();
+      writeHash();
+      clockNotify();
+    },
+    tick: function (dtMs) {
+      if (tracking && speed === 1) { simTime = Date.now(); return simTime; }
+      var dt = dtMs;
+      if (!(dt > 0)) dt = 0;
+      if (dt > 250) dt = 250;
+      simTime += dt * speed;
+      return simTime;
+    },
+    sub: function (f) { clockSubs.push(f); }
+  };
+
   // ---- view + URL ----
   window.StarlinkView = {
     get: function () { return view; },
@@ -122,6 +159,7 @@
       if (sel.id != null) parts.push("sat=" + sel.id);
       var sh = encodeShells(); if (sh) parts.push(sh);
       if (cOn) parts.push("c=1");
+      if (speed !== 1) parts.push("spd=" + speed);
       var want = parts.length ? "#" + parts.join("&") : "";
       if (want !== location.hash && !(want === "" && location.hash === "#")) {
         history.replaceState(null, "", location.pathname + location.search + want);

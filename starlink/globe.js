@@ -6,12 +6,14 @@ import { addEarth, sunDir, ll2v, R_E, D2R } from "../spacex/globe-core.js?v=g4";
    Same Earth as /spacex/ (shared globe-core.js). Every Starlink
    in orbit from the daily Celestrak GP dump (./gp.json), SGP4 in
    the browser. Shells come from ./sats.json (same as the chart).
-   SGP4 runs at keyframes 10 s apart (spread over frames); the
-   vertex shader blends the two keyframes and turns ECI into the
-   Earth-fixed frame, so the main thread stays nearly idle.
+   SGP4 runs at keyframes (10 s apart at 1×, stretched at higher
+   time speeds) spread over frames; the vertex shader blends the
+   two keyframes and turns ECI into the Earth-fixed frame, so the
+   main thread stays nearly idle. Positions, GMST and the
+   day/night terminator use StarlinkClock's simulated time.
    ============================================================ */
 
-const STEP = 10000;               // ms between SGP4 keyframes
+const STEP = 10000;               // ms between SGP4 keyframes at 1×
 const MAX_AGE_D = 30;             // elements older than this: treat as gone
 const MIN_ALT = 150;              // km; below this it is re-entering
 const OPEN_KEY = "starlink.globe.open.v1";
@@ -21,6 +23,11 @@ const RAISING_COLOR = "#8a94a6";
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const wrapLon = (l) => ((((l + 180) % 360) + 360) % 360) - 180;
+// Keep ~10 s steps at 1–10×; stretch at higher multipliers so SGP4 can finish
+// between keyframes, capped so the interpolated arc stays reasonable.
+const keyframeSpan = (spd) => Math.min(120000, Math.max(STEP, (spd || 1) * 280));
+const clockNow = () => window.StarlinkClock ? window.StarlinkClock.now() : Date.now();
+const clockSpeed = () => window.StarlinkClock ? window.StarlinkClock.speed() : 1;
 
 /* ---------- OMM row -> TLE (satellite.js 5 has no sgp4init export) ---------- */
 function checksum(line) {
@@ -79,6 +86,39 @@ export function mountGlobe(opts) {
   const metaEl = root.querySelector("[data-globe-meta]");
   const shellsEl = root.querySelector("[data-globe-shells]");
   const hud = root.querySelector("[data-globe-hud]");
+  const speedRoot = root.querySelector("[data-globe-speed]");
+  const timeEl = root.querySelector("[data-spd-time]");
+  const liveBtn = root.querySelector("[data-spd-live]");
+  const timeFmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC", day: "numeric", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  });
+  function paintSpeed() {
+    const c = window.StarlinkClock;
+    if (!c || !speedRoot) return;
+    const live = c.isLive();
+    speedRoot.querySelectorAll("[data-spd]").forEach((b) => {
+      b.setAttribute("aria-pressed", String(+b.getAttribute("data-spd") === c.speed()));
+    });
+    if (liveBtn) liveBtn.hidden = live;
+    if (timeEl) {
+      timeEl.hidden = live;
+      if (!live) timeEl.textContent = timeFmt.format(c.now()) + " UTC";
+    }
+  }
+  function updateSpeedTime() {
+    const c = window.StarlinkClock;
+    if (!c || !timeEl || c.isLive()) return;
+    timeEl.textContent = timeFmt.format(c.now()) + " UTC";
+  }
+  if (speedRoot) {
+    speedRoot.addEventListener("click", (e) => {
+      if (e.target.closest("[data-spd-live]")) { if (window.StarlinkClock) window.StarlinkClock.live(); return; }
+      const b = e.target.closest("[data-spd]");
+      if (b && window.StarlinkClock) window.StarlinkClock.setSpeed(+b.getAttribute("data-spd"));
+    });
+  }
+  paintSpeed();
 
   /* ---------- scene (same globe as /spacex/) ---------- */
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -339,11 +379,12 @@ export function mountGlobe(opts) {
     worldOf(sel, wv);
     hiGeo.attributes.position.setXYZ(0, wv.x, wv.y, wv.z); hiGeo.attributes.position.needsUpdate = true;
     const t = performance.now();
-    if (!force && t - pickT < 1000) return;
+    const live = !window.StarlinkClock || window.StarlinkClock.isLive();
+    if (!force && t - pickT < (live ? 1000 : 100)) return;
     pickT = t;
     let alt = wv.length() * R_E - R_E;
     try {
-      const d = new Date(), q = window.satellite.propagate(recs[sel], d);
+      const d = new Date(clockNow()), q = window.satellite.propagate(recs[sel], d);
       if (q && q.position) alt = window.satellite.eciToGeodetic(q.position, window.satellite.gstime(d)).height;
     } catch (e) { /* keep spherical altitude */ }
     const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -372,7 +413,7 @@ export function mountGlobe(opts) {
     if (sats && sats.sats) sats.sats.forEach((r) => shellOf.set(r.id, r.s));
     counts = shells.map(() => 0);
 
-    const now = Date.now(), nowD = new Date(now);
+    const wallNow = Date.now(), nowD = new Date(wallNow);
     const rows = (gp.sats || []).filter((r) => Array.isArray(r) && r[11] !== "iss");
     const keep = [], shIdx = [], colors = [];
     const tmp = new THREE.Color();
@@ -380,7 +421,7 @@ export function mountGlobe(opts) {
     for (let i = 0; i < rows.length; i++) {
       if (i % 400 === 0) await idle();
       const r = rows[i], ep = epochMs(r[2]);
-      if (!isFinite(ep) || (now - ep) / 864e5 > MAX_AGE_D) { dropped++; continue; }
+      if (!isFinite(ep) || (wallNow - ep) / 864e5 > MAX_AGE_D) { dropped++; continue; }
       const rec = rowToSatrec(r, ep);
       if (!rec) { dropped++; continue; }
       let pv = null;
@@ -393,10 +434,11 @@ export function mountGlobe(opts) {
     }
     recs = keep; N = recs.length; satShell = shIdx;
     P0 = new Float32Array(N * 3); P1 = new Float32Array(N * 3); PN = new Float32Array(N * 3);
-    t0 = now; t1 = now + STEP;
+    const st = keyframeSpan(clockSpeed());
+    t0 = clockNow(); t1 = t0 + st;
     for (let i = 0; i < N; i++) { if (i % 1500 === 0) await idle(); propInto(P0, i, new Date(t0), null); }
     for (let i = 0; i < N; i++) { if (i % 1500 === 0) await idle(); propInto(P1, i, new Date(t1), P0); }
-    tN = t1 + STEP; cursor = 0;
+    tN = t1 + st; cursor = 0;
 
     const g = new THREE.BufferGeometry();
     a0 = new THREE.BufferAttribute(P0, 3); a1 = new THREE.BufferAttribute(P1, 3);
@@ -422,6 +464,15 @@ export function mountGlobe(opts) {
   }
 
   /* ---------- keyframe stepping ---------- */
+  function resync(simNow) {
+    if (!N || !P0) return;
+    const st = keyframeSpan(clockSpeed());
+    t0 = simNow; t1 = simNow + st; tN = t1 + st; cursor = 0;
+    const d0 = new Date(t0), d1 = new Date(t1);
+    for (let i = 0; i < N; i++) propInto(P0, i, d0, P0);
+    for (let i = 0; i < N; i++) propInto(P1, i, d1, P0);
+    if (a0) { a0.needsUpdate = true; a1.needsUpdate = true; }
+  }
   function step(now, budgetMs) {
     if (!N) return;
     const until = performance.now() + budgetMs, dN = new Date(tN);
@@ -433,14 +484,16 @@ export function mountGlobe(opts) {
     if (cursor >= N && now >= t1) {
       P0.set(P1); P1.set(PN);
       a0.needsUpdate = true; a1.needsUpdate = true;
-      t0 = t1; t1 = tN; tN = t1 + STEP; cursor = 0;
-      if (now >= t1) { // tab was in the background: resync everything
-        t0 = now; t1 = now + STEP; tN = t1 + STEP;
-        for (let i = 0; i < N; i++) propInto(P0, i, new Date(t0), P0);
-        for (let i = 0; i < N; i++) propInto(P1, i, new Date(t1), P0);
-        a0.needsUpdate = true; a1.needsUpdate = true;
-      }
+      t0 = t1; t1 = tN; tN = t1 + keyframeSpan(clockSpeed()); cursor = 0;
+      if (now >= t1) resync(now); // fell behind or the tab was in the background
     }
+  }
+  if (window.StarlinkClock) {
+    window.StarlinkClock.sub(() => {
+      if (root.dataset.ready) resync(clockNow());
+      paintSpeed();
+      if (running) layout();
+    });
   }
 
   let running = false, lastFrame = 0, loaded = null;
@@ -448,8 +501,9 @@ export function mountGlobe(opts) {
     if (!running) return;
     requestAnimationFrame(frame);
     const dt = Math.min((tms - (lastFrame || tms)) / 1000, 0.25); lastFrame = tms;
-    const now = Date.now();
-    step(now, 3);
+    const now = window.StarlinkClock ? window.StarlinkClock.tick(dt * 1000) : Date.now();
+    const spd = clockSpeed();
+    step(now, spd <= 1 ? 3 : spd >= 300 ? 10 : 6);
 
     if (!ctl.dragging && Math.abs(ctl.vLon) + Math.abs(ctl.vLat) > 0.001) {
       ctl.tLon += ctl.vLon; ctl.tLat = clamp(ctl.tLat + ctl.vLat, -85, 85);
@@ -469,6 +523,7 @@ export function mountGlobe(opts) {
     uni.u.value = t1 > t0 ? clamp((now - t0) / (t1 - t0), 0, 1.5) : 0;
     uni.size.value = dpr * clamp(1.9 * (ctl.fitD - 1) / Math.max(ctl.dist - 1, 0.05), 1.9, 5);
     updatePick(false);
+    updateSpeedTime();
     renderer.render(scene, camera);
   }
 
@@ -498,7 +553,7 @@ export function mountGlobe(opts) {
       ctl.tLon = Math.atan2(-wv.z, wv.x) / D2R;
     },
     colors() { syncColors(); },
-    debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0, sel: sel >= 0 ? { name: names[sel], id: ids[sel] } : null }; },
+    debug() { return { N, shells: shells.map((s, i) => ({ id: s.id, n: counts[i], on: !off.has(s.id) })), shown: +root.dataset.shown || 0, sel: sel >= 0 ? { name: names[sel], id: ids[sel] } : null, speed: clockSpeed(), simTime: clockNow(), live: !window.StarlinkClock || window.StarlinkClock.isLive() }; },
     pickAt(x, y) { return pickAt(x, y); },
     selectAt(x, y) { select(pickAt(x, y)); return sel >= 0 ? ids[sel] : null; },
     screenOf(i) { worldOf(i, wv); camera.updateMatrixWorld(); pv3.copy(wv).project(camera); return { x: (pv3.x * 0.5 + 0.5) * W, y: (-pv3.y * 0.5 + 0.5) * H, hidden: hiddenByEarth(wv), shellOn: uMask.value[satShell[i]] > 0.5 }; }
